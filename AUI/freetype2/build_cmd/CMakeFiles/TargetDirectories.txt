@@ -1,0 +1,9 @@
+/home/anton/work/CGE/eclipse_workspace/AUI/freetype2/build_cmd/CMakeFiles/freetype.dir
+/home/anton/work/CGE/eclipse_workspace/AUI/freetype2/build_cmd/CMakeFiles/package.dir
+/home/anton/work/CGE/eclipse_workspace/AUI/freetype2/build_cmd/CMakeFiles/package_source.dir
+/home/anton/work/CGE/eclipse_workspace/AUI/freetype2/build_cmd/CMakeFiles/edit_cache.dir
+/home/anton/work/CGE/eclipse_workspace/AUI/freetype2/build_cmd/CMakeFiles/rebuild_cache.dir
+/home/anton/work/CGE/eclipse_workspace/AUI/freetype2/build_cmd/CMakeFiles/list_install_components.dir
+/home/anton/work/CGE/eclipse_workspace/AUI/freetype2/build_cmd/CMakeFiles/install.dir
+/home/anton/work/CGE/eclipse_workspace/AUI/freetype2/build_cmd/CMakeFiles/install/local.dir
+/home/anton/work/CGE/eclipse_workspace/AUI/freetype2/build_cmd/CMakeFiles/install/strip.dir
