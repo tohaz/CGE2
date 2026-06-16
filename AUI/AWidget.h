@@ -1,11 +1,6 @@
 #ifndef AWIDGET_H_
 #define AWIDGET_H_
 
-#include "defaults.h"
-#include <cstdint>
-#include <memory>
-#include <vector>
-
 namespace aui {
 
   class AWindow;
@@ -13,11 +8,53 @@ namespace aui {
   using MouseMoveCallback = std::function<void(AWindow*, AWidget*, void*, int32_t, int32_t)>;
   using ScrollCallback = std::function<void(AWindow*, AWidget*, void*, int32_t)>;
 
-  void DrawTextEx(uint32_t* buffer, uint32_t parentWidth, uint32_t parentHeight,
-                  int32_t absX, int32_t absY, int32_t drawW, int32_t drawH,
-                  const std::string& text, FT_Face face, uint32_t fontSize,
-                  AUIHAlign hAlign, AUIVAlign vAlign, int32_t xOffset,
-                  uint32_t textColor);
+  void DrawTextEx(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t absX, int32_t absY,
+        int32_t drawW, int32_t drawH, const std::string &text, FT_Face face, uint32_t fontSize, AUIHAlign hAlign,
+        AUIVAlign vAlign, int32_t xOffset, uint32_t textColor, int32_t maxContentWidth);
+
+
+  // Fill a rectangle with a solid color.
+// All coordinates and sizes are assumed to be already clipped to the buffer bounds.
+  inline void FillRect(uint32_t *buffer, uint32_t bufferWidth, int32_t x, int32_t y, int32_t w, int32_t h,
+      uint32_t color) {
+    if(w <= 0 || h <= 0)
+      return;
+// We assume x,y,w,h are within [0, bufferWidth) and [0, bufferHeight).
+// To be safe, we can still clamp, but the caller should have clipped.
+    for(int32_t row = 0; row < h; ++row) {
+      uint32_t *line = buffer + static_cast<size_t>(y + row) * bufferWidth + static_cast<size_t>(x);
+      std::fill(line, line + w, color);
+    }
+  }
+
+// Draw a horizontal line (1‑pixel high) using memset for each row (just one row here).
+  inline void DrawHLine(uint32_t *buffer, uint32_t bufferWidth, int32_t x, int32_t y, int32_t w, uint32_t color) {
+    if(w <= 0)
+      return;
+    uint32_t *line = buffer + static_cast<size_t>(y) * bufferWidth + static_cast<size_t>(x);
+    std::fill(line, line + w, color);
+  }
+
+// Draw a vertical line (1‑pixel wide) – we fill each row’s pixel individually.
+  inline void DrawVLine(uint32_t *buffer, uint32_t bufferWidth, int32_t x, int32_t y, int32_t h, uint32_t color) {
+    if(h <= 0)
+      return;
+    for(int32_t row = 0; row < h; ++row) {
+      uint32_t *pixel = buffer + static_cast<size_t>(y + row) * bufferWidth + static_cast<size_t>(x);
+      *pixel = color;
+    }
+  }
+
+  inline void DrawRectBorder(uint32_t *buffer, uint32_t bufferWidth, int32_t x, int32_t y, int32_t w, int32_t h,
+      uint32_t color) {
+    if(w <= 0 || h <= 0)
+      return;
+    DrawHLine(buffer, bufferWidth, x, y, w, color);// top
+    DrawHLine(buffer, bufferWidth, x, y + h - 1, w, color);// bottom
+    DrawVLine(buffer, bufferWidth, x, y + 1, h - 2, color);// left (skip corners)
+    DrawVLine(buffer, bufferWidth, x + w - 1, y + 1, h - 2, color);// right
+  }
+
   class AWidget {
       friend class ABox;
       friend class AButton;
@@ -25,6 +62,8 @@ namespace aui {
       friend class AWindow;
       friend class AScrollBar;
       friend class AList;
+      friend class AInputBox;
+      friend class ATable;
     private:
       uint64_t mId = 0U;
       bool mEnabled = true;
@@ -42,8 +81,12 @@ namespace aui {
       mutable int32_t mCachedTextWidth = 0;
       mutable int32_t mCachedTextHeight = 0;
       mutable bool mTextMetricsValid = false;
+      bool mFocusable = false;
 //      AWidget* mDragWidget = nullptr;
-
+      void ClampToParent();
+      void FitToParent();
+      void CapSizeToParent();
+      void ClampPositionToParent();
     protected:
       uint32_t mBorderThick = 0;
       uint32_t mBorderColor = 0;
@@ -62,7 +105,7 @@ namespace aui {
       AUIHAlign mHAlign = AUIHAlign::center;
       AUIVAlign mVAlign = AUIVAlign::center;
       uint32_t mFontSize = 14U;              // pixels
-      virtual void OnParentResize(UNUSED uint32_t newWidth, UNUSED uint32_t newHeight) {}
+      virtual void OnParentResize(UNUSED uint32_t newWidth, UNUSED uint32_t newHeight);
       bool mHovered = false;
       bool mPressed = false;
       bool mHoverEnabled = true;
@@ -73,16 +116,22 @@ namespace aui {
       void InvokeClickCallback(int32_t localX, int32_t localY, bool pressed);
       void InvokeMouseMoveCallback(int32_t localX, int32_t localY);
       void InvokeScrollCallback(int32_t value);
-      virtual void OnMouseMove(int32_t localX, int32_t localY);
       virtual bool DispatchMouseMove(int32_t parentX, int32_t parentY);
       void DrawBorder(uint32_t* buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX, int32_t offsetY) const;
       void DrawTextOffset(uint32_t* buffer, uint32_t parentWidth, uint32_t parentHeight,
                           int32_t offsetX, int32_t offsetY, int32_t xOffset) const;
+      int32_t mLastMouseX = 0;
+      int32_t mLastMouseY = 0;
     public:
       virtual ~AWidget() = default;
       virtual void Draw(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
           int32_t offsetY) const;
       virtual bool OnMouseClick(int32_t localX, int32_t localY, bool pressed);
+      virtual void OnMouseMove(int32_t localX, int32_t localY);
+      virtual void OnMouseWheel(UNUSED int32_t delta) {}
+      virtual void OnFocusGained() {}
+      virtual void OnFocusLost() {}
+      virtual void OnKeyEvent(const AUIKeyEvent&) {D("generic method")}
       virtual bool DispatchClick(int32_t parentX, int32_t parentY, bool pressed);
       void Move(int32_t x, int32_t y);
       void Resize(uint32_t szx, uint32_t szy);
@@ -112,7 +161,7 @@ namespace aui {
       void SetTextColor(uint32_t color);
       uint32_t GetTextColor() const { return mTextColor; }
       uint32_t GetFontSize() const { return mFontSize; }
-      void SetHAlignment(AUIHAlign align);
+      virtual void SetHAlignment(AUIHAlign align);
       AUIHAlign GetHAlignment() const { return mHAlign; }
       void SetVAlignment(AUIVAlign align);
       AUIVAlign GetVAlignment() const { return mVAlign; }
@@ -130,8 +179,20 @@ namespace aui {
       AWidget* GetParentWidget() {return mParentWidget;}
       int32_t GetCachedTextWidth() {return mCachedTextWidth;}
       uint32_t GetBGColor() {return mBGColor;}
-      virtual void OnMouseWheel(UNUSED int32_t delta) {}
       virtual void SetFontSize(uint32_t size);
+      void SetFocusable(bool focusable) { mFocusable = focusable; }
+      bool IsFocusable() const { return mFocusable; }
+      bool IsFocused() const;   // implemented in .cpp
+      int32_t MeasureTextWidth(const std::string &text) const;
+      void DrawChildren(uint32_t* buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX, int32_t offsetY) const;
+      // Forward a mouse click to the topmost child at (localX, localY)
+      bool ForwardClickToChildren(int32_t localX, int32_t localY, bool pressed);
+      // Forward a mouse move to the child under the cursor (updates hover state)
+      void ForwardMoveToChildren(int32_t localX, int32_t localY);
+      // Forward a mouse wheel event to the child under the last known mouse position
+      void ForwardWheelToChildren(int32_t delta);
+
+
 
 //      AWidget* GetDragWidget() const { return mDragWidget; }
 

@@ -13,18 +13,12 @@ extern "C" {
 }
 
 #include "AUILib.h"
-#include "WaylandWindowContext.h"
 
 namespace aui {
-//  static void buffer_release(void *data, UNUSED wl_buffer *buffer) {
-//    bool *busy = static_cast<bool*>(data);
-//    *busy = false;
-//    D2("Buffer released, now free");
-//  }
   static void buffer_release(void *data, UNUSED wl_buffer *buffer) {
     auto *buf = static_cast<WaylandBuffer*>(data);
     buf->busy = false;
-    D2("Buffer released, now free");
+    D3("Buffer released, now free");
     if(buf->pendingDeletion) {
       if(buf->buffer) {
         wl_buffer_destroy(buf->buffer);
@@ -161,7 +155,7 @@ namespace aui {
     D2("CreateShmBuffer: {}x{} (Double Buffered)", width, height);
     size_t stride = width * 4;
     size_t size = stride * height;
-    for (int32_t i = 0; i < 2; ++i) {
+    for(int32_t i = 0; i < 2; ++i) {
       int32_t fd = memfd_create("aui-wl-shm", MFD_CLOEXEC);
       if(fd < 0) {
         D1("memfd_create failed");
@@ -205,33 +199,6 @@ namespace aui {
     mPendingResizeEnabled = true;
   }
 
-  void WaylandWindowContext::Resize(uint32_t width, uint32_t height) {
-    if(width == 0 || height == 0 || mInResize)
-      return;
-    mInResize = true;
-// Flush any pending draws using the old buffers
-    if(mAUI)
-      mAUI->Draw();
-// Store current buffers as "old" and clear mBuffers
-    for (int32_t i = 0; i < 2; ++i) {
-      mOldBuffers[i] = mBuffers[i];
-      mBuffers[i] = WaylandBuffer { };// zero out
-    }
-    mHasOldBuffers = true;
-// Remove stale draw commands for this window
-    uint64_t nativeId = reinterpret_cast<uint64_t>(mSurface);
-    if(mAUI)
-      mAUI->ClearDrawCommandsForWindow(nativeId);
-    mPendingWidth = width;
-    mPendingHeight = height;
-// Create new buffers with the new size
-    CreateShmBuffer(width, height, mBuffers);
-// Try to destroy old buffers – those that are not busy will be freed immediately;
-// busy ones are marked for deletion and will be cleaned up when released.
-    DestroyShmBuffer(mOldBuffers, false);
-    mInResize = false;
-  }
-
   void WaylandWindowContext::SetTitle(const std::string &title) {
     if(mToplevel)
       xdg_toplevel_set_title(mToplevel, title.c_str());
@@ -248,7 +215,7 @@ namespace aui {
 
   void WaylandWindowContext::QueueFrameCommit() {
     int32_t backBufferIdx = mCurrentBufferIndex ^ 1;
-    D2("QueueFrameCommit: surface={}, buffer_index={}, w={}, h={}", (void*)mSurface, backBufferIdx, mWindow->SizeX(),
+    D3("QueueFrameCommit: surface={}, buffer_index={}, w={}, h={}", (void*)mSurface, backBufferIdx, mWindow->SizeX(),
         mWindow->SizeY());
     if(!mSurface || !mBuffers[backBufferIdx].buffer) {
       E("Missing surface or buffer");
@@ -256,12 +223,12 @@ namespace aui {
     }
 // Skip if the back buffer is still busy
     if(mBuffers[backBufferIdx].busy) {
-      D2("Back buffer busy, skipping commit");
+      D3("Back buffer busy, skipping commit");
       return;
     }
 // If frame sync is enabled, wait for pending frame callback
     if(mFrameSyncEnabled && mFramePending) {
-      D2("Frame callback pending, skipping commit");
+      D3("Frame callback pending, skipping commit");
       return;
     }
     DrawCommand cmd;
@@ -270,7 +237,7 @@ namespace aui {
     cmd.wayland.buffer = mBuffers[backBufferIdx].buffer;
     cmd.wayland.width = mWindow->SizeX();
     cmd.wayland.height = mWindow->SizeY();
-    D2("QueueFrameCommit: Enqueueing command. Current mDrawCommands size BEFORE push = {}", mAUI->GetDrawCommandsSize());
+    D3("QueueFrameCommit: Enqueueing command. Current mDrawCommands size BEFORE push = {}", mAUI->GetDrawCommandsSize());
     mAUI->EnqueueDrawCommand(cmd);
     mBuffers[backBufferIdx].busy = true;
     mCurrentBufferIndex = backBufferIdx;
@@ -279,7 +246,7 @@ namespace aui {
       mFrameCallback = wl_surface_frame(mSurface);
       wl_callback_add_listener(mFrameCallback, &frame_listener, this);
       mFramePending = true;
-      D2("Frame callback requested");
+      D3("Frame callback requested");
     }
   }
 
@@ -308,7 +275,7 @@ namespace aui {
   void WaylandWindowContext::DestroyShmBuffer(WaylandBuffer *buffers, bool immediate) {
     if(!buffers)
       buffers = mBuffers;
-    for (int32_t i = 0; i < 2; ++i) {
+    for(int32_t i = 0; i < 2; ++i) {
       if(buffers[i].buffer) {
         if(immediate || !buffers[i].busy) {
           if(buffers[i].buffer) {
@@ -330,11 +297,105 @@ namespace aui {
     }
   }
 
-  WaylandWindowContext::~WaylandWindowContext() {
-    if(mHasOldBuffers) {
-      DestroyShmBuffer(mOldBuffers, true);// force immediate destruction
-      mHasOldBuffers = false;
+  void WaylandWindowContext::Resize(uint32_t width, uint32_t height) {
+    if(width == 0 || height == 0 || mInResize)
+      return;
+    mInResize = true;
+    DestroyShmBuffer(mOldBuffers, true);
+    if(mAUI)
+      mAUI->Draw();
+    uint64_t nativeId = reinterpret_cast<uint64_t>(mSurface);
+    if(mAUI)
+      mAUI->ClearDrawCommandsForWindow(nativeId);
+
+// Store current buffers as "old" and zero out mBuffers
+    for(int32_t i = 0; i < 2; ++i) {
+      mOldBuffers[i] = mBuffers[i];
+      mBuffers[i] = WaylandBuffer { };
     }
+    mHasOldBuffers = true;// if your code uses this flag
+// Create new buffers with the new size
+    CreateShmBuffer(width, height, mBuffers);
+// Destroy old buffers asynchronously (keeps updates working)
+    DestroyShmBuffer(mOldBuffers, false);
+    mInResize = false;
+  }
+
+  void WaylandWindowContext::SetCursor(AUICursorType type) {
+    if(!mCursorTheme) {
+      wl_shm *shm = mAUI->GetWaylandShm();
+      if(!shm) {
+        D1("Wayland: No SHM");
+        return;
+      }
+      mCursorTheme = wl_cursor_theme_load(nullptr, 24, shm);
+      if(!mCursorTheme) {
+        D1("Wayland: Failed to load cursor theme");
+        return;
+      }
+    }
+    if(!mCursorSurface) {
+      wl_compositor *compositor = mAUI->GetWaylandCompositor();
+      if(!compositor) {
+        D1("Wayland: No compositor");
+        return;
+      }
+      mCursorSurface = wl_compositor_create_surface(compositor);
+      if(!mCursorSurface) {
+        D1("Wayland: Failed to create cursor surface");
+        return;
+      }
+    }
+    const char *name = "left_ptr";
+    switch (type) {
+      case AUICursorType::HResize:
+        name = "ew-resize";
+        break;
+      case AUICursorType::VResize:
+        name = "ns-resize";
+        break;
+      default:
+        name = "left_ptr";
+    }
+    wl_cursor *cursor = wl_cursor_theme_get_cursor(mCursorTheme, name);
+    if(!cursor || cursor->image_count == 0) {
+      D1("Wayland: Failed to load cursor '{}'", name);
+      return;
+    }
+    wl_pointer *pointer = mAUI->GetWaylandPointer();
+    if(!pointer) {
+      D1("Wayland: No pointer");
+      return;
+    }
+    struct wl_cursor_image *image = cursor->images[0];
+    struct wl_buffer *buffer = wl_cursor_image_get_buffer(image);
+    if(!buffer) {
+      D1("Wayland: Failed to get buffer for cursor image");
+      return;
+    }
+    wl_surface_attach(mCursorSurface, buffer, 0, 0);
+    wl_surface_damage(mCursorSurface, 0, 0, static_cast<int32_t>(image->width), static_cast<int32_t>(image->height));
+    wl_surface_commit(mCursorSurface);
+    uint32_t serial = mAUI->GetLastPointerSerial();
+    wl_pointer_set_cursor(pointer, serial, mCursorSurface, static_cast<int32_t>(image->hotspot_x),
+        static_cast<int32_t>(image->hotspot_y));
+    mWindow->Draw();
+  }
+
+  WaylandWindowContext::~WaylandWindowContext() {
+    if(mCursorSurface) {
+      wl_surface_destroy(mCursorSurface);
+      mCursorSurface = nullptr;
+    }
+    if(mCursorTheme) {
+      wl_cursor_theme_destroy(mCursorTheme);
+      mCursorTheme = nullptr;
+    }
+// Destroy active buffers immediately (window is closing)
+    DestroyShmBuffer(mBuffers, true);
+// Destroy any old buffers that may still be pending
+    DestroyShmBuffer(mOldBuffers, true);
     DestroyFrame();
   }
+
 }// namespace aui

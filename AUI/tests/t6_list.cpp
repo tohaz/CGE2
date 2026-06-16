@@ -184,13 +184,24 @@ int32_t test_list_click_selection() {
   TEST_ASSERT(list->IsSelected(0) == false, 3);
 // Test multi‑select (requires Ctrl or Shift? The current implementation
 // uses a flag mMultiSelect; we can test by enabling it and clicking)
-  list->SetMultiSelect(true);
-  list->ClearSelection();
-  w->OnMousePress(5, 5, 1);
-  w->OnMouseRelease(5, 5, 1);
-  w->OnMousePress(5, 30, 1);
-  w->OnMouseRelease(5, 30, 1);
-  TEST_ASSERT(list->IsSelected(0) == true && list->IsSelected(1) == true, 4);
+
+  
+  
+  
+list->SetMultiSelect(true);
+list->ClearSelection();
+// Get line height after font and spacing are applied
+uint32_t lineH = list->GetLineHeight();  // you may need to add this getter, or use mLineHeight directly if test is friend
+int y1 = 5;                              // inside first line
+int y2 = static_cast<int>(lineH) + 5;    // inside second line
+w->OnMousePress(5, y1, 1);
+w->OnMouseRelease(5, y1, 1);
+w->OnMousePress(5, y2, 1);
+w->OnMouseRelease(5, y2, 1);
+TEST_ASSERT(list->IsSelected(0) == true && list->IsSelected(1) == true, 4);  
+  
+  
+  
   delete au;
   D1("test_list_click_selection passed");
   return 0;
@@ -251,6 +262,57 @@ int32_t test_list_edge_cases() {
   return 0;
 }
 
+int32_t test_list_horizontal_alignment_regression() {
+    D1("test_list_horizontal_alignment_regression start");
+    AUI *au = AUI::Create("ListHAlignRegression");
+    TEST_ASSERT(au != nullptr, 1);
+    AWindow *w = au->MainWnd();
+    UNUSED AList *list = AList::AttachTo(w);
+
+    // Fixed size to force scrollbars
+    list->Resize(200, 150);
+    list->SetAutoHideScrollbars(false);
+    list->SetScrollbarsEnabled(true);
+
+    // Add enough items for vertical scrollbar
+    for (int i = 0; i < 20; ++i)
+        list->AddItem("Line " + std::to_string(i));
+    // Add a very long line for horizontal scrollbar
+    list->AddItem("This is an extremely long line that definitely exceeds the list width and forces a horizontal scrollbar");
+    list->AddItem("Short");
+
+    list->UpdateScrollbarRanges();  // force update
+
+    // Compute expected maxH using same logic as list
+    int32_t listWidth = (int32_t)list->SizeX();
+//    int32_t vScrollWidth = (list->IsVerticalScrollbarEnabled() && list->IsVerticalScrollbarVisible()) ? 16 : 0;
+    int32_t vScrollWidth = (list->IsVerticalScrollbarEnabled() && list->IsVerticalScrollbarVisible())
+                       ? static_cast<int32_t>(list->GetVScrollBar()->SizeX()) : 0;
+    int32_t viewWidth = listWidth - vScrollWidth;
+    uint32_t maxWidth = list->GetMaxContentWidth();  // add this getter
+    int32_t expectedMaxH = (maxWidth > static_cast<uint32_t>(viewWidth))
+                           ? static_cast<int32_t>((int32_t)maxWidth - viewWidth) : 0;
+
+    // Test RIGHT alignment
+    list->SetHAlignment(AUIHAlign::right);
+    int32_t rightOffset = list->GetHorizontalOffset();
+    TEST_ASSERT(std::abs(rightOffset - expectedMaxH) <= 1, 2);
+    if (list->GetHScrollBar())
+        TEST_ASSERT(std::abs(list->GetHScrollBar()->GetValue() - rightOffset) <= 1, 3);
+
+    // Test CENTER alignment
+    list->SetHAlignment(AUIHAlign::center);
+    int32_t centerOffset = list->GetHorizontalOffset();
+    int32_t expectedCenter = expectedMaxH / 2;
+    TEST_ASSERT(std::abs(centerOffset - expectedCenter) <= 1, 4);
+    if (list->GetHScrollBar())
+        TEST_ASSERT(std::abs(list->GetHScrollBar()->GetValue() - centerOffset) <= 1, 5);
+
+    delete au;
+    D1("test_list_horizontal_alignment_regression passed");
+    return 0;
+}
+
 // ------------------------------------------------------------------
 // Main: run all tests with async exit
 // ------------------------------------------------------------------
@@ -273,6 +335,7 @@ int main() {
   testsfailed += test_list_click_selection();
   testsfailed += test_list_alignment();
   testsfailed += test_list_edge_cases();
+  testsfailed += test_list_horizontal_alignment_regression();
 
   au->ProcessMessages();
   handle.get();

@@ -1,11 +1,6 @@
 #ifndef WAYLANDWINDOWCONTEXT_H_
 #define WAYLANDWINDOWCONTEXT_H_
 
-#include "IWindowContext.h"
-#include <wayland-client.h>
-#include <vector>
-#include <cstdint>
-
 namespace aui {
   struct WaylandBuffer {
       wl_buffer *buffer = nullptr;
@@ -32,6 +27,8 @@ namespace aui {
       uint32_t mPendingHeight = 0;
       wl_surface *mSurface = nullptr;
       xdg_toplevel *mToplevel = nullptr;
+      wl_cursor_theme* mCursorTheme = nullptr;
+      wl_surface*     mCursorSurface = nullptr;
 
     protected:
 
@@ -56,6 +53,7 @@ namespace aui {
       wl_callback *mFrameCallback = nullptr;
       bool mFramePending = false;
       bool mFrameSyncEnabled = false;
+      virtual void SetCursor(AUICursorType type) override;
 
   };
 

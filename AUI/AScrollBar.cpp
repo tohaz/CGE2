@@ -2,24 +2,19 @@
 
 namespace aui {
 
-// ------------------------------------------------------------------
-// Constructor
-// ------------------------------------------------------------------
-  AScrollBar::AScrollBar() {
+  AScrollBar::AScrollBar() :
+      mMinValue(0), mMaxValue(100), mPageStep(20), mSingleStep(1), mDragging(false), mArrowSize(12), mArrowBottomHover(
+          false), mArrowLeftHover(false), mArrowRightHover(false) {
     D2("AScrollBar constructed");
     mSizeX = 100;
     mSizeY = 100;
-    mTrackThickness = 12;
-    mThumbThickness = 24;
-    mThumbColor = 0xFF888888;
+    mTrackThickness = 12;// doubled (was 12)
+    mThumbThickness = 24;// doubled (was 24)
+    mThumbColor = 0xFF889988;
     mTrackColor = 0xFFCCCCCC;
     mWidgetType = AUIWidgetType::defaultScrollBar;
-    mLastDrawnValue = mValue;
   }
 
-// ------------------------------------------------------------------
-// Geometry helpers
-// ------------------------------------------------------------------
   uint32_t AScrollBar::GetTrackLength() const {
     uint32_t total = (mOrientation == AUIOrientation::vertical) ? mSizeY : mSizeX;
     if(mShowArrows) {
@@ -79,9 +74,6 @@ namespace aui {
     return static_cast<int32_t>(valueDouble);
   }
 
-// ------------------------------------------------------------------
-// Drawing
-// ------------------------------------------------------------------
   void AScrollBar::DrawTrack(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
       int32_t offsetY) const {
     if(!buffer)
@@ -89,12 +81,11 @@ namespace aui {
     int32_t absX = offsetX + mX;
     int32_t absY = offsetY + mY;
     uint32_t trackLen = GetTrackLength();
-    D2("DrawTrack: orientation={}, trackLen={}, mShowArrows={}, mArrowSize={}", static_cast<int32_t>(mOrientation),
+    D3("DrawTrack: orientation={}, trackLen={}, mShowArrows={}, mArrowSize={}", static_cast<int32_t>(mOrientation),
         trackLen, mShowArrows, mArrowSize);
     if(trackLen == 0)
       return;
     uint32_t trackColorNoAlpha = mTrackColor & 0x00FFFFFFU;
-
     if(mOrientation == AUIOrientation::vertical) {
       int32_t startX = absX + static_cast<int32_t>((mSizeX - mTrackThickness) / 2);
       int32_t drawW = static_cast<int32_t>(mTrackThickness);
@@ -112,9 +103,9 @@ namespace aui {
         clipH = static_cast<int32_t>(parentHeight) - clipY;
       if(clipW <= 0 || clipH <= 0)
         return;
-      for (int32_t row = 0; row < clipH; ++row) {
+      for(int32_t row = 0; row < clipH; ++row) {
         size_t lineStart = static_cast<size_t>(clipY + row) * parentWidth + static_cast<size_t>(clipStartX);
-        for (int32_t col = 0; col < clipW; ++col) {
+        for(int32_t col = 0; col < clipW; ++col) {
           size_t idx = lineStart + static_cast<size_t>(col);
           if(idx < static_cast<size_t>(parentWidth) * parentHeight)
             buffer[idx] = trackColorNoAlpha;
@@ -136,9 +127,9 @@ namespace aui {
         clipW = static_cast<int32_t>(parentWidth) - clipX;
       if(clipW <= 0 || clipH <= 0)
         return;
-      for (int32_t row = 0; row < clipH; ++row) {
+      for(int32_t row = 0; row < clipH; ++row) {
         size_t lineStart = static_cast<size_t>(clipStartY + row) * parentWidth + static_cast<size_t>(clipX);
-        for (int32_t col = 0; col < clipW; ++col) {
+        for(int32_t col = 0; col < clipW; ++col) {
           size_t idx = lineStart + static_cast<size_t>(col);
           if(idx < static_cast<size_t>(parentWidth) * parentHeight)
             buffer[idx] = trackColorNoAlpha;
@@ -155,11 +146,9 @@ namespace aui {
     int32_t absY = offsetY + mY;
     uint32_t thumbPos = GetThumbPosition();
     uint32_t thumbLen = GetThumbLength();
-
     if(thumbLen == 0)
       return;
     uint32_t thumbColorNoAlpha = mThumbColor & 0x00FFFFFFU;
-
     if(mOrientation == AUIOrientation::vertical) {
       int32_t startX = absX + static_cast<int32_t>((mSizeX - mThumbThickness) / 2);
       int32_t drawW = static_cast<int32_t>(mThumbThickness);
@@ -179,9 +168,9 @@ namespace aui {
         clipH = static_cast<int32_t>(parentHeight) - clipStartY;
       if(clipW <= 0 || clipH <= 0)
         return;
-      for (int32_t row = 0; row < clipH; ++row) {
+      for(int32_t row = 0; row < clipH; ++row) {
         size_t lineStart = static_cast<size_t>(clipStartY + row) * parentWidth + static_cast<size_t>(clipStartX);
-        for (int32_t col = 0; col < clipW; ++col) {
+        for(int32_t col = 0; col < clipW; ++col) {
           size_t idx = lineStart + static_cast<size_t>(col);
           if(idx < static_cast<size_t>(parentWidth) * parentHeight)
             buffer[idx] = thumbColorNoAlpha;
@@ -206,9 +195,9 @@ namespace aui {
         clipW = static_cast<int32_t>(parentWidth) - clipStartX;
       if(clipW <= 0 || clipH <= 0)
         return;
-      for (int32_t row = 0; row < clipH; ++row) {
+      for(int32_t row = 0; row < clipH; ++row) {
         size_t lineStart = static_cast<size_t>(clipStartY + row) * parentWidth + static_cast<size_t>(clipStartX);
-        for (int32_t col = 0; col < clipW; ++col) {
+        for(int32_t col = 0; col < clipW; ++col) {
           size_t idx = lineStart + static_cast<size_t>(col);
           if(idx < static_cast<size_t>(parentWidth) * parentHeight)
             buffer[idx] = thumbColorNoAlpha;
@@ -227,8 +216,6 @@ namespace aui {
     int32_t absY = offsetY + mY;
     int32_t drawW = static_cast<int32_t>(mSizeX);
     int32_t drawH = static_cast<int32_t>(mSizeY);
-
-// Clip background
     int32_t clipX = (absX > 0) ? absX : 0;
     int32_t clipY = (absY > 0) ? absY : 0;
     int32_t clipW = drawW - (clipX - absX);
@@ -240,9 +227,9 @@ namespace aui {
     if(clipW > 0 && clipH > 0) {
       uint32_t bgColor = mBGColor & 0x00FFFFFFU;
       size_t totalPixels = static_cast<size_t>(pW) * static_cast<size_t>(pH);
-      for (int32_t row = 0; row < clipH; ++row) {
+      for(int32_t row = 0; row < clipH; ++row) {
         size_t lineStart = static_cast<size_t>(clipY + row) * static_cast<size_t>(pW) + static_cast<size_t>(clipX);
-        for (int32_t col = 0; col < clipW; ++col) {
+        for(int32_t col = 0; col < clipW; ++col) {
           size_t idx = lineStart + static_cast<size_t>(col);
           if(idx < totalPixels)
             buffer[idx] = bgColor;
@@ -256,28 +243,20 @@ namespace aui {
   }
 
   bool AScrollBar::OnMouseClick(int32_t localX, int32_t localY, bool pressed) {
-    D2("AScrollBar::OnMouseClick: localX={}, localY={}, pressed={}, mDragging={}", localX, localY, pressed, mDragging);
-
-// ----- RELEASE (button up) -----
+    D2("localX={}, localY={}, pressed={}, mDragging={}", localX, localY, pressed, mDragging);
     if(!pressed) {
-// Stop dragging unconditionally
       mDragging = false;
-// Clear any arrow pressed states
       mArrowTopPressed = false;
       mArrowBottomPressed = false;
       mArrowLeftPressed = false;
       mArrowRightPressed = false;
-// If this scrollbar is the current drag widget, release it from the parent window
       if(mParentWindow && mParentWindow->GetDragWidget() == this) {
         mParentWindow->SetDragWidget(nullptr);
+        return true;
       }
       D2("AScrollBar::OnMouseClick: RELEASE - mDragging set to false, drag widget cleared");
       return false;
-      }
-
-// ----- PRESS (button down) -----
-
-// 1. Arrow clicks (if enabled)
+    }
     if(mShowArrows) {
       if(mOrientation == AUIOrientation::vertical) {
         if(IsInTopArrow(localX, localY)) {
@@ -307,7 +286,7 @@ namespace aui {
           return true;
         }
       }
-      }
+    }
 
 // 2. Thumb / track handling
     int32_t coord = (mOrientation == AUIOrientation::vertical) ? localY : localX;
@@ -319,22 +298,27 @@ namespace aui {
       if(mParentWindow) {
         mParentWindow->SetDragWidget(this);
       }
+      else {
+        D("mParentWindow is 0")
+      }
       mDragging = true;
       mDragStartPos = coord;
       mDragStartValue = mValue;
       D2("AScrollBar::OnMouseClick: PRESS on thumb - started dragging, startVal={}", mValue);
-          return true;
-      }
+      return true;
+    }
 // Click in the track (not on thumb) -> jump to that position
-      else {
+    else {
+      D2("click outside thumb")
       int32_t newValue = ValueFromCoord(coord);
       SetValue(newValue);
       D2("AScrollBar::OnMouseClick: PRESS in track - jumped to {}", newValue);
-          return true;
-      }
+      return true;
+    }
   }
+
   void AScrollBar::OnMouseMove(int32_t localX, int32_t localY) {
-    D2("AScrollBar::OnMouseMove: localX={}, localY={}, mDragging={}", localX, localY, mDragging);
+    D3("AScrollBar::OnMouseMove: localX={}, localY={}, mDragging={}", localX, localY, mDragging);
     if(!mDragging)
       return;
 // Safety: if parent window no longer has this as drag widget, stop dragging
@@ -345,12 +329,10 @@ namespace aui {
     }
     int32_t coord = (mOrientation == AUIOrientation::vertical) ? localY : localX;
     int32_t newValue = ValueFromCoord(coord);
-    D2("  coord={}, newValue={}", coord, newValue);
+    D3("  coord={}, newValue={}", coord, newValue);
     SetValue(newValue);
   }
-// ------------------------------------------------------------------
-// Setters (all trigger redraw)
-// ------------------------------------------------------------------
+
   void AScrollBar::SetOrientation(AUIOrientation orient) {
     if(mOrientation == orient)
       return;
@@ -428,17 +410,11 @@ namespace aui {
       mParentWindow->Draw();
   }
 
-// ------------------------------------------------------------------
-// Callback
-// ------------------------------------------------------------------
   void AScrollBar::SetScrollCallback(ScrollCallback callback, void *userData) {
     mScrollCallback = std::move(callback);
     mScrollUserData = userData;
   }
 
-// ------------------------------------------------------------------
-// Factory methods (require friend access to AddWidget)
-// ------------------------------------------------------------------
   AScrollBar* AScrollBar::AttachTo(AWindow *parent, AUIOrientation orientation) {
     D1("Attaching AScrollBar to window");
     if(!parent)
@@ -549,7 +525,6 @@ namespace aui {
     int32_t absY = offsetY + mY;
     uint32_t arrowColor = (mThumbColor & 0x00FFFFFF);// use thumb color as base
     uint32_t highlightColor = ShiftColor(arrowColor, false);// lighter for hover/pressed
-
     auto drawLine = [&](int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t color) {
 // simple DDA (but we can do a basic Bresenham)
       int32_t dx = std::abs(x1 - x0);
@@ -576,23 +551,14 @@ namespace aui {
         }
       }
     };
-
     if(mOrientation == AUIOrientation::vertical) {
 // Top arrow (pointing up)
       int32_t centerX = absX + static_cast<int32_t>(mSizeX / 2);
       int32_t topY = absY + static_cast<int32_t>(mArrowSize / 2);
       uint32_t col = (mArrowTopHover || mArrowTopPressed) ? highlightColor : arrowColor;
-// Draw two lines: one from (centerX - 4, topY + 2) to (centerX, topY - 2)
-// and (centerX + 4, topY + 2) to (centerX, topY - 2) – but we need to draw on buffer.
-// Simpler: draw triangle using lines (we can use Bresenham or simple points).
-// For simplicity, we'll just draw two lines using a helper that sets pixels.
-// Since we don't have line drawing, we'll use a simple plot.
-// I'll implement a simple line drawing function (inline) for this.
-// Draw up arrow: two lines forming a 'V' shape (actually an upward point)
       int32_t baseY = topY + 3;
       drawLine(centerX - 4, baseY, centerX, topY - 2, col);
       drawLine(centerX + 4, baseY, centerX, topY - 2, col);
-
 // Bottom arrow (pointing down)
       int32_t bottomY = absY + static_cast<int32_t>(mSizeY - mArrowSize / 2);
       col = (mArrowBottomHover || mArrowBottomPressed) ? highlightColor : arrowColor;

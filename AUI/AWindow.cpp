@@ -1,31 +1,32 @@
 #include "AUILib.h"
-#include "AWindow.h"
 
 namespace aui {
 
   AWindow::AWindow(std::unique_ptr<IWindowContext> backend) :
-      mBackend(std::move(backend)),
-      mBGColor(AUI_DEFAULT_WINDOW_BG) {   // add this line
-    // The backend already has a pointer to this AWindow (set during construction).
-    // No additional initialization needed.
+      mBackend(std::move(backend)), mBGColor(AUI_DEFAULT_WINDOW_BG) {// add this line
+// The backend already has a pointer to this AWindow (set during construction).
+// No additional initialization needed.
   }
 
-  AWindow* AWindow::AttachTo(AUI* engine, const std::string& title) {
+  AWindow* AWindow::AttachTo(AUI *engine, const std::string &title) {
     return AttachTo(engine, title, engine->GetWindowType());
   }
 
-  AWindow* AWindow::AttachTo(AUI* engine, const std::string& title, AUIWindowType type) {
-    if(!engine) E("AWindow::AttachTo: engine is null");
+  AWindow* AWindow::AttachTo(AUI *engine, const std::string &title, AUIWindowType type) {
+    if(!engine)
+      E("AWindow::AttachTo: engine is null");
     std::unique_ptr<IWindowContext> backend;
-    // Create backend according to type
+// Create backend according to type
     if(type == AUIWindowType::XCB) {
       backend = std::make_unique<XcbWindowContext>(engine, nullptr);
-    } else if(type == AUIWindowType::Wayland) {
+    }
+    else if(type == AUIWindowType::Wayland) {
       backend = std::make_unique<WaylandWindowContext>(engine, nullptr);
-    } else {
+    }
+    else {
       E("AWindow::AttachTo: invalid window type");
     }
-    AWindow* win = new AWindow(std::move(backend));
+    AWindow *win = new AWindow(std::move(backend));
     win->mBackend->SetWindow(win);
     win->SetTitle(title);
     if(!win->mBackend->CreateFrame(500, 300, title)) {
@@ -44,7 +45,7 @@ namespace aui {
   }
 
   void AWindow::Resize(uint32_t w, uint32_t h) {
-    D2("AWindow::Resize: called with {}x{}, resizeEnabled={}", w, h, mResizeEnabled);
+    D3("AWindow::Resize: called with {}x{}, resizeEnabled={}", w, h, mResizeEnabled);
     if(!mResizeEnabled) {
       E("window resize is disabled");
     }
@@ -66,25 +67,36 @@ namespace aui {
     mSizeX = w;
     mSizeY = h;
 // Notify child widgets – this may call Draw() which will enqueue new commands
-    for (auto &widget : mWidg) {
+    for(auto &widget : mWidg) {
       widget->OnParentResize(w, h);
     }
   }
 
   void AWindow::Close() {
     D2("AWindow::Close entered, nativeId={}", mNativeId);
-    AUI* ep = mBackend ? mBackend->GetEnginePtr() : nullptr;
+    AUI *ep = mBackend ? mBackend->GetEnginePtr() : nullptr;
+    bool isMain = (ep && ep->MainWnd() == this);
+    uint64_t nativeId = mNativeId;// copy before potential deletion
+
+// Clear draw commands using the local nativeId
     if(ep) {
-      bool isMain = (ep->MainWnd() == this);
-      D2("isMain={}, calling UnregisterWindow", isMain);
-      ep->UnregisterWindow(mNativeId);
-      if(isMain) {
-        D2("Exiting AUI");
-        ep->ExitAUI();
-      }
-    } else {
-      DT("No engine pointer");
+      std::lock_guard<std::mutex> lock(ep->GetCommandMutex());
+      auto &commands = ep->GetDrawCommands();
+      commands.erase(std::remove_if(commands.begin(), commands.end(), [nativeId](const DrawCommand &cmd) {
+        return cmd.type == DrawCommandType::Xcb && cmd.xcb.windowId == nativeId;
+      }),
+      commands.end());
     }
+
+    if(ep) {
+      ep->UnregisterWindow(nativeId);
+    }
+
+    if(isMain && ep) {
+      D2("Exiting AUI");
+      ep->ExitAUI();
+    }
+// No further accesses to 'this' members
   }
 
   void AWindow::SetTitle(const std::string &title) {
@@ -94,17 +106,21 @@ namespace aui {
   }
 
   void AWindow::EnableResize() {
-    if(mBackend) mBackend->EnableResize();
+    if(mBackend)
+      mBackend->EnableResize();
     mResizeEnabled = true;
   }
 
   void AWindow::DisableResize() {
-    if(mBackend) mBackend->DisableResize();
+    if(mBackend)
+      mBackend->DisableResize();
     mResizeEnabled = false;
   }
 
   void AWindow::OnMousePress(int32_t x, int32_t y, uint32_t button) {
-// Normalize Wayland button codes to XCB numbers (1 = left, 2 = middle, 3 = right)
+    ScopedTimer total_timer("AWindow::OnMousePress total");
+
+// Normalize button codes
     uint32_t normalized = button;
     if(button == 272)
       normalized = 1;
@@ -112,28 +128,45 @@ namespace aui {
       normalized = 3;
     else if(button == 274)
       normalized = 2;
-// Only left button can start/continue dragging
     if(normalized != 1)
-      return;
-// If a drag is already in progress, only the current drag widget gets the event
+      return;// only left button
+
+// Already dragging?
     if(mDragWidget) {
+      ScopedTimer drag_timer("drag branch");
       int32_t localX = x - mDragWidget->X();
       int32_t localY = y - mDragWidget->Y();
-// Check if the click is inside the drag widget
       if(localX >= 0 && localX < static_cast<int32_t>(mDragWidget->SizeX()) && localY >= 0
           && localY < static_cast<int32_t>(mDragWidget->SizeY())) {
         mDragWidget->OnMouseClick(localX, localY, true);
       }
-// If click is outside the drag widget, ignore it (do not change drag widget)
+      ForceDraw();
       return;
     }
-// No active drag: find the topmost widget that wants the press
-    for (auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
-      if((*it)->DispatchClick(x, y, true)) {
-        mDragWidget = it->get();
+
+// Find the topmost widget that wants the press
+    int32_t childIndex = 0;
+    for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+      std::string label = "DispatchClick child " + std::to_string(childIndex++);
+      ScopedTimer dispatch_timer(label.c_str());
+      bool consumed = (*it)->DispatchClick(x, y, true);
+      if(consumed) {
+        if(!mDragWidget) {
+          ScopedTimer set_timer("SetDragWidget");
+          SetDragWidget(it->get());
+        }
         break;
       }
-      }
+    }
+
+// Focus handling
+    {
+      ScopedTimer focus_timer("focus handling");
+      if(mDragWidget && mDragWidget->IsFocusable())
+        SetFocus(mDragWidget);
+      else if(!mDragWidget)
+        ClearFocus();
+    }
   }
 
   void AWindow::OnMouseRelease(int32_t x, int32_t y, uint32_t button) {
@@ -142,64 +175,69 @@ namespace aui {
       int32_t localX = x - mDragWidget->X();
       int32_t localY = y - mDragWidget->Y();
       mDragWidget->OnMouseClick(localX, localY, false);
-      mDragWidget = nullptr;
+      SetDragWidget(nullptr);
     }
     else {
       uint32_t normalized = (button == 272) ? 1 : (button == 273) ? 3 : (button == 274) ? 2 : button;
       if(normalized == 1) {
         for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
-          if((*it)->DispatchClick(x, y, false)) break;
+          if((*it)->DispatchClick(x, y, false))
+            break;
         }
       }
     }
   }
 
   void AWindow::Draw() {
-      if (mDrawPending) return;           // already scheduled
-      mDrawPending = true;
-      // Register this window for a deferred draw with the AUI engine
-      if (mBackend) {
-          AUI* aui = mBackend->GetEnginePtr();
-          if (aui) aui->ScheduleDraw(this);
-      }
+    if(mDrawPending)
+      return;// already scheduled
+    mDrawPending = true;
+// Register this window for a deferred draw with the AUI engine
+    if(mBackend) {
+      AUI *aui = mBackend->GetEnginePtr();
+      if(aui)
+        aui->ScheduleDraw(this);
+    }
   }
 
   void AWindow::ForceDraw() {
-      mDrawPending = false;                // cancel any pending draw
-      DoDraw();
+    D3("forcing Draw()")
+    mDrawPending = false;// cancel any pending draw
+    DoDraw();
   }
 
   void AWindow::AddWidget(std::unique_ptr<AWidget> widg) {
-    AUI* engine = mBackend ? mBackend->GetEnginePtr() : nullptr;
+    AUI *engine = mBackend ? mBackend->GetEnginePtr() : nullptr;
     widg->InitWidgetProperties(0, engine, this, nullptr, widg->mWidgetType);
     mWidg.push_back(std::move(widg));
     Draw();
   }
 
   void AWindow::OnMouseMove(int32_t x, int32_t y) {
-    // If dragging, bypass hover tracking
+// If dragging, bypass hover tracking
     if(mDragWidget) {
       int32_t localX = x - mDragWidget->X();
       int32_t localY = y - mDragWidget->Y();
       mDragWidget->OnMouseMove(localX, localY);
       return;
     }
-    AWidget* hit = FindWidgetAt(x, y);
-    // If the widget under cursor changed
+    AWidget *hit = FindWidgetAt(x, y);
+// If the widget under cursor changed
     if(hit != mHoverWidget) {
-      // Notify old widget it lost hover
+// Notify old widget it lost hover
       if(mHoverWidget) {
         mHoverWidget->OnMouseLeave();
       }
       mHoverWidget = hit;
-      // If new widget is valid, send enter event (OnMouseMove with local coords)
+// If new widget is valid, send enter event (OnMouseMove with local coords)
       if(mHoverWidget) {
         int32_t localX = x - mHoverWidget->X();
         int32_t localY = y - mHoverWidget->Y();
         mHoverWidget->OnMouseMove(localX, localY);
       }
-    } else if(mHoverWidget) {
-      // Same widget, just forward motion
+    }
+    else if(mHoverWidget) {
+// Same widget, just forward motion
       int32_t localX = x - mHoverWidget->X();
       int32_t localY = y - mHoverWidget->Y();
       mHoverWidget->OnMouseMove(localX, localY);
@@ -207,12 +245,11 @@ namespace aui {
   }
 
   AWidget* AWindow::FindWidgetAt(int32_t x, int32_t y) const {
-    // Iterate top‑down (reverse order)
+// Iterate top‑down (reverse order)
     for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
-      AWidget* w = it->get();
-      if(w->IsVisible() && w->IsEnabled() &&
-         x >= w->X() && x < w->X() + static_cast<int32_t>(w->SizeX()) &&
-         y >= w->Y() && y < w->Y() + static_cast<int32_t>(w->SizeY())) {
+      AWidget *w = it->get();
+      if(w->IsVisible() && w->IsEnabled() && x >= w->X() && x < w->X() + static_cast<int32_t>(w->SizeX()) && y >= w->Y()
+          && y < w->Y() + static_cast<int32_t>(w->SizeY())) {
         return w;
       }
     }
@@ -227,8 +264,8 @@ namespace aui {
   }
 
   void AWindow::SetDragWidget(AWidget *widget) {
+    D2("SetDragWidget: {} -> {}", (UINT64)mDragWidget, (UINT64)widget);
     mDragWidget = widget;
-    D2("SetDragWidget: widget={}, type={}", (uint64_t)widget, widget ? static_cast<int64_t>(widget->GetWidgetType()) : -1);
   }
 
   void AWindow::OnMouseWheel(int32_t delta) {
@@ -241,25 +278,64 @@ namespace aui {
     if(mHoverWidget) {
       mHoverWidget->OnMouseWheel(delta);
     }
+    Draw();
   }
 
   void AWindow::DoDraw() {
-      D3("AWindow::DoDraw: start");
-      if(!mBackend) { DT("no backend"); return; }
-      uint32_t* buffer = mBackend->GetSoftwareBuffer();
-      if(!buffer) { D2("no software buffer"); return; }
-      uint32_t bg = mBGColor & 0x00FFFFFF;
-      for(size_t i = 0; i < static_cast<size_t>(mSizeX) * mSizeY; ++i) buffer[i] = bg;
-      for(const auto& widget : mWidg) {
-          if(widget->IsVisible()) {
-              widget->Draw(buffer, mSizeX, mSizeY, 0, 0);
-          }
+    D3("AWindow::DoDraw: start");
+    if(!mBackend) {
+      DT("no backend");
+      return;
+    }
+    uint32_t *buffer = mBackend->GetSoftwareBuffer();
+    if(!buffer) {
+      D2("no software buffer");
+      return;
+    }
+    uint32_t bg = mBGColor & 0x00FFFFFF;
+    for(size_t i = 0; i < static_cast<size_t>(mSizeX) * mSizeY; ++i)
+      buffer[i] = bg;
+    for(const auto &widget : mWidg) {
+      if(widget->IsVisible()) {
+        widget->Draw(buffer, mSizeX, mSizeY, 0, 0);
       }
-      mBackend->QueueFrameCommit();
+    }
+    mBackend->QueueFrameCommit();
+  }
+
+  void AWindow::SetFocus(AWidget *widget) {
+    if(mFocusedWidget == widget)
+      return;
+    if(mFocusedWidget) {
+      mFocusedWidget->OnFocusLost();
+    }
+    mFocusedWidget = widget;
+    if(mFocusedWidget) {
+      mFocusedWidget->OnFocusGained();
+    }
+    Draw();
+  }
+
+  void AWindow::ClearFocus() {
+    SetFocus(nullptr);
+  }
+
+  void AWindow::OnKeyEvent(const AUIKeyEvent &event) {
+    if(mFocusedWidget && mFocusedWidget->IsEnabled()) {
+      mFocusedWidget->OnKeyEvent(event);
+    }
+  }
+
+  void AWindow::SetCursor(AUICursorType type) {
+    if(mBackend) {
+      mBackend->SetCursor(type);
+    }
+    else
+      E()
   }
 
   AWindow::~AWindow() {
-// The backend will be destroyed automatically by unique_ptr.
+    D3()
   }
 
 }// namespace aui

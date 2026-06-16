@@ -189,7 +189,7 @@ int32_t main() {
   list->SetHorizontalScrollbarEnabled(true);
 
   // Add 25 random missions
-  for(int i = 0; i < 4; ++i) {
+  for(int i = 0; i < 44; ++i) {
     list->AddItem(RandomMission());
   }
 

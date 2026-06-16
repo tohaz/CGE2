@@ -1,4 +1,4 @@
-# 
+#
 # Additional make targets:
 # 1. Release optimized by speed (make release) 
 # 2. Release optimized by size (make srelease)
@@ -20,9 +20,10 @@ ifeq ($(OS),Darwin)
   NPROCS := $(shell sysctl -n hw.ncpu)
 endif
 
-# Enable multithreading by default
-# Using += allows users to override this from the command line if needed
-MAKEFLAGS += -j$(NPROCS)
+# Enable multithreading only if not already set (avoids overriding user -j)
+ifeq ($(filter -j%,$(MAKEFLAGS)),)
+  MAKEFLAGS += -j$(NPROCS)
+endif
 
 # Automatically delete target if a rule fails to prevent corrupted binaries
 .DELETE_ON_ERROR:
@@ -46,14 +47,18 @@ TARGET   := $(BUILD_DIR)/$(TARGET_NAME)
 CXX      := g++
 STRIP    := strip
 
-# Compilation flags
-BASE_FLAGS := -std=c++26 -MMD -pedantic -pedantic-errors -Wall -Wextra -Werror \
+# Compilation flags – added warnings and -fmax-errors from root Makefile
+BASE_FLAGS := -std=c++26 -MMD -MP -pedantic -pedantic-errors -Wall -Wextra -Werror \
               -Wcast-align -Wdisabled-optimization -Wlogical-op -Wmissing-include-dirs \
-              -Wfloat-equal -Wconversion -Wsign-conversion
+              -Wfloat-equal -Wconversion -Wsign-conversion \
+              -fmax-errors=25 \
+              -Wmissing-declarations -Wredundant-decls -Wshadow \
+              -Wsign-promo -Wstrict-null-sentinel -Wswitch-default -Wundef \
+              -Wnoexcept -Woverloaded-virtual
 
 # Optimization logic based on BUILD_MODE
 ifeq ($(BUILD_MODE), release)
-  CXXFLAGS := $(BASE_FLAGS) -O3
+  CXXFLAGS := $(BASE_FLAGS) -O3 -ffunction-sections -fdata-sections
   LDFLAGS  := -L$(AUI_LIB_DIR)
 else ifeq ($(BUILD_MODE), srelease)
   CXXFLAGS := $(BASE_FLAGS) -Os -ffunction-sections -fdata-sections
@@ -63,8 +68,19 @@ else
   LDFLAGS  := -L$(AUI_LIB_DIR)
 endif
 
-CPPFLAGS := -I$(AUI_ROOT)
-LIBS     := -lAUI -lX11 -lX11-xcb -lxcb -lxcb-cursor -lXrender -lwayland-client
+# Include paths: AUI root AND FreeType headers (required by AUILib.h)
+CPPFLAGS := -I$(AUI_ROOT) -I$(AUI_ROOT)/freetype2/include
+
+# Libraries:
+# -lAUI          : the AUI static library itself
+# -lX11, -lxcb...: X11/Wayland base libraries
+# -lfreetype     : FreeType2 font rendering
+# -lxkbcommon    : XKB keyboard handling
+# -lxkbcommon-x11: XKB X11 integration
+# -lxcb-image    : XCB image functions
+# -lxcb-keysyms  : XCB keysym helper functions (xcb_key_symbols_*)
+LIBS := -lAUI -lX11 -lX11-xcb -lxcb -lxcb-cursor -lXrender -lwayland-client \
+        -lfreetype -lxkbcommon -lxkbcommon-x11 -lxcb-image -lxcb-keysyms
 
 # Source and Object discovery
 SRCS := $(wildcard $(SRC_DIR)/*.cpp)
@@ -77,12 +93,10 @@ DEPS := $(patsubst $(SRC_DIR)/%.cpp,$(DEP_DIR)/%.d,$(SRCS))
 all: $(TARGET)
 
 # Helper targets for easy switching from command line
-# These allow running 'make release' or 'make srelease' directly
 release srelease:
-	@$(MAKE) BUILD_MODE=$@ all
+	+@$(MAKE) BUILD_MODE=$@ all
 
 # Linking rule: Builds the final binary from all object files.
-# It depends on both local objects AND the library-checking rule (build_aui_lib).
 $(TARGET): $(OBJS) build_aui_lib | $(BUILD_DIR)
 	@echo "Linking binary [$(BUILD_MODE)]: $@"
 	@rm -f $@
@@ -92,10 +106,9 @@ ifneq ($(BUILD_MODE), debug)
 endif
 
 # Recursive call to the root Makefile to ensure libAUI.a is up to date.
-# We mark it .PHONY to force a check of the library source files every time.
 build_aui_lib:
 	@echo "--- Ensuring AUI Library [Mode: $(BUILD_MODE)] ---"
-	@$(MAKE) -C $(AUI_ROOT) BUILD_MODE=$(BUILD_MODE) all
+	+@$(MAKE) -C $(AUI_ROOT) BUILD_MODE=$(BUILD_MODE) all
 
 # Compilation rule: Compile each .cpp into an .o file
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR) $(DEP_DIR)
@@ -113,6 +126,7 @@ $(BUILD_DIR) $(OBJ_DIR) $(DEP_DIR):
 clean:
 	@echo "--- Cleaning Sub-project [$(BUILD_MODE)] ---"
 	rm -rf $(BUILD_DIR)
-	@$(MAKE) -C $(AUI_ROOT) BUILD_MODE=$(BUILD_MODE) clean
+	+@$(MAKE) -C $(AUI_ROOT) BUILD_MODE=$(BUILD_MODE) clean
 
 .PHONY: all clean release srelease build_aui_lib
+

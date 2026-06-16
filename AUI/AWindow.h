@@ -14,6 +14,9 @@ namespace aui {
       friend class AScrollBar;
       friend class AButton;
       friend class AList;
+      friend class AInputBox;
+      friend class ATable;
+
     private:
       std::unique_ptr<IWindowContext> mBackend;
       std::string mWindowTitle;
@@ -28,7 +31,8 @@ namespace aui {
       AWidget *mHoverWidget = nullptr;
       bool mDrawPending = false;
       void DoDraw();
-
+      AWidget* mFocusedWidget = nullptr;
+      bool mKeepFocusOnMouseLeave = true;
     protected:
       void AddWidget(std::unique_ptr<AWidget> widg);
     public:
@@ -57,6 +61,7 @@ namespace aui {
       void OnMouseMove(int32_t x, int32_t y);
       void OnMouseRelease(int32_t x, int32_t y, uint32_t button);
       AWidget* FindWidgetAt(int32_t x, int32_t y) const;
+      void OnKeyEvent(const AUIKeyEvent& event);
       void ClearHover();
       AWidget* GetDragWidget() const {
         return mDragWidget;
@@ -65,6 +70,12 @@ namespace aui {
       void OnMouseWheel(int32_t delta);
       void ForceDraw();                    // draws immediately (for resize, input, etc.)
       bool HasDrawPending() const { return mDrawPending; }
+      void SetFocus(AWidget* widget);
+      AWidget* GetFocusedWidget() const { return mFocusedWidget; }
+      void ClearFocus();
+      void SetKeepFocusOnMouseLeave(bool keep) { mKeepFocusOnMouseLeave = keep; }
+      bool KeepFocusOnMouseLeave() const { return mKeepFocusOnMouseLeave; }
+      void SetCursor(AUICursorType type);
 
   };
 

@@ -3,7 +3,7 @@
 namespace aui {
 
   AButton::AButton() {
-    D2("AButton constructed");
+    D3("AButton constructed");
     mSizeX = 80;
     mSizeY = 28;
     mBGColor = 0xFFCCCCCC;
@@ -18,7 +18,7 @@ namespace aui {
   }
 
   AButton* AButton::AttachTo(AWindow *parent) {
-    D1("Attaching AButton to window");
+    D3("Attaching AButton to window");
     if(!parent)
       E("AButton::AttachTo: parent window is null");
     AButton *btn = new AButton();
@@ -58,7 +58,8 @@ namespace aui {
         mParentWindow->Draw();
 // Call base to invoke callback (if any)
       return AWidget::OnMouseClick(localX, localY, pressed);
-    } else {
+    }
+    else {
       mPressed = false;
       if(mParentWindow)
         mParentWindow->Draw();
@@ -82,7 +83,8 @@ namespace aui {
     uint32_t bgColor = mBGColor;
     if(mPressed && mClickHighlightEnabled) {
       bgColor = ShiftColor(mBGColor, true);// double shift for click
-    } else if(mHovered && mHoverEnabled) {
+    }
+    else if(mHovered && mHoverEnabled) {
       bgColor = ShiftColor(mBGColor, false);// single shift for hover
     }
 // Clipping and background drawing
@@ -107,9 +109,9 @@ namespace aui {
     if(drawW > 0 && drawH > 0) {
       uint32_t bg = bgColor & 0x00FFFFFFU;
       size_t totalPixels = static_cast<size_t>(pW) * static_cast<size_t>(pH);
-      for (int32_t row = 0; row < drawH; ++row) {
+      for(int32_t row = 0; row < drawH; ++row) {
         size_t lineStart = static_cast<size_t>(absY + row) * (size_t) pW + static_cast<size_t>(absX);
-        for (int32_t col = 0; col < drawW; ++col) {
+        for(int32_t col = 0; col < drawW; ++col) {
           size_t idx = lineStart + static_cast<size_t>(col);
           if(idx < totalPixels)
             buffer[idx] = bg;

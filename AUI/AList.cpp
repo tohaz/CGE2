@@ -2,10 +2,8 @@
 
 namespace aui {
 
-// ------------------------------------------------------------------
-// Constructor
-// ------------------------------------------------------------------
-  AList::AList() {
+  AList::AList() :
+      mLineSpacing(0), mMultiSelect(false), mScrollbarsEnabled(false), mDragScrollbar(nullptr) {
     D2("AList constructed");
     mSizeX = 200;
     mSizeY = 150;
@@ -15,21 +13,11 @@ namespace aui {
     mBorderThick = 1;
     mBorderColor = 0xFF888888;
     mWidgetType = AUIWidgetType::defaultList;
-    mHAlign = AUIHAlign::left;// add this
-    mVAlign = AUIVAlign::top;// add this
-    RecalcLineHeight();
+    mHAlign = AUIHAlign::left;
+    mVAlign = AUIVAlign::top;
+    RecalcLineHeight();// this will set mLineHeight
   }
 
-// ------------------------------------------------------------------
-// Destructor – scrollbars are unique_ptr, they will be destroyed automatically
-// ------------------------------------------------------------------
-  AList::~AList() {
-    D2("AList destructor");
-  }
-
-// ------------------------------------------------------------------
-// Factory methods
-// ------------------------------------------------------------------
   AList* AList::AttachTo(AWindow *parent) {
     D1("Attaching AList to window");
     if(!parent)
@@ -48,9 +36,6 @@ namespace aui {
     return list;
   }
 
-// ------------------------------------------------------------------
-// Data management
-// ------------------------------------------------------------------
   void AList::AddItem(const std::string &text) {
     mData.push_back(text);
     mTag.push_back(false);
@@ -105,11 +90,8 @@ namespace aui {
       mParentWindow->Draw();
   }
 
-// ------------------------------------------------------------------
-// Selection
-// ------------------------------------------------------------------
   void AList::SelectAll(bool selected) {
-    for (size_t i = 0; i < mTag.size(); ++i) {
+    for(size_t i = 0; i < mTag.size(); ++i) {
       mTag[i] = selected;
     }
     if(mParentWindow)
@@ -121,7 +103,7 @@ namespace aui {
       return;
     if(!mMultiSelect && selected) {
 // Single‑select mode: clear all others first
-      for (size_t i = 0; i < mTag.size(); ++i) {
+      for(size_t i = 0; i < mTag.size(); ++i) {
         mTag[i] = false;
       }
     }
@@ -138,7 +120,7 @@ namespace aui {
 
   std::vector<size_t> AList::GetSelectedIndices() const {
     std::vector<size_t> result;
-    for (size_t i = 0; i < mTag.size(); ++i) {
+    for(size_t i = 0; i < mTag.size(); ++i) {
       if(mTag[i])
         result.push_back(i);
     }
@@ -146,16 +128,13 @@ namespace aui {
   }
 
   void AList::ClearSelection() {
-    for (size_t i = 0; i < mTag.size(); ++i) {
+    for(size_t i = 0; i < mTag.size(); ++i) {
       mTag[i] = false;
     }
     if(mParentWindow)
       mParentWindow->Draw();
   }
 
-// ------------------------------------------------------------------
-// Internal helpers
-// ------------------------------------------------------------------
   void AList::RecalcMaxWidth() {
     if(!mEnginePtr)
       return;
@@ -165,9 +144,9 @@ namespace aui {
     }
     FT_Set_Pixel_Sizes(face, 0, mFontSize);
     uint32_t maxWidth = 0;
-    for (const auto &str : mData) {
+    for(const auto &str : mData) {
       uint32_t width = 0;
-      for (char c : str) {
+      for(char c : str) {
         if(FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_DEFAULT) != 0)
           continue;
         width += static_cast<uint32_t>(face->glyph->advance.x >> 6);
@@ -213,9 +192,6 @@ namespace aui {
     return static_cast<int32_t>(index * mLineHeight);
   }
 
-// ------------------------------------------------------------------
-// Override font size setter to recalc line height and max width
-// ------------------------------------------------------------------
   void AList::SetFontSize(uint32_t size) {
     if(mFontSize == size)
       return;
@@ -224,7 +200,6 @@ namespace aui {
     mTextMetricsValid = false;
     RecalcLineHeight();// updates mLineHeight
     RecalcMaxWidth();// updates mMaxWidthPx
-
 // Clamp scroll offsets to new valid ranges
     int32_t maxY =
         (static_cast<int32_t>(mData.size()) * static_cast<int32_t>(mLineHeight) > static_cast<int32_t>(mSizeY)) ?
@@ -234,14 +209,11 @@ namespace aui {
     int32_t maxX = (mMaxWidthPx > mSizeX) ? static_cast<int32_t>(mMaxWidthPx - mSizeX) : 0;
     if(mHOffset > maxX)
       mHOffset = maxX;
-
     UpdateScrollbarRanges();// updates scrollbar min/max/value
     if(mParentWindow)
       mParentWindow->Draw();
   }
-// ------------------------------------------------------------------
-// Stubs (to be implemented later)
-// ------------------------------------------------------------------
+
   void AList::Draw(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
       int32_t offsetY) const {
 // ------------------------------------------------------------------
@@ -269,9 +241,9 @@ namespace aui {
     if(drawW > 0 && drawH > 0 && absX >= 0 && absY >= 0) {
       uint32_t bg = mBGColor & 0x00FFFFFFU;
       size_t maxIdx = static_cast<size_t>(pW) * static_cast<size_t>(pH);
-      for (int32_t row = 0; row < drawH; ++row) {
+      for(int32_t row = 0; row < drawH; ++row) {
         size_t lineStart = static_cast<size_t>(absY + row) * static_cast<size_t>(pW) + static_cast<size_t>(absX);
-        for (int32_t col = 0; col < drawW; ++col) {
+        for(int32_t col = 0; col < drawW; ++col) {
           size_t idx = lineStart + static_cast<size_t>(col);
           if(idx < maxIdx)
             buffer[idx] = bg;
@@ -284,9 +256,6 @@ namespace aui {
     DrawBorder(buffer, parentWidth, parentHeight, offsetX, offsetY);
     if(mData.empty())
       return;
-// ------------------------------------------------------------------
-// 3. Client area (excluding visible scrollbars)
-// ------------------------------------------------------------------
     int32_t clientX = absX;
     int32_t clientY = absY;
     int32_t clientW = static_cast<int32_t>(mSizeX);
@@ -325,7 +294,7 @@ namespace aui {
 // ------------------------------------------------------------------
 // 6. Draw each visible line
 // ------------------------------------------------------------------
-    for (size_t i = 0; i < mData.size(); ++i) {
+    for(size_t i = 0; i < mData.size(); ++i) {
       int32_t lineTop = contentStartY + static_cast<int32_t>(i * mLineHeight) - mVOffset;
       int32_t lineBottom = lineTop + static_cast<int32_t>(mLineHeight);
       if(lineBottom < 0)
@@ -344,11 +313,11 @@ namespace aui {
         int32_t startY = clientY + visibleStartY;
         int32_t endY = clientY + visibleEndY;
         size_t maxIdx = static_cast<size_t>(pW) * static_cast<size_t>(pH);
-        for (int32_t row = startY; row < endY; ++row) {
+        for(int32_t row = startY; row < endY; ++row) {
           if(row < 0 || row >= pH)
             continue;
           size_t lineStart = static_cast<size_t>(row) * static_cast<size_t>(pW) + static_cast<size_t>(clientX);
-          for (int32_t col = 0; col < clientW; ++col) {
+          for(int32_t col = 0; col < clientW; ++col) {
             size_t idx = lineStart + static_cast<size_t>(col);
             if(idx < maxIdx)
               buffer[idx] = selColor;
@@ -357,8 +326,8 @@ namespace aui {
       }
 // Draw text
       if(face) {
-        DrawTextEx(buffer, parentWidth, parentHeight, clientX, clientY + visibleStartY, clientW, visibleHeight,
-            mData[i], face, mFontSize, mHAlign, AUIVAlign::top, mHOffset, mTextColor);
+///        DrawTextEx(buffer, parentWidth, parentHeight, clientX, clientY + visibleStartY, clientW, visibleHeight,
+///            mData[i], face, mFontSize, mHAlign, mLineTextVAlign, mHOffset, mTextColor, (int32_t) mMaxWidthPx);
       }
     }
 // ------------------------------------------------------------------
@@ -398,6 +367,7 @@ namespace aui {
       int32_t sbLocalX = localX + mX - sbX;
       int32_t sbLocalY = localY + mY - sbY;
       mDragScrollbar->OnMouseMove(sbLocalX, sbLocalY);
+      mParentWindow->Draw();
       return;
     }
 
@@ -484,6 +454,7 @@ namespace aui {
     int32_t scrollAmount = delta * static_cast<int32_t>(mLineHeight);
     int32_t newVOffset = mVOffset - scrollAmount;
     ScrollToOffset(mHOffset, newVOffset);
+    mParentWindow->Draw();
   }
 
   void AList::OnParentResize(UNUSED uint32_t newWidth, UNUSED uint32_t newHeight) {
@@ -519,6 +490,8 @@ namespace aui {
       if(!mVScrollBar) {
         mVScrollBar = std::make_unique<AScrollBar>();
         mVScrollBar->SetOrientation(AUIOrientation::vertical);
+        mVScrollBar->mParentWindow = mParentWindow;
+        mVScrollBar->mEnginePtr = mEnginePtr;
         mVScrollBar->Resize(16, mSizeY);
         mVScrollBar->ShowArrows(true);
         mVScrollBar->SetArrowSize(12);
@@ -534,6 +507,8 @@ namespace aui {
       if(!mHScrollBar) {
         mHScrollBar = std::make_unique<AScrollBar>();
         mHScrollBar->SetOrientation(AUIOrientation::horizontal);
+        mHScrollBar->mParentWindow = mParentWindow;
+        mHScrollBar->mEnginePtr = mEnginePtr;
         mHScrollBar->Resize(mSizeX, 16);
         mHScrollBar->ShowArrows(true);
         mHScrollBar->SetArrowSize(12);
@@ -555,20 +530,20 @@ namespace aui {
       mParentWindow->Draw();
   }
 
-  void AList::SetVScrollbarColors(UNUSED uint32_t track, UNUSED uint32_t thumb) {
-// To be implemented
+  void AList::SetVScrollbarArrowSize(uint32_t size) {
+    if(mVScrollBar) {
+      mVScrollBar->SetArrowSize(size);
+      if(mParentWindow)
+        mParentWindow->Draw();
+    }
   }
 
-  void AList::SetHScrollbarColors(UNUSED uint32_t track, UNUSED uint32_t thumb) {
-// To be implemented
-  }
-
-  void AList::SetVScrollbarArrowSize(UNUSED uint32_t size) {
-// To be implemented
-  }
-
-  void AList::SetHScrollbarArrowSize(UNUSED uint32_t size) {
-// To be implemented
+  void AList::SetHScrollbarArrowSize(uint32_t size) {
+    if(mHScrollBar) {
+      mHScrollBar->SetArrowSize(size);
+      if(mParentWindow)
+        mParentWindow->Draw();
+    }
   }
 
   void AList::ScrollToOffset(int32_t xOffset, int32_t yOffset) {
@@ -591,7 +566,6 @@ namespace aui {
       maxY = static_cast<int32_t>((int32_t) contentHeight - viewHeight);
     xOffset = std::max(0, std::min(xOffset, maxX));
     yOffset = std::max(0, std::min(yOffset, maxY));
-
     if(mHOffset == xOffset && mVOffset == yOffset)
       return;
     mHOffset = xOffset;
@@ -608,27 +582,21 @@ namespace aui {
 // Start with full widget dimensions
     uint32_t viewWidth = mSizeX;
     uint32_t viewHeight = mSizeY;
-
-// ----- First pass: determine scrollbar needs -----
+// ----- Step 1: Determine scrollbar needs (first pass) -----
     uint32_t totalLines = static_cast<uint32_t>(mData.size());
     uint32_t visibleLines = (mLineHeight > 0) ? (viewHeight + mLineHeight - 1) / mLineHeight : 1;
     bool needVScroll = (totalLines > visibleLines);
-
-// Reduce width if vertical scrollbar will be shown
-    if(needVScroll && mVScrollBar) {
-      viewWidth -= mVScrollBar->SizeX();
-    }
     bool needHScroll = (mMaxWidthPx > viewWidth);
-// Reduce height if horizontal scrollbar will be shown
-    if(needHScroll && mHScrollBar) {
+// Adjust view size if opposite scrollbar will be shown
+    if(needVScroll && mVScrollBar)
+      viewWidth -= mVScrollBar->SizeX();
+    if(needHScroll && mHScrollBar)
       viewHeight -= mHScrollBar->SizeY();
-    }
-// Recompute vertical need because height may have changed
+// Recompute vertical need (because viewHeight may have changed)
     visibleLines = (mLineHeight > 0) ? (viewHeight + mLineHeight - 1) / mLineHeight : 1;
     needVScroll = (totalLines > visibleLines);
-// (Optional: second reduction of width if vertical scrollbar now needed again –
-//  omitted for simplicity, but most UIs accept this one-pass approximation)
-// ----- Update scrollbar visibility -----
+// (Optional: second pass for width if vertical scrollbar now needed, but omitted for brevity)
+// ----- Step 2: Update visibility -----
     if(mVScrollBar) {
       mVScrollBar->ShowArrows(needVScroll);
       mVScrollBar->SetVisible(mAutoHideScrollbars ? needVScroll : true);
@@ -637,13 +605,10 @@ namespace aui {
       mHScrollBar->ShowArrows(needHScroll);
       mHScrollBar->SetVisible(mAutoHideScrollbars ? needHScroll : true);
     }
-// ----- Update vertical scrollbar range -----
+// ----- Step 3: Set vertical scrollbar range (using effective viewHeight) -----
     if(mVScrollBar) {
-      int32_t maxV = 0;
       uint32_t contentHeight = totalLines * mLineHeight;
-      if(contentHeight > viewHeight) {
-        maxV = static_cast<int32_t>(contentHeight - viewHeight);
-      }
+      int32_t maxV = (contentHeight > viewHeight) ? static_cast<int32_t>(contentHeight - viewHeight) : 0;
       mVScrollBar->SetRange(0, maxV);
       mVScrollBar->SetPageStep(static_cast<int32_t>(visibleLines * mLineHeight));
       mVScrollBar->SetSingleStep(static_cast<int32_t>(mLineHeight));
@@ -651,24 +616,23 @@ namespace aui {
         mVOffset = maxV;
       mVScrollBar->SetValue(mVOffset);
     }
-// ----- Update horizontal scrollbar range -----
+// ----- Step 4: Set horizontal scrollbar range (using effective viewWidth) -----
     if(mHScrollBar) {
-      int32_t maxH = 0;
-      if(mMaxWidthPx > viewWidth) {
-        maxH = static_cast<int32_t>(mMaxWidthPx - viewWidth);
-      }
+      int32_t maxH = (mMaxWidthPx > viewWidth) ? static_cast<int32_t>(mMaxWidthPx - viewWidth) : 0;
+      D3("UpdateRanges: viewWidth={}, maxWidth={}, maxH={}, current mHOffset={}", viewWidth, mMaxWidthPx, maxH,
+          mHOffset);
       mHScrollBar->SetRange(0, maxH);
       mHScrollBar->SetPageStep(static_cast<int32_t>(viewWidth / 2));
       mHScrollBar->SetSingleStep(20);
       if(mHOffset > maxH)
         mHOffset = maxH;
+      D3("Before SetValue, mHOffset={}", mHOffset);
       mHScrollBar->SetValue(mHOffset);
     }
-
     if(mParentWindow)
       mParentWindow->Draw();
   }
-  
+
   void AList::DrawItem(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t absX, int32_t absY,
       size_t index, bool isSelected) const {
 // Selection background
@@ -682,12 +646,12 @@ namespace aui {
       if(startY + static_cast<int32_t>(h) < absY || startY > absY + static_cast<int32_t>(mSizeY))
         return;
 // Draw selection background
-      for (uint32_t row = 0; row < h; ++row) {
+      for(uint32_t row = 0; row < h; ++row) {
         int32_t destY = startY + static_cast<int32_t>(row);
         if(destY < absY || destY >= absY + static_cast<int32_t>(mSizeY))
           continue;
         size_t lineStart = static_cast<size_t>(destY) * parentWidth + static_cast<size_t>(startX);
-        for (uint32_t col = 0; col < w; ++col) {
+        for(uint32_t col = 0; col < w; ++col) {
           size_t idx = lineStart + col;
           if(idx < static_cast<size_t>(parentWidth) * parentHeight)
             buffer[idx] = selColor;
@@ -709,7 +673,6 @@ namespace aui {
       return;
     int32_t absX = offsetX + mX;
     int32_t absY = offsetY + mY;
-
     if(mVScrollBar && mVScrollBar->IsVisible()) {
       int32_t sbX = absX + static_cast<int32_t>(mSizeX) - static_cast<int32_t>(mVScrollBar->SizeX());
       int32_t sbY = absY;
@@ -749,9 +712,9 @@ namespace aui {
         }
         mVScrollBar->SetOrientation(AUIOrientation::vertical);
         mVScrollBar->ShowArrows(true);
-        mVScrollBar->SetArrowSize(12);
-        mVScrollBar->SetTrackThickness(6);
-        mVScrollBar->SetThumbThickness(8);
+        mVScrollBar->SetArrowSize(16);
+        mVScrollBar->SetTrackThickness(8);
+        mVScrollBar->SetThumbThickness(16);
         mVScrollBar->SetScrollCallback([](AWindow*, AWidget*, void *data, int32_t val) {
           AList *list = static_cast<AList*>(data);
           list->ScrollToOffset(list->mHOffset, val);
@@ -776,15 +739,15 @@ namespace aui {
         mHScrollBar = std::make_unique<AScrollBar>();
         mHScrollBar->SetOrientation(AUIOrientation::horizontal);
         mHScrollBar->ShowArrows(true);
-        mHScrollBar->SetArrowSize(40);
-        mHScrollBar->SetTrackThickness(20);
-        mHScrollBar->SetThumbThickness(40);
+        mHScrollBar->SetArrowSize(16);
+        mHScrollBar->SetTrackThickness(8);
+        mHScrollBar->SetThumbThickness(16);
         mHScrollBar->SetScrollCallback([](AWindow*, AWidget*, void *data, int32_t val) {
           AList *list = static_cast<AList*>(data);
           list->ScrollToOffset(val, list->mVOffset);
         }, this);
       }
-      mHScrollBar->Resize(mSizeX, 40);
+      mHScrollBar->Resize(mSizeX, 16);
       mHScrollBar->SetPosition(mX, mY + static_cast<int32_t>(mSizeY) - 40);
     }
     else {
@@ -805,16 +768,17 @@ namespace aui {
   }
 
   void AList::RecalcScrollFromAlignment() {
-    int32_t contentHeight = static_cast<int32_t>(mData.size() * mLineHeight);
+// ----- Vertical alignment -----
+    int32_t maxH = 0;
     int32_t viewHeight = static_cast<int32_t>(mSizeY);
     if(mHScrollBar && mHScrollBar->IsVisible())
       viewHeight -= static_cast<int32_t>(mHScrollBar->SizeY());
-    if(contentHeight <= viewHeight) {
-// Content fits – no scrolling, offset stays 0 (alignment handled during drawing)
+    uint32_t contentHeight = static_cast<uint32_t>(mData.size()) * mLineHeight;
+    if(contentHeight <= static_cast<uint32_t>(viewHeight)) {
       mVOffset = 0;
     }
     else {
-      int32_t maxV = contentHeight - viewHeight;
+      int32_t maxV = static_cast<int32_t>((int32_t) contentHeight - viewHeight);
       switch (mVAlign) {
         case AUIVAlign::top:
           mVOffset = 0;
@@ -827,16 +791,46 @@ namespace aui {
           break;
         default:
           E("garbage")
+          ;
+          break;
       }
+      mVOffset = std::max(0, std::min(mVOffset, maxV));
     }
-// Clamp to valid range (safety)
-    mVOffset = std::max(0, std::min(mVOffset, contentHeight - viewHeight));
-// Update scrollbar value if exists
     if(mVScrollBar)
       mVScrollBar->SetValue(mVOffset);
-// Redraw
-    if(mParentWindow)
-      mParentWindow->Draw();
+// ----- Horizontal alignment -----
+    int32_t viewWidth = static_cast<int32_t>(mSizeX);
+    if(mVScrollBar && mVScrollBar->IsVisible())
+      viewWidth -= static_cast<int32_t>(mVScrollBar->SizeX());
+    if(mMaxWidthPx <= static_cast<uint32_t>(viewWidth)) {
+      mHOffset = 0;
+    }
+    else {
+      maxH = static_cast<int32_t>((int32_t) mMaxWidthPx - viewWidth);
+      switch (mHAlign) {
+        case AUIHAlign::left:
+          mHOffset = 0;
+          break;
+        case AUIHAlign::center:
+          mHOffset = maxH / 2;
+          break;
+        case AUIHAlign::right:
+          mHOffset = maxH;
+          break;
+        default:
+          E("garbage")
+          ;
+          break;
+      }
+      mHOffset = std::max(0, std::min(mHOffset, maxH));
+    }
+    D2("Recalc: viewWidth={}, maxWidth={}, maxH={}, mHOffset={}", viewWidth, mMaxWidthPx, maxH, mHOffset);
+    if(mHScrollBar) {
+      D2("RecalcH: viewWidth={}, maxWidth={}, mHAlign={}, mHOffset={}", viewWidth, mMaxWidthPx, maxH,
+          static_cast<int32_t>(mHAlign), mHOffset);
+      mHScrollBar->SetValue(mHOffset);
+      D2("After SetValue, scrollbar value={}", mHScrollBar->GetValue());
+    }
   }
 
   void AList::SetVAlignment(AUIVAlign align) {
@@ -846,6 +840,81 @@ namespace aui {
     RecalcScrollFromAlignment();
     if(mParentWindow)
       mParentWindow->Draw();
+  }
+
+  void AList::ScrollToItem(size_t index, bool alignCenter) {
+    if(index >= mData.size())
+      return;
+// Get item's top and bottom pixel positions relative to unscrolled content
+    int32_t itemTop = static_cast<int32_t>(index * mLineHeight);
+    int32_t itemBottom = itemTop + static_cast<int32_t>(mLineHeight);
+// Compute visible area dimensions (client area)
+    int32_t viewHeight = static_cast<int32_t>(mSizeY);
+    if(mHScrollBar && mHScrollBar->IsVisible())
+      viewHeight -= static_cast<int32_t>(mHScrollBar->SizeY());
+    if(alignCenter) {
+// Center the item in the viewport
+      int32_t targetOffset = itemTop - (viewHeight - static_cast<int32_t>(mLineHeight)) / 2;
+      ScrollToOffset(mHOffset, targetOffset);
+    }
+    else {
+// Ensure item is fully visible, scrolling minimally
+      int32_t currentTop = mVOffset;
+      int32_t currentBottom = currentTop + viewHeight;
+      if(itemTop < currentTop) {
+// Item is above visible area
+        ScrollToOffset(mHOffset, itemTop);
+      }
+      else if(itemBottom > currentBottom) {
+// Item is below visible area
+        ScrollToOffset(mHOffset, itemBottom - viewHeight);
+      }
+// else already visible – no change
+    }
+  }
+
+  void AList::SetVScrollbarColors(uint32_t track, uint32_t thumb) {
+    if(mVScrollBar) {
+      mVScrollBar->SetTrackColor(track);
+      mVScrollBar->SetThumbColor(thumb);
+      if(mParentWindow)
+        mParentWindow->Draw();
+    }
+  }
+
+  void AList::SetHScrollbarColors(uint32_t track, uint32_t thumb) {
+    if(mHScrollBar) {
+      mHScrollBar->SetTrackColor(track);
+      mHScrollBar->SetThumbColor(thumb);
+      if(mParentWindow)
+        mParentWindow->Draw();
+    }
+  }
+
+  void AList::SetHAlignment(AUIHAlign align) {
+    D2("SetHAlignment called: old={}, new={}", static_cast<int32_t>(mHAlign), static_cast<int32_t>(align));
+    if(mHAlign == align)
+      return;
+    AWidget::SetHAlignment(align);// stores and redraws
+    RecalcScrollFromAlignment();// adjust horizontal offset
+    if(mParentWindow)
+      mParentWindow->Draw();
+  }
+
+  AScrollBar* AList::GetVScrollBar() {
+    return mVScrollBar.get();
+  }
+
+  void AList::SetMultiSelect(bool enable) {
+    if(mMultiSelect == enable) {
+      E("already it that selection mode")
+    }
+    mMultiSelect = enable;
+    ClearSelection();
+  }
+
+  AList::~AList() {
+    D2("AList destructor");
   }
 
 }// namespace aui

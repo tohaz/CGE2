@@ -1,9 +1,6 @@
 #ifndef IWINDOWCONTEXT_H_
 #define IWINDOWCONTEXT_H_
 
-#include <cstdint>
-#include <string>
-
 namespace aui {
   class AUI;
   class AWindow;
@@ -27,6 +24,7 @@ class IWindowContext {
     AWindow* Wnd() {return mWindow;}
     virtual void EnableResize() = 0;
     virtual void DisableResize() = 0;
+    virtual void SetCursor(AUICursorType type) = 0;
 };
 
 } // namespace aui

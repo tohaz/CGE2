@@ -1,5 +1,13 @@
 #include "AUILib.h"
-#include "AWindow.h"
+
+extern "C" {
+  UNUSED static FT_Error ftc_face_requester(UNUSED FTC_FaceID face_id,
+  UNUSED FT_Library library, FT_Pointer request_data, FT_Face *aface) {
+    aui::AUI *au = static_cast<aui::AUI*>(request_data);
+    *aface = au->GetDefaultFontFace();
+    return 0;
+  }
+}
 
 namespace aui {
 
@@ -11,6 +19,78 @@ namespace aui {
     }
   }
 
+  UNUSED static void keyboard_keymap(void *data, struct wl_keyboard*, uint32_t format, int32_t fd, uint32_t size) {
+    auto *aui = static_cast<AUI*>(data);
+    if(format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
+      close(fd);
+      return;
+    }
+    char *map_str = static_cast<char*>(mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0));
+    if(map_str == MAP_FAILED) {
+      close(fd);
+      return;
+    }
+    aui->SetXkbContext(xkb_context_new(XKB_CONTEXT_NO_FLAGS));
+    aui->SetXkbKeymap(
+        xkb_keymap_new_from_string(aui->GetXkbContext(), map_str, XKB_KEYMAP_FORMAT_TEXT_V1,
+            XKB_KEYMAP_COMPILE_NO_FLAGS));
+    munmap(map_str, size);
+    close(fd);
+    if(aui->GetXkbKeymap()) {
+      aui->SetXkbState(xkb_state_new(aui->GetXkbKeymap()));
+    }
+  }
+
+  UNUSED static void keyboard_key(void *data, struct wl_keyboard*, uint32_t, uint32_t, uint32_t key, uint32_t state) {
+    auto *aui = static_cast<AUI*>(data);
+    if(!aui->GetXkbState())
+      return;
+
+    xkb_keysym_t sym = xkb_state_key_get_one_sym(aui->GetXkbState(), key + 8);
+    AUIKeyEvent ev;
+    ev.pressed = (state == WL_KEYBOARD_KEY_STATE_PRESSED);
+    ev.modifiers = AUIModifier::None;// you can enhance later
+    AUIKeyCode code = translate_keysym_to_keycode(sym);
+    if(code != AUIKeyCode::None) {
+      ev.code = code;
+      ev.unicode = 0;
+    }
+    else {
+      char utf8[8];
+      if(xkb_keysym_to_utf8(sym, utf8, sizeof(utf8)) > 0) {
+        ev.unicode = static_cast<uint32_t>(static_cast<uint8_t>(utf8[0]));
+        ev.code = AUIKeyCode::None;
+      }
+      else {
+        ev.unicode = 0;
+        ev.code = AUIKeyCode::None;
+      }
+    }
+    AWindow *win = aui->GetFocusedWindow();
+    if(win)
+      win->OnKeyEvent(ev);
+  }
+
+  UNUSED static void keyboard_modifiers(void *data, struct wl_keyboard*, uint32_t, uint32_t mods_depressed,
+      uint32_t mods_latched, uint32_t mods_locked, uint32_t group) {
+    auto *aui = static_cast<AUI*>(data);
+    if(aui->GetXkbState()) {
+      xkb_state_update_mask(aui->GetXkbState(), mods_depressed, mods_latched, mods_locked, 0, 0, group);
+    }
+  }
+
+  static void keyboard_enter(void*, struct wl_keyboard*, uint32_t, struct wl_surface*, struct wl_array*) {
+  }
+
+  static void keyboard_leave(void*, struct wl_keyboard*, uint32_t, struct wl_surface*) {
+  }
+  static void keyboard_repeat_info(UNUSED void *data, UNUSED struct wl_keyboard *keyboard, UNUSED int32_t rate,
+  UNUSED int32_t delay) {
+  }
+
+  static const struct wl_keyboard_listener keyboard_listener = { .keymap = keyboard_keymap, .enter = keyboard_enter,
+      .leave = keyboard_leave, .key = keyboard_key, .modifiers = keyboard_modifiers, .repeat_info = keyboard_repeat_info// was nullptr
+      };
 // ------------------------------------------------------------------
 // Wayland pointer event handlers (global for all windows)
 // ------------------------------------------------------------------
@@ -24,6 +104,7 @@ namespace aui {
       int32_t x = wl_fixed_to_int(sx);
       int32_t y = wl_fixed_to_int(sy);
       aui->SetLastPointerPos(x, y);
+      aui->SetLastPointerSerial(serial);
     }
   }
 
@@ -31,9 +112,13 @@ namespace aui {
   UNUSED wl_surface *surface) {
     auto *aui = static_cast<AUI*>(data);
     AWindow *win = aui->GetFocusedWindow();
-    if(win)
+    if(win) {
       win->ClearHover();
-    aui->SetFocusedWindow(nullptr);
+// Only clear keyboard focus if the window explicitly allows it
+      if(!win->KeepFocusOnMouseLeave()) {
+        aui->SetFocusedWindow(nullptr);
+      }
+    }
   }
 
   static void pointer_motion(void *data, UNUSED wl_pointer *ptr, UNUSED uint32_t time, wl_fixed_t sx, wl_fixed_t sy) {
@@ -50,7 +135,7 @@ namespace aui {
   static void pointer_button(void *data, UNUSED wl_pointer *ptr, UNUSED uint32_t serial,
   UNUSED uint32_t time, uint32_t button, uint32_t state) {
     auto *aui = static_cast<AUI*>(data);
-    D2("Wayland button event: button={} state={}", button, state);
+    D3("Wayland button event: button={} state={}", button, state);
     AWindow *win = aui->GetFocusedWindow();
     if(!win)
       return;
@@ -61,16 +146,14 @@ namespace aui {
       win->OnMouseRelease(aui->GetLastPointerX(), aui->GetLastPointerY(), button);
     }
   }
+
   static void pointer_axis(UNUSED void *data, UNUSED wl_pointer *ptr, UNUSED uint32_t time,
   UNUSED uint32_t axis, UNUSED wl_fixed_t value) {
     auto *aui = static_cast<AUI*>(data);
     AWindow *win = aui->GetFocusedWindow();
     if(!win)
       return;
-// Only handle vertical scrolling (horizontal can be added later)
     if(axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
-// Convert wl_fixed_t to integer, invert sign so that positive delta = scroll up
-// (matches XCB convention where button 4 = +1)
       int32_t delta = -wl_fixed_to_int(value);
       win->OnMouseWheel(delta);
     }
@@ -119,18 +202,27 @@ namespace aui {
         aui->SetWaylandPointer(nullptr);
       }
     }
+    if(capabilities & WL_SEAT_CAPABILITY_KEYBOARD) {
+      if(!aui->GetWaylandKeyboard()) {
+        wl_keyboard *kbd = wl_seat_get_keyboard(seat);
+        aui->SetWaylandKeyboard(kbd);
+        wl_keyboard_add_listener(kbd, &keyboard_listener, aui);
+      }
+    }
+    else {
+      if(aui->GetWaylandKeyboard()) {
+        wl_keyboard_destroy(aui->GetWaylandKeyboard());
+        aui->SetWaylandKeyboard(nullptr);
+      }
+    }
   }
 
   static void seat_handle_name(UNUSED void *data, UNUSED wl_seat *seat, UNUSED const char *name) {
-// Optional: log the seat name if needed
     D2("Seat name: {}", name ? name : "(null)");
   }
 
   static const wl_seat_listener seat_listener = { .capabilities = seat_handle_capabilities, .name = seat_handle_name, };
 
-// ------------------------------------------------------------------
-// Wayland registry listener
-// ------------------------------------------------------------------
   static void registry_global(void *data, wl_registry *registry, uint32_t id, const char *interface,
   UNUSED uint32_t version) {
     auto *aui = static_cast<AUI*>(data);
@@ -147,7 +239,7 @@ namespace aui {
       aui->SetWaylandXdgBase(base);
       static const struct xdg_wm_base_listener wm_base_listener = { .ping = [](void*, xdg_wm_base *xdg,
           uint32_t serial) {
-        D2("Ping received, serial={}", serial);
+        D3("Ping received, serial={}", serial);
         xdg_wm_base_pong(xdg, serial);
       } };
       xdg_wm_base_add_listener(base, &wm_base_listener, aui);
@@ -170,12 +262,8 @@ namespace aui {
 
   static const wl_registry_listener registry_listener = { .global = registry_global, .global_remove = registry_remove };
 
-// ------------------------------------------------------------------
-// AUI implementation
-// ------------------------------------------------------------------
   AUI* AUI::Create(const std::string &windowTitle) {
     AUI *au = new AUI();
-// FreeType init
     if(FT_Init_FreeType(&au->mFtLibrary) != 0) {
       delete au;
       return nullptr;
@@ -189,6 +277,22 @@ namespace aui {
       }
     }
     FT_Set_Pixel_Sizes(au->mFtDefaultFace, 0, 14);
+// Initialize FreeType cache manager (only for bitmap glyphs)
+    FT_Error error = FTC_Manager_New(au->mFtLibrary, AUI::kMaxFaces, AUI::kMaxSizes, AUI::kMaxBytes, ftc_face_requester,
+        au, &au->mFTCManager);
+    if(error) {
+      E("FTC_Manager_New failed: {}", error);
+      au->mFTCManager = nullptr;
+    }
+    else {
+      error = FTC_ImageCache_New(au->mFTCManager, &au->mFTCImageCache);
+      if(error)
+        E("FTC_ImageCache_New failed: {}", error);
+// No FTC_CMapCache – we use our own advance cache
+    }
+    au->mFtDefaultFace->generic.data = au;
+    au->PreRenderAscii(14);
+// Wayland or XCB setup
     const char *waylandEnv = getenv("WAYLAND_DISPLAY");
     if(waylandEnv) {
       au->mWindowType = AUIWindowType::Wayland;
@@ -200,10 +304,10 @@ namespace aui {
       au->mWaylandRegistry = wl_display_get_registry(au->mWaylandDisplay);
       wl_registry_add_listener(au->mWaylandRegistry, &registry_listener, au);
       if(wl_display_roundtrip(au->mWaylandDisplay) == -1) {
-        E()
+        E("wl_display_roundtrip failed");
       }
       if(wl_display_roundtrip(au->mWaylandDisplay) == -1) {
-        E()
+        E("second roundtrip failed");
       }
       if(!au->mWaylandCompositor || !au->mWaylandShm || !au->mWaylandXdgBase) {
         delete au;
@@ -212,16 +316,13 @@ namespace aui {
     }
     else {
       au->mWindowType = AUIWindowType::XCB;
-// No connection created here – lazy initialization in GetXcbConnection
     }
-// Create main window (this will trigger lazy XCB init if needed)
     au->mMainWnd = AWindow::AttachTo(au, windowTitle);
     if(!au->mMainWnd) {
       delete au;
       return nullptr;
     }
     au->Draw();
-
     return au;
   }
 
@@ -284,83 +385,79 @@ namespace aui {
       Draw();
     }
     auto processXcbEvents = [this]() {
+      uint64_t numEventsDiscarded = 0;
       D3("processXcbEvents: enter");
       if(!mXcbConnection)
         return;
       xcb_generic_event_t *ev;
       while ((ev = xcb_poll_for_event(mXcbConnection))) {
-        uint8_t type = ev->response_type & 0x7F;
         uint64_t wid = 0;
+        uint8_t type = ev->response_type & 0x7F;
+// Extract window ID from the event (common pattern)
         switch (type) {
           case XCB_BUTTON_PRESS: {
-            auto *btn = reinterpret_cast<xcb_button_press_event_t*>(ev);
-            wid = btn->event;
-            AWindow *win = FindWindowByNativeId(wid);
-            if(win) {
-// XCB mouse wheel buttons: 4 = scroll up, 5 = scroll down
-              if(btn->detail == 4) {
-                win->OnMouseWheel(1);
-              }
-              else if(btn->detail == 5) {
-                win->OnMouseWheel(-1);
-              }
-              else {
-                win->OnMousePress(btn->event_x, btn->event_y, btn->detail);
-              }
-            }
+            auto *e = reinterpret_cast<xcb_button_press_event_t*>(ev);
+            wid = e->event;
             break;
           }
           case XCB_BUTTON_RELEASE: {
-            auto *btn = reinterpret_cast<xcb_button_release_event_t*>(ev);
-            wid = btn->event;
-            AWindow *win = FindWindowByNativeId(wid);
-            if(win) {
-              win->OnMouseRelease(btn->event_x, btn->event_y, btn->detail);
-            }
-            break;
-          }
-          case XCB_CONFIGURE_NOTIFY: {
-            auto *cfg = reinterpret_cast<xcb_configure_notify_event_t*>(ev);
-            wid = cfg->window;
-            AWindow *win = FindWindowByNativeId(wid);
-            if(win)
-              win->GetBackend()->ProcessEvent(ev);
-            break;
-          }
-          case XCB_CLIENT_MESSAGE: {
-            auto *msg = reinterpret_cast<xcb_client_message_event_t*>(ev);
-            wid = msg->window;
-            AWindow *win = FindWindowByNativeId(wid);
-            if(win)
-              win->GetBackend()->ProcessEvent(ev);
+            auto *e = reinterpret_cast<xcb_button_release_event_t*>(ev);
+            wid = e->event;
             break;
           }
           case XCB_MOTION_NOTIFY: {
-            auto *motion = reinterpret_cast<xcb_motion_notify_event_t*>(ev);
-            wid = motion->event;
-            AWindow *win = FindWindowByNativeId(wid);
-            if(win)
-              win->OnMouseMove(motion->event_x, motion->event_y);
+            auto *e = reinterpret_cast<xcb_motion_notify_event_t*>(ev);
+            wid = e->event;
+            break;
+          }
+          case XCB_KEY_PRESS: {
+            auto *e = reinterpret_cast<xcb_key_press_event_t*>(ev);
+            wid = e->event;
+            break;
+          }
+          case XCB_KEY_RELEASE: {
+            auto *e = reinterpret_cast<xcb_key_release_event_t*>(ev);
+            wid = e->event;
+            break;
+          }
+          case XCB_CONFIGURE_NOTIFY: {
+            auto *e = reinterpret_cast<xcb_configure_notify_event_t*>(ev);
+            wid = e->window;
+            break;
+          }
+          case XCB_CLIENT_MESSAGE: {
+            auto *e = reinterpret_cast<xcb_client_message_event_t*>(ev);
+            wid = e->window;
             break;
           }
           case XCB_EXPOSE: {
-            auto *exp = reinterpret_cast<xcb_expose_event_t*>(ev);
-            wid = exp->window;
-            AWindow *win = FindWindowByNativeId(wid);
-            if(win)
-              win->GetBackend()->ProcessEvent(ev);
+            auto *e = reinterpret_cast<xcb_expose_event_t*>(ev);
+            wid = e->window;
             break;
           }
           case XCB_MAP_NOTIFY: {
-            auto *map = reinterpret_cast<xcb_map_notify_event_t*>(ev);
-            wid = map->window;
-            AWindow *win = FindWindowByNativeId(wid);
-            if(win)
-              win->GetBackend()->ProcessEvent(ev);
+            auto *e = reinterpret_cast<xcb_map_notify_event_t*>(ev);
+            wid = e->window;
             break;
           }
           default:
-            break;
+            D1("Unhandled event type for window extraction: {}", type)
+            ;
+            free(ev);
+            continue;
+        }
+        AWindow *win = FindWindowByNativeId(wid);
+        if(win && win->GetBackend()) {
+          win->GetBackend()->ProcessEvent(ev);
+        }
+        else {
+          if(!win) {
+            D("event {} discarded - no window for wid {}", numEventsDiscarded, wid)
+          }
+          else if(!win->GetBackend()) {
+            D("event discarded - no backend")
+          }
+          numEventsDiscarded++;
         }
         free(ev);
       }
@@ -443,13 +540,13 @@ namespace aui {
         processXcbEvents();
 // ---- Check XCB connection error after processing events ----
         if(xcb_connection_has_error(mXcbConnection)) {
-          D1("XCB connection error after processing events, exiting AUI");
+          D3("XCB connection error after processing events, exiting AUI");
           ExitAUI();
           break;
         }
       }
       if(pipe_idx >= 0 && (fds[pipe_idx].revents & POLLIN)) {
-        D1("Self-pipe wakeup read trigger");
+        D3("Self-pipe wakeup read trigger");
         char buf[8];
         if(read(mSelfPipeFds[0], buf, sizeof(buf)) > 0) {
         }
@@ -461,27 +558,28 @@ namespace aui {
   }
 
   void AUI::Draw() {
-    D3("AUI::Draw: cascade redraw start");
+    DT("cascade Draw({})", mDrawCounter++);
+    auto start = std::chrono::high_resolution_clock::now();
 // 1. Redraw all registered windows to populate their respective buffers
     if(mWindowType == AUIWindowType::XCB) {
-      for (auto &pair : mXcbWindowMap) {
+      for(auto &pair : mXcbWindowMap) {
         if(pair.second)
           pair.second->Draw();
       }
     }
     else if(mWindowType == AUIWindowType::Wayland) {
-      for (auto &pair : mWaylandSurfaceMap) {
+      for(auto &pair : mWaylandSurfaceMap) {
         if(pair.second)
           pair.second->Draw();
       }
     }
     if(mDrawCommands.size() == 0) {
-      D2("zero commands");
+      D3("zero commands");
       return;
     }
     D3("AUI::Draw: processing {} commands", mDrawCommands.size());
     std::lock_guard<std::mutex> lock(mCommandMutex);
-    for (const auto &cmd : mDrawCommands) {
+    for(const auto &cmd : mDrawCommands) {
 // ------------------------------------------------------------------
 // XCB Graphics Pipeline Routing
 // ------------------------------------------------------------------
@@ -533,6 +631,8 @@ namespace aui {
     }
     mDrawCommands.clear();
     FlushConnection();// Safely executes xcb_flush() or wl_display_flush()
+    auto end = std::chrono::high_resolution_clock::now();
+    DT("Backend commit took {} us", std::chrono::duration_cast<std::chrono::microseconds>(end-start).count());
     D3("AUI::Draw: flushed connection");
   }
 
@@ -662,7 +762,7 @@ namespace aui {
     D2("xcb_connect returned {}", static_cast<void*>(mXcbConnection));
     const xcb_setup_t *setup = xcb_get_setup(mXcbConnection);
     xcb_screen_iterator_t iter = xcb_setup_roots_iterator(setup);
-    for (int32_t i = 0; i < screenIdx; ++i)
+    for(int32_t i = 0; i < screenIdx; ++i)
       xcb_screen_next(&iter);
     mXcbScreen = iter.data;
     D2("InitXcb done, screen={}", static_cast<void*>(mXcbScreen));
@@ -696,7 +796,7 @@ namespace aui {
       return false;
     }),
     mDrawCommands.end());
-    D2("Cleared draw commands for window ID {}", nativeId);
+    D3("Cleared draw commands for window ID {}", nativeId);
   }
 
   void AUI::ScheduleDraw(AWindow *win) {
@@ -720,11 +820,74 @@ namespace aui {
       std::lock_guard<std::mutex> lock(mPendingDrawMutex);
       windows.swap(mPendingDrawWindows);
     }
-    for (AWindow *win : windows) {
+    for(AWindow *win : windows) {
       if(win && win->HasDrawPending()) {
         win->ForceDraw();// ForceDraw will clear the flag and redraw
       }
     }
+  }
+
+  FT_Glyph AUI::GetCachedGlyph(FT_UInt glyph_index, FT_UInt font_size, FT_Int load_flags) {
+    FTC_ImageTypeRec img_type;
+    img_type.face_id = (FTC_FaceID) this;// unique identifier for our face
+    img_type.width = font_size;
+    img_type.height = font_size;
+    img_type.flags = load_flags;
+
+    FT_Glyph glyph = nullptr;
+    FT_Error error = FTC_ImageCache_Lookup(mFTCImageCache, &img_type, glyph_index, &glyph, nullptr);
+    if(error)
+      return nullptr;
+    return glyph;
+  }
+
+  FT_Fixed AUI::GetCachedAdvance(FT_UInt glyph_index, FT_UInt font_size) {
+    uint64_t key = (static_cast<uint64_t>(glyph_index) << 32) | font_size;
+    auto it = mAdvanceCache.find(key);
+    if(it != mAdvanceCache.end())
+      return it->second;
+    FT_Face face = GetDefaultFontFace();
+    if(!face)
+      return 0;
+    FT_Set_Pixel_Sizes(face, 0, font_size);
+    if(FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT) != 0)
+      return 0;
+    FT_Fixed advance = face->glyph->advance.x;
+    mAdvanceCache[key] = advance;
+    return advance;
+  }
+
+  void AUI::PreRenderAscii(uint32_t fontSize) {
+    FT_Face face = GetDefaultFontFace();
+    if(!face)
+      return;
+    FT_Set_Pixel_Sizes(face, 0, fontSize);
+    for(int32_t ch = 32; ch <= 126; ++ch) {// use int32_t
+      if(FT_Load_Char(face, (uint64_t) ch, FT_LOAD_RENDER | FT_LOAD_NO_HINTING) != 0)
+        continue;
+      FT_GlyphSlot slot = face->glyph;
+      FT_Bitmap *src = &slot->bitmap;
+      size_t size = static_cast<size_t>(src->rows) * src->width;
+      uint8_t *buffer = new uint8_t[size];
+      memcpy(buffer, src->buffer, size);
+      CachedGlyph g;
+      g.bitmap = buffer;
+      g.width = static_cast<int32_t>(src->width);// cast
+      g.rows = static_cast<int32_t>(src->rows);// cast
+      g.left = slot->bitmap_left;
+      g.top = slot->bitmap_top;
+      g.asc = slot->bitmap_top;
+      g.desc = (int32_t) src->rows - (int32_t) slot->bitmap_top;
+      g.advance = static_cast<int32_t>(slot->advance.x >> 6);
+      uint64_t key = (static_cast<uint64_t>(ch) << 32) | fontSize;
+      mPreRenderedGlyphs[key] = g;
+    }
+  }
+
+  const CachedGlyph* AUI::GetPreRenderedGlyph(uint32_t ch, uint32_t fontSize) const {
+    uint64_t key = (static_cast<uint64_t>(ch) << 32) | fontSize;
+    auto it = mPreRenderedGlyphs.find(key);
+    return (it != mPreRenderedGlyphs.end()) ? &it->second : nullptr;
   }
 
   AUI::~AUI() {
@@ -742,7 +905,14 @@ namespace aui {
       xcb_disconnect(mXcbConnection);
       mXcbConnection = nullptr;
     }
-
+    if(mWaylandKeyboard)
+      wl_keyboard_destroy(mWaylandKeyboard);
+    if(mXkbState)
+      xkb_state_unref(mXkbState);
+    if(mXkbKeymap)
+      xkb_keymap_unref(mXkbKeymap);
+    if(mXkbCtx)
+      xkb_context_unref(mXkbCtx);
     if(mWaylandDisplay) {
 // Destroy Wayland objects in reverse order of creation
       if(mWaylandPointer) {
@@ -776,10 +946,29 @@ namespace aui {
       wl_display_disconnect(mWaylandDisplay);
       mWaylandDisplay = nullptr;
     }
-    if(mFtDefaultFace)
+
+    if(mFTCManager) {
+      FTC_Manager_Done(mFTCManager);
+      mFTCManager = nullptr;
+// The manager has now freed the face; mark it invalid
+      mFtDefaultFace = nullptr;
+    }
+
+    for(auto &pair : mPreRenderedGlyphs) {
+      delete[] pair.second.bitmap;
+    }
+    mPreRenderedGlyphs.clear();
+
+// Do NOT call FT_Done_Face if the manager already freed it
+    if(mFtDefaultFace) {
       FT_Done_Face(mFtDefaultFace);
-    if(mFtLibrary)
+      mFtDefaultFace = nullptr;
+    }
+    if(mFtLibrary) {
       FT_Done_FreeType(mFtLibrary);
+      mFtLibrary = nullptr;
+    }
+
     if(mSelfPipeFds[0] >= 0) {
       close(mSelfPipeFds[0]);
       mSelfPipeFds[0] = -1;

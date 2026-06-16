@@ -1,8 +1,6 @@
 #ifndef ABOX_H_
 #define ABOX_H_
 
-#include "AWidget.h"
-
 namespace aui {
 
 class ABox : public AWidget {
@@ -15,6 +13,10 @@ public:
             int32_t offsetX, int32_t offsetY) const override;
   void SetBorderThickness(uint32_t thick) { mBorderThick = thick; }
   void SetBorderColor(uint32_t color) { mBorderColor = color; }
+
+  void OnMouseWheel(int32_t delta);
+
+  void OnMouseMove(int32_t localX, int32_t localY);
 };
 
 } // namespace aui

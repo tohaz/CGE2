@@ -69,7 +69,7 @@ CPPFLAGS := -I$(AUI_ROOT) \
             -I$(AUI_ROOT)/freetype2/include \
             -I$(AUI_ROOT)/freetype2/include/freetype/config
 
-LIBS     := -lAUI -lX11 -lX11-xcb -lxcb -lxcb-cursor -lxcb-image -lXrender -lwayland-client
+LIBS     := -lAUI -lX11 -lX11-xcb -lxcb -lxcb-cursor -lxcb-image -lXrender -lwayland-client -lxkbcommon -lxcb-keysyms -lxkbcommon-x11
 
 # Source and Target discovery
 # Every .cpp file becomes a separate executable in $(BUILD_DIR)

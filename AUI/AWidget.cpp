@@ -1,14 +1,13 @@
 #include "AUILib.h"
-#include "AWidget.h"
 
 namespace aui {
 
   AWidget::AWidget() {
-    D2("");
+    D3("");
   }
 
   void AWidget::Draw(UNUSED uint32_t *buffer, UNUSED uint32_t parentWidth, UNUSED uint32_t parentHeight,
-      UNUSED int32_t offsetX, UNUSED int32_t offsetY) const {
+  UNUSED int32_t offsetX, UNUSED int32_t offsetY) const {
     E("default method called")
   }
 
@@ -47,51 +46,44 @@ namespace aui {
     mWidg.push_back(std::move(widg));
   }
 
-  void AWidget::GetAbsolutePosition(int32_t &outX, int32_t &outY) const {
-    outX = mX;
-    outY = mY;
-    if(mParentWidget) {
-      int32_t parentX, parentY;
-      mParentWidget->GetAbsolutePosition(parentX, parentY);
-      outX += parentX;
-      outY += parentY;
-    }
-  }
-
   void AWidget::Move(int32_t x, int32_t y) {
     mX = x;
     mY = y;
-//    if(mParentWindow)
-//      mParentWindow->Draw();
+    ClampPositionToParent();// keep inside parent
   }
 
   void AWidget::Resize(uint32_t szx, uint32_t szy) {
+    D2("Resize entry: pos=({},{}) size=({},{}) -> new size=({},{})", mX, mY, mSizeX, mSizeY, szx, szy);
+    int32_t oldX = mX, oldY = mY;
+    uint32_t oldW = mSizeX, oldH = mSizeY;
     mSizeX = szx;
     mSizeY = szy;
-    mTextMetricsValid = false;
-//    if(mParentWindow)
-//      mParentWindow->Draw();
+    CapSizeToParent();
+    D2("After CapSizeToParent: pos=({},{}) size=({},{})", mX, mY, mSizeX, mSizeY);
+    mX = oldX;
+    mY = oldY;
+    D2("After position restore: pos=({},{})", mX, mY);
+    if(oldW != mSizeX || oldH != mSizeY) {
+      mTextMetricsValid = false;
+    }
   }
 
   void AWidget::SetBGColor(uint32_t color) {
     mBGColor = color;
-//    if(mParentWindow)
-//      mParentWindow->Draw();
   }
 
   bool AWidget::DispatchClick(int32_t parentX, int32_t parentY, bool pressed) {
     if(!mVisible || !mEnabled)
       return false;
-    if(parentX >= mX && parentX < mX + static_cast<int32_t>(mSizeX) && parentY >= mY
-        && parentY < mY + static_cast<int32_t>(mSizeY)) {
+    if(parentX >= mX && parentX < mX + (int32_t) mSizeX && parentY >= mY && parentY < mY + (int32_t) mSizeY) {
       int32_t localX = parentX - mX;
       int32_t localY = parentY - mY;
-// Let children handle first (deepest first)
-      for (auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+// Check children first
+      for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
         if((*it)->DispatchClick(localX, localY, pressed))
-          return true;
+          return false;// ← child handled it, so this container does NOT claim it
       }
-// No child consumed – ask this widget
+// No child handled – try this widget
       return OnMouseClick(localX, localY, pressed);
     }
     return false;
@@ -112,6 +104,7 @@ namespace aui {
     D2("AWidget::OnMouseClick default at ({},{}) pressed={}", localX, localY, pressed);
     bool consumed = (mClickCallback != nullptr);
     InvokeClickCallback(localX, localY, pressed);
+    //mParentWindow->ForceDraw();
     return consumed;
   }
 
@@ -127,7 +120,7 @@ namespace aui {
   }
 
   void AWidget::OnMouseMove(int32_t localX, int32_t localY) {
-    D2("AWidget::OnMouseMove (base) called: localX={}, localY={}, widget type={}", localX, localY,
+    D3("AWidget::OnMouseMove (base) called: localX={}, localY={}, widget type={}", localX, localY,
         static_cast<int32_t>(mWidgetType));
     InvokeMouseMoveCallback(localX, localY);
   }
@@ -234,10 +227,10 @@ namespace aui {
     size_t totalPixels = static_cast<size_t>(uPW) * uPH;
     uint32_t thick = mBorderThick;
 // Top and bottom borders
-    for (uint32_t t = 0; t < thick && t < uClipH; ++t) {
+    for(uint32_t t = 0; t < thick && t < uClipH; ++t) {
       size_t topLine = static_cast<size_t>(uClipY + t) * uPW + uClipX;
       size_t bottomLine = static_cast<size_t>(uClipY + uClipH - 1 - t) * uPW + uClipX;
-      for (uint32_t col = 0; col < uClipW; ++col) {
+      for(uint32_t col = 0; col < uClipW; ++col) {
         size_t idxTop = topLine + col;
         size_t idxBottom = bottomLine + col;
         if(idxTop < totalPixels)
@@ -249,8 +242,8 @@ namespace aui {
 // Left and right borders (skip corners already painted)
     if(thick * 2 < uClipH) {// ensure inner area exists
       uint32_t endRow = uClipH - thick;
-      for (uint32_t t = 0; t < thick && t < uClipW; ++t) {
-        for (uint32_t row = thick; row < endRow; ++row) {
+      for(uint32_t t = 0; t < thick && t < uClipW; ++t) {
+        for(uint32_t row = thick; row < endRow; ++row) {
           size_t leftPixel = static_cast<size_t>(uClipY + row) * uPW + uClipX + t;
           size_t rightPixel = static_cast<size_t>(uClipY + row) * uPW + uClipX + (uClipW - 1 - t);
           if(leftPixel < totalPixels)
@@ -319,7 +312,7 @@ namespace aui {
     int32_t maxAscent = 0;
     int32_t maxDescent = 0;
     int32_t totalWidth = 0;
-    for (char c : mText) {
+    for(char c : mText) {
       if(FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_RENDER) != 0) {
         continue;
       }
@@ -397,7 +390,7 @@ namespace aui {
     int32_t penX = startX;
     uint32_t colorNoAlpha = mTextColor & 0x00FFFFFFU;
     size_t totalPixels = static_cast<size_t>(pW) * static_cast<size_t>(pH);
-    for (char c : mText) {
+    for(char c : mText) {
       if(FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_RENDER) != 0) {
         continue;
       }
@@ -410,12 +403,12 @@ namespace aui {
       int32_t bitmapWidth = static_cast<int32_t>(bitmap->width);
       size_t rowStride = static_cast<size_t>(bitmapWidth);
 
-      for (int32_t row = 0; row < bitmapRows; ++row) {
+      for(int32_t row = 0; row < bitmapRows; ++row) {
         int32_t destY = glyphTop + row;
         if(destY < absY || destY >= absY + clipH)
           continue;
         size_t rowOffset = static_cast<size_t>(destY) * (size_t) pW;
-        for (int32_t col = 0; col < bitmapWidth; ++col) {
+        for(int32_t col = 0; col < bitmapWidth; ++col) {
           int32_t destX = glyphLeft + col;
           if(destX < absX || destX >= absX + clipW)
             continue;
@@ -496,7 +489,7 @@ namespace aui {
     uint32_t colorNoAlpha = mTextColor & 0x00FFFFFFU;
     size_t totalPixels = static_cast<size_t>(pW) * static_cast<size_t>(pH);
     D2("  startX={}, baselineY={}, mHOffset={}", startX, baselineY, xOffset);
-    for (char c : mText) {
+    for(char c : mText) {
       if(FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_RENDER) != 0)
         continue;
       FT_GlyphSlot slot = face->glyph;
@@ -506,12 +499,12 @@ namespace aui {
       int32_t bitmapRows = static_cast<int32_t>(bitmap->rows);
       int32_t bitmapWidth = static_cast<int32_t>(bitmap->width);
       size_t rowStride = static_cast<size_t>(bitmapWidth);
-      for (int32_t row = 0; row < bitmapRows; ++row) {
+      for(int32_t row = 0; row < bitmapRows; ++row) {
         int32_t destY = glyphTop + row;
         if(destY < absY || destY >= absY + clipH)
           continue;
         size_t rowOffset = static_cast<size_t>(destY) * (size_t) pW;
-        for (int32_t col = 0; col < bitmapWidth; ++col) {
+        for(int32_t col = 0; col < bitmapWidth; ++col) {
           int32_t destX = glyphLeft + col;
           if(destX < absX || destX >= absX + clipW)
             continue;
@@ -533,83 +526,162 @@ namespace aui {
     }
   }
 
-  void DrawTextEx(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t absX, int32_t absY,
-      int32_t drawW, int32_t drawH, const std::string &text, FT_Face face, uint32_t fontSize, AUIHAlign hAlign,
-      AUIVAlign vAlign, int32_t xOffset, uint32_t textColor) {
-    if(text.empty() || !face)
-      return;
-    FT_Set_Pixel_Sizes(face, 0, fontSize);
-// ----- compute text extents -----
-    int32_t maxAscent = 0, maxDescent = 0, totalWidth = 0;
-    for (char c : text) {
-      if(FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_RENDER) != 0)
-        continue;
-      FT_GlyphSlot slot = face->glyph;
-      totalWidth += static_cast<int32_t>(slot->advance.x >> 6);
-      int32_t asc = static_cast<int32_t>(slot->bitmap_top);
-      if(asc > maxAscent)
-        maxAscent = asc;
-      int32_t desc = static_cast<int32_t>(slot->bitmap.rows) - static_cast<int32_t>(slot->bitmap_top);
-      if(desc > maxDescent)
-        maxDescent = desc;
-    }
-    int32_t textWidth = totalWidth;
-    int32_t textHeight = maxAscent + maxDescent;
-    if(textHeight == 0)
-      textHeight = static_cast<int32_t>(fontSize);
-// ----- horizontal alignment (scroll offset applied) -----
-    int32_t startX = absX - xOffset;
-    if(hAlign == AUIHAlign::center)
-      startX += (drawW - textWidth) / 2;
-    else if(hAlign == AUIHAlign::right)
-      startX += drawW - textWidth;
-// ----- vertical alignment -> baseline -----
-    int32_t baselineY = absY;
-    if(vAlign == AUIVAlign::center)
-      baselineY += (drawH - textHeight) / 2;
-    else if(vAlign == AUIVAlign::bottom)
-      baselineY += drawH - textHeight;
-    baselineY += textHeight;
-    int32_t pW = static_cast<int32_t>(parentWidth);
-    int32_t pH = static_cast<int32_t>(parentHeight);
-    size_t totalPixels = static_cast<size_t>(pW) * static_cast<size_t>(pH);
-    uint32_t colorNoAlpha = textColor & 0x00FFFFFFU;
-    FT_Set_Pixel_Sizes(face, 0, fontSize);
-    int32_t penX = startX;
-    for (char c : text) {
-      if(FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_RENDER) != 0)
-        continue;
-      FT_GlyphSlot slot = face->glyph;
-      FT_Bitmap *bitmap = &slot->bitmap;
-      int32_t glyphLeft = penX + static_cast<int32_t>(slot->bitmap_left);
-      int32_t glyphTop = baselineY - static_cast<int32_t>(slot->bitmap_top);
-      int32_t rows = static_cast<int32_t>(bitmap->rows);
-      int32_t cols = static_cast<int32_t>(bitmap->width);
-      for (int32_t row = 0; row < rows; ++row) {
-        int32_t destY = glyphTop + row;
-        if(destY < absY || destY >= absY + drawH)
-          continue;
-        size_t rowOffset = static_cast<size_t>(destY) * static_cast<size_t>(pW);
-        for (int32_t col = 0; col < cols; ++col) {
-          int32_t destX = glyphLeft + col;
-          if(destX < absX || destX >= absX + drawW)
-            continue;
-          size_t idx = rowOffset + static_cast<size_t>(destX);
-          if(idx >= totalPixels)
-            continue;
-          uint8_t alpha =
-              bitmap->buffer[static_cast<size_t>(row) * static_cast<size_t>(cols) + static_cast<size_t>(col)];
-          if(alpha == 0)
-            continue;
-          uint32_t bg = buffer[idx];
-          uint32_t r = (((colorNoAlpha >> 16) & 0xFF) * alpha + ((bg >> 16) & 0xFF) * (255 - alpha)) / 255;
-          uint32_t g = (((colorNoAlpha >> 8) & 0xFF) * alpha + ((bg >> 8) & 0xFF) * (255 - alpha)) / 255;
-          uint32_t b = ((colorNoAlpha & 0xFF) * alpha + (bg & 0xFF) * (255 - alpha)) / 255;
-          buffer[idx] = (r << 16) | (g << 8) | b;
-        }
+  bool AWidget::IsFocused() const {
+    if(!mParentWindow)
+      return false;
+    return mParentWindow->GetFocusedWidget() == this;
+  }
+
+  int32_t AWidget::MeasureTextWidth(const std::string &text) const {
+      if (!mEnginePtr) return 0;
+      FT_Face face = mEnginePtr->GetDefaultFontFace();
+      if (!face) return 0;
+      FT_Set_Pixel_Sizes(face, 0, mFontSize);
+      int32_t width = 0;
+      for (char c : text) {
+          FT_ULong charCode = static_cast<FT_ULong>(static_cast<uint8_t>(c));
+          FT_UInt glyph_index = FT_Get_Char_Index(face, charCode);
+          FT_Fixed advance = mEnginePtr->GetCachedAdvance(glyph_index, mFontSize);
+          width += static_cast<int32_t>(advance >> 6);
       }
-      penX += static_cast<int32_t>(slot->advance.x >> 6);
+      return width;
+  }
+
+  void AWidget::DrawChildren(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
+      int32_t offsetY) const {
+    int32_t absX = offsetX + mX;
+    int32_t absY = offsetY + mY;
+    for(const auto &child : mWidg) {
+      if(child->IsVisible()) {
+        child->Draw(buffer, parentWidth, parentHeight, absX, absY);
+      }
     }
+  }
+
+  bool AWidget::ForwardClickToChildren(int32_t localX, int32_t localY, bool pressed) {
+// Iterate in reverse (topmost first) to find the first child that contains the point
+    for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+      AWidget *child = it->get();
+      if(!child->IsVisible() || !child->IsEnabled())
+        continue;
+      if(localX >= child->mX && localX < child->mX + static_cast<int32_t>(child->mSizeX) && localY >= child->mY
+          && localY < child->mY + static_cast<int32_t>(child->mSizeY)) {
+        int32_t childX = localX - child->mX;
+        int32_t childY = localY - child->mY;
+        if(child->OnMouseClick(childX, childY, pressed))
+          return true;
+      }
+    }
+    return false;
+  }
+
+  void AWidget::ForwardMoveToChildren(int32_t localX, int32_t localY) {
+// Store last mouse position for potential wheel forwarding
+    mLastMouseX = localX;
+    mLastMouseY = localY;
+
+// Find the topmost child under the cursor
+    AWidget *target = nullptr;
+    for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+      AWidget *child = it->get();
+      if(!child->IsVisible() || !child->IsEnabled())
+        continue;
+      if(localX >= child->mX && localX < child->mX + static_cast<int32_t>(child->mSizeX) && localY >= child->mY
+          && localY < child->mY + static_cast<int32_t>(child->mSizeY)) {
+        target = child;
+        break;
+      }
+    }
+
+// Notify hover change (optional: call OnMouseLeave on old hover)
+// For simplicity, we just forward the move to the target child
+    if(target) {
+      int32_t childX = localX - target->mX;
+      int32_t childY = localY - target->mY;
+      target->OnMouseMove(childX, childY);
+    }
+  }
+
+  void AWidget::ForwardWheelToChildren(int32_t delta) {
+// Use the last stored mouse position to determine which child gets the wheel event
+    for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+      AWidget *child = it->get();
+      if(!child->IsVisible() || !child->IsEnabled())
+        continue;
+      if(mLastMouseX >= child->mX && mLastMouseX < child->mX + static_cast<int32_t>(child->mSizeX)
+          && mLastMouseY >= child->mY && mLastMouseY < child->mY + static_cast<int32_t>(child->mSizeY)) {
+        child->OnMouseWheel(delta);
+        break;
+      }
+    }
+  }
+
+  void AWidget::OnParentResize(uint32_t, uint32_t) {
+    CapSizeToParent();
+    ClampPositionToParent();// because parent bounds changed
+  }
+
+  void AWidget::FitToParent() {
+    if(!mParentWidget)
+      return;
+    int32_t parentW = static_cast<int32_t>(mParentWidget->SizeX());
+    int32_t parentH = static_cast<int32_t>(mParentWidget->SizeY());
+    int32_t newW = static_cast<int32_t>(mSizeX);
+    int32_t newH = static_cast<int32_t>(mSizeY);
+// If right edge exceeds parent, reduce width
+    if(mX + newW > parentW) {
+      newW = parentW - mX;
+      if(newW < 0)
+        newW = 0;
+    }
+// If bottom edge exceeds parent, reduce height
+    if(mY + newH > parentH) {
+      newH = parentH - mY;
+      if(newH < 0)
+        newH = 0;
+    }
+    if(newW != static_cast<int32_t>(mSizeX) || newH != static_cast<int32_t>(mSizeY)) {
+      Resize(static_cast<uint32_t>(newW), static_cast<uint32_t>(newH));
+    }
+  }
+
+  void AWidget::CapSizeToParent() {
+    if(!mParentWidget)
+      return;
+    int32_t parentW = static_cast<int32_t>(mParentWidget->SizeX());
+    int32_t parentH = static_cast<int32_t>(mParentWidget->SizeY());
+    int32_t maxW = parentW - mX;
+    int32_t maxH = parentH - mY;
+    if(maxW < 0)
+      maxW = 0;
+    if(maxH < 0)
+      maxH = 0;
+    if(static_cast<int32_t>(mSizeX) > maxW)
+      mSizeX = static_cast<uint32_t>(maxW);
+    if(static_cast<int32_t>(mSizeY) > maxH)
+      mSizeY = static_cast<uint32_t>(maxH);
+  }
+
+  void AWidget::ClampPositionToParent() {
+    if(!mParentWidget)
+      return;
+    int32_t parentW = static_cast<int32_t>(mParentWidget->SizeX());
+    int32_t parentH = static_cast<int32_t>(mParentWidget->SizeY());
+    int32_t minX = 0, minY = 0;
+    int32_t maxX = parentW - static_cast<int32_t>(mSizeX);
+    int32_t maxY = parentH - static_cast<int32_t>(mSizeY);
+    if(maxX < 0)
+      maxX = 0;
+    if(maxY < 0)
+      maxY = 0;
+    if(mX < minX)
+      mX = minX;
+    if(mY < minY)
+      mY = minY;
+    if(mX > maxX)
+      mX = maxX;
+    if(mY > maxY)
+      mY = maxY;
   }
 
 }// namespace aui

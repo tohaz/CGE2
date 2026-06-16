@@ -1,9 +1,6 @@
 #ifndef ASCROLLBAR_H_
 #define ASCROLLBAR_H_
 
-#include "AWidget.h"
-#include "defaults.h"   // for AUIOrientation
-
 namespace aui {
 
 using ScrollCallback = std::function<void(AWindow*, AWidget*, void*, int32_t)>;
@@ -33,20 +30,14 @@ private:
   bool mArrowBottomPressed = false;
   bool mArrowLeftPressed = false;
   bool mArrowRightPressed = false;
-
-  // Geometry helpers (all in pixels)
   uint32_t GetTrackLength() const;      // length along the scrollbar axis (height for vertical, width for horizontal)
   uint32_t GetThumbLength() const;      // clamped to at least 20 pixels
-
-  // Convert mouse coordinate along axis to a value (min..max)
   int32_t ValueFromCoord(int32_t coord) const;
   int32_t mLastDrawnValue = 0;
-
   bool IsInTopArrow(int32_t localX, int32_t localY) const;
   bool IsInBottomArrow(int32_t localX, int32_t localY) const;
   bool IsInLeftArrow(int32_t localX, int32_t localY) const;
   bool IsInRightArrow(int32_t localX, int32_t localY) const;
-
 protected:
   void DrawTrack(uint32_t* buffer, uint32_t parentWidth, uint32_t parentHeight,
                  int32_t offsetX, int32_t offsetY) const;
@@ -54,21 +45,15 @@ protected:
                  int32_t offsetX, int32_t offsetY) const;
   void DrawArrows(uint32_t* buffer, uint32_t parentWidth, uint32_t parentHeight,
                   int32_t offsetX, int32_t offsetY) const;
-
 public:
   AScrollBar();
   ~AScrollBar() override = default;
-
   void Draw(uint32_t* buffer, uint32_t parentWidth, uint32_t parentHeight,
             int32_t offsetX, int32_t offsetY) const override;
   bool OnMouseClick(int32_t localX, int32_t localY, bool pressed) override;
   void OnMouseMove(int32_t localX, int32_t localY) override;
-
-  // Factory methods
   static AScrollBar* AttachTo(AWindow* parent, AUIOrientation orientation = AUIOrientation::vertical);
   static AScrollBar* AttachTo(AWidget* parent, AUIOrientation orientation = AUIOrientation::vertical);
-
-  // Setters (each calls redraw)
   void SetOrientation(AUIOrientation orient);
   void SetRange(int32_t minVal, int32_t maxVal);
   void SetValue(int32_t val);
@@ -78,8 +63,6 @@ public:
   void SetThumbThickness(uint32_t thick);
   void SetThumbColor(uint32_t color);
   void SetTrackColor(uint32_t color);
-
-  // Getters
   AUIOrientation GetOrientation() const { return mOrientation; }
   int32_t GetMinValue() const { return mMinValue; }
   int32_t GetMaxValue() const { return mMaxValue; }
@@ -91,7 +74,6 @@ public:
   uint32_t GetThumbColor() const { return mThumbColor; }
   uint32_t GetTrackColor() const { return mTrackColor; }
   void OnParentResize(uint32_t newWidth, uint32_t newHeight) override;
-  // Callback
   void SetScrollCallback(ScrollCallback callback, void* userData = nullptr);
   uint32_t GetThumbPosition() const;    // offset from track start (pixels)
   void ShowArrows(bool state) {mShowArrows = state;}

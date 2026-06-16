@@ -1,8 +1,6 @@
 #ifndef XCBWINDOWCONTEXT_H_
 #define XCBWINDOWCONTEXT_H_
 
-#include "IWindowContext.h"
-
 namespace aui {
 
   class AUI;
@@ -18,6 +16,11 @@ namespace aui {
       void ApplySizeHints(uint32_t min_w, uint32_t min_h, uint32_t max_w, uint32_t max_h);
       uint32_t mSizeX = 0;
       uint32_t mSizeY = 0;
+      xcb_key_symbols_t* mKeySymbols = nullptr;
+      struct xkb_context* mXkbCtx = nullptr;
+      struct xkb_keymap* mXkbKeymap = nullptr;
+      struct xkb_state* mXkbState = nullptr;
+      xcb_cursor_context_t* mCursorContext = nullptr;
     public:
       XcbWindowContext(AUI *aui, AWindow *window);
       ~XcbWindowContext() override;
@@ -34,6 +37,7 @@ namespace aui {
       uint32_t SizeX() const {return mSizeY;}
       uint32_t SizeY() const {return mSizeX;}
       uint64_t GetNativeWindowId() const {return mWindowId;}
+      virtual void SetCursor(AUICursorType type) override;
   };
 
 }// namespace aui

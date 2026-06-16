@@ -3,20 +3,22 @@
 namespace aui {
 
   ABox::ABox() {
-    D2("")
+    D3("")
   }
 
-  ABox* ABox::AttachTo(AWindow* parent) {
+  ABox* ABox::AttachTo(AWindow *parent) {
     D2("attaching widget")
-    if(!parent) E("");
-    ABox* box = new ABox();
+    if(!parent)
+      E("");
+    ABox *box = new ABox();
     parent->AddWidget(std::unique_ptr<AWidget>(box));
     return box;
   }
 
-  ABox* ABox::AttachTo(AWidget* parent) {
-    if(!parent) E("");
-    auto* box = new ABox();
+  ABox* ABox::AttachTo(AWidget *parent) {
+    if(!parent)
+      E("");
+    auto *box = new ABox();
     parent->AddWidget(std::unique_ptr<AWidget>(box));
     return box;
   }
@@ -29,27 +31,25 @@ namespace aui {
     uint32_t drawH = std::min(mSizeY, parentHeight - static_cast<uint32_t>(absY));
     if(drawW == 0 || drawH == 0)
       return;
-
     uint32_t bg = mBGColor & 0x00FFFFFF;
-    for (uint32_t row = 0; row < drawH; ++row) {
+    for(uint32_t row = 0; row < drawH; ++row) {
       size_t lineStart = (static_cast<size_t>(absY) + row) * parentWidth + static_cast<size_t>(absX);
-      for (uint32_t col = 0; col < drawW; ++col) {
+      for(uint32_t col = 0; col < drawW; ++col) {
         buffer[lineStart + col] = bg;
       }
     }
-
     if(mBorderThick > 0) {
       uint32_t border = mBorderColor & 0x00FFFFFF;
-      for (uint32_t t = 0; t < mBorderThick && t < drawH; ++t) {
+      for(uint32_t t = 0; t < mBorderThick && t < drawH; ++t) {
         size_t topLine = (static_cast<size_t>(absY) + t) * parentWidth + static_cast<size_t>(absX);
         size_t bottomLine = (static_cast<size_t>(absY) + drawH - 1 - t) * parentWidth + static_cast<size_t>(absX);
-        for (uint32_t col = 0; col < drawW; ++col) {
+        for(uint32_t col = 0; col < drawW; ++col) {
           buffer[topLine + col] = border;
           buffer[bottomLine + col] = border;
         }
       }
-      for (uint32_t t = 0; t < mBorderThick && t < drawW; ++t) {
-        for (uint32_t row = mBorderThick; row < drawH - mBorderThick; ++row) {
+      for(uint32_t t = 0; t < mBorderThick && t < drawW; ++t) {
+        for(uint32_t row = mBorderThick; row < drawH - mBorderThick; ++row) {
           size_t leftPixel = (static_cast<size_t>(absY) + row) * parentWidth + static_cast<size_t>(absX) + t;
           size_t rightPixel = (static_cast<size_t>(absY) + row) * parentWidth + static_cast<size_t>(absX) + drawW - 1
               - t;
@@ -58,6 +58,17 @@ namespace aui {
         }
       }
     }
+    DrawChildren(buffer, parentWidth, parentHeight, offsetX, offsetY);
+  }
+
+  void ABox::OnMouseWheel(int32_t delta) {
+    AWidget::OnMouseWheel(delta);
+    ForwardWheelToChildren(delta);
+  }
+
+  void ABox::OnMouseMove(int32_t localX, int32_t localY) {
+    AWidget::OnMouseMove(localX, localY);
+    ForwardMoveToChildren(localX, localY);
   }
 
 }// namespace aui

@@ -35,6 +35,18 @@ inline void print_stack() {
   free(symbols);
 }
 
+class ScopedTimer {
+    const char* m_msg;
+    std::chrono::time_point<std::chrono::high_resolution_clock> m_start;
+public:
+    ScopedTimer(const char* msg) : m_msg(msg), m_start(std::chrono::high_resolution_clock::now()) {}
+    ~ScopedTimer() {
+        auto end = std::chrono::high_resolution_clock::now();
+        auto us = std::chrono::duration_cast<std::chrono::microseconds>(end - m_start).count();
+        std::cout << m_msg << ": " << us << " us" << std::endl;
+    }
+};
+
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
   #error "Not tested on Big-endian system"
 #elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -66,9 +78,9 @@ struct ProhibitedType {
     " AUI LIBRARY COMPILATION ERROR:\n"
     " Standard built-in integer types are prohibited!\n"
     " Please use fixed-width types:\n"
-    " - Instead of 'int'      -> use 'INT32' / 'int32_t'\n"
+    " - Instead of 'int'      -> use 'int32_t'\n"
     " - Instead of 'short'    -> use 'int16_t'\n"
-    " - Instead of 'unsigned' -> use 'UINT32' / 'uint32_t'\n"
+    " - Instead of 'unsigned' -> use 'uint32_t'\n"
     "==================================================");
     using type = void;
 };
@@ -108,6 +120,52 @@ union ARGBColor {
 };
 #pragma pack(pop)
 
+enum class AUIKeyCode : uint32_t {
+  None = 0,
+  Enter,
+  Backspace,
+  Delete,
+  Insert,
+  Left,
+  Right,
+  Up,
+  Down,
+  Home,
+  End,
+  Tab,
+  Escape,
+  Space
+// Add others as needed
+};
+
+enum class AUIModifier : uint8_t {
+  None = 0,
+  Shift = 1 << 0,
+  Ctrl = 1 << 1,
+  Alt = 1 << 2,
+  Super = 1 << 3,
+};
+
+inline AUIModifier operator|(AUIModifier a, AUIModifier b) {
+    return static_cast<AUIModifier>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
+}
+
+inline AUIModifier operator&(AUIModifier a, AUIModifier b) {
+    return static_cast<AUIModifier>(static_cast<uint8_t>(a) & static_cast<uint8_t>(b));
+}
+
+inline AUIModifier& operator|=(AUIModifier& a, AUIModifier b) {
+    a = a | b;
+    return a;
+}
+
+struct AUIKeyEvent {
+    bool pressed;               // true = key down, false = key up
+    uint32_t unicode;           // Unicode code point (0 if not a printable character)
+    AUIKeyCode code;            // logical key code (for non‑printable keys)
+    AUIModifier modifiers;      // active modifiers
+};
+
 // CGWindow
 #define AUI_DEFAULT_WINDOW_TITLE "aui dummy title, set me plz"
 #define AUI_DEFAULT_WINDOW_SZX 500
@@ -127,7 +185,7 @@ union ARGBColor {
 #define AUI_DEFAULT_INPUT_SZX 80
 #define AUI_DEFAULT_INPUT_SZY 20
 #define AUI_DEFAULT_INPUT_BG 0xFFAACCAA
-#define AUI_DEFAULT_INPUT_FG 0x000000
+#define AUI_DEFAULT_INPUT_FG 0xFF000000
 #define AUI_DEFAULT_INPUT_CURSORW 2
 #define AUI_DEFAULT_INPUT_CURSORH 10
 #define AUI_DEFAULT_INPUT_BORDERW 2
@@ -217,9 +275,16 @@ enum class AUIWidgetStyle {
     Simple3D = 2
 };
 
+enum class AUICursorType {
+    Default,
+    HResize,
+    VResize
+};
+
 #ifndef AUI_GIT_VERSION
 #define AUI_GIT_VERSION "Not a controlled build"
 #endif
+
 
 #define DT(fmt, ...) \
   do { \
@@ -292,6 +357,28 @@ enum class AUIWidgetStyle {
 #else
     #define D4(...)  do {} while (0);
 #endif
+
+#define TEST_ASSERT(cond, errcode) do { if(!(cond)) { E("Test failed: {}", #cond); return errcode; } } while(0)
+
+#define TEST_ASSERT_EQ(actual, expected, errcode) \
+    do { \
+        auto act = (actual); \
+        auto exp = (expected); \
+        if (act != exp) { \
+            E("Test failed: {} == {} (actual: {}, expected: {})", #actual, #expected, act, exp); \
+            return errcode; \
+        } \
+    } while(0)
+
+#define TEST_ASSERT_NE(actual, expected, errcode) \
+    do { \
+        auto act = (actual); \
+        auto exp = (expected); \
+        if (act == exp) { \
+            E("Test failed: {} != {} (actual: {}, expected: {})", #actual, #expected, act, exp); \
+            return errcode; \
+        } \
+    } while(0)
 
 const std::unordered_map<std::string,UINT64> string_to_case{
    {"BackSpace", 1},
