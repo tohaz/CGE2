@@ -326,8 +326,8 @@ namespace aui {
       }
 // Draw text
       if(face) {
-///        DrawTextEx(buffer, parentWidth, parentHeight, clientX, clientY + visibleStartY, clientW, visibleHeight,
-///            mData[i], face, mFontSize, mHAlign, mLineTextVAlign, mHOffset, mTextColor, (int32_t) mMaxWidthPx);
+        DrawTextEx(buffer, parentWidth, parentHeight, clientX, clientY + visibleStartY, clientW, visibleHeight,
+            mData[i], face, mFontSize, mHAlign, mLineTextVAlign, mHOffset, mTextColor, (int32_t) mMaxWidthPx);
       }
     }
 // ------------------------------------------------------------------
