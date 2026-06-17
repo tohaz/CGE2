@@ -16,7 +16,7 @@ namespace aui {
       friend class AList;
       friend class AInputBox;
       friend class ATable;
-
+      friend class AComboBox;
     private:
       std::unique_ptr<IWindowContext> mBackend;
       std::string mWindowTitle;
@@ -76,6 +76,8 @@ namespace aui {
       void SetKeepFocusOnMouseLeave(bool keep) { mKeepFocusOnMouseLeave = keep; }
       bool KeepFocusOnMouseLeave() const { return mKeepFocusOnMouseLeave; }
       void SetCursor(AUICursorType type);
+      void BringChildToFront(AWidget *child);
+
 
   };
 

@@ -684,5 +684,16 @@ namespace aui {
       mY = maxY;
   }
 
+  void AWidget::BringChildToFront(AWidget *child) {
+    auto it = std::find_if(mWidg.begin(), mWidg.end(), [child](const std::unique_ptr<AWidget> &ptr) {
+      return ptr.get() == child;
+    });
+    if(it != mWidg.end() && it != mWidg.end() - 1) {
+      std::unique_ptr<AWidget> ptr = std::move(*it);
+      mWidg.erase(it);
+      mWidg.push_back(std::move(ptr));
+    }
+  }
+
 }// namespace aui
 

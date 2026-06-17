@@ -35,18 +35,6 @@ inline void print_stack() {
   free(symbols);
 }
 
-class ScopedTimer {
-    const char* m_msg;
-    std::chrono::time_point<std::chrono::high_resolution_clock> m_start;
-public:
-    ScopedTimer(const char* msg) : m_msg(msg), m_start(std::chrono::high_resolution_clock::now()) {}
-    ~ScopedTimer() {
-        auto end = std::chrono::high_resolution_clock::now();
-        auto us = std::chrono::duration_cast<std::chrono::microseconds>(end - m_start).count();
-        std::cout << m_msg << ": " << us << " us" << std::endl;
-    }
-};
-
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
   #error "Not tested on Big-endian system"
 #elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -65,10 +53,6 @@ static_assert(sizeof(long) == 8, "long must be 8 bytes");
 #define UINT32 uint32_t
 #define INT64 int64_t
 #define UINT64 uint64_t
-
-//#ifdef BUILDING_MY_STATIC_LIB
-//  #pragma GCC poison short int long unsigned signed
-//#endif
 
 #ifdef BUILDING_MY_STATIC_LIB
 template <int N>
@@ -381,6 +365,36 @@ enum class AUICursorType {
             return errcode; \
         } \
     } while(0)
+
+class ScopedTimer {
+    std::string m_msg;
+    std::chrono::time_point<std::chrono::high_resolution_clock> m_start;
+    std::source_location m_loc;
+
+public:
+    // Only constructor: takes a pre‑formatted message and the caller’s location
+    ScopedTimer(std::string msg, const std::source_location& loc)
+        : m_msg(std::move(msg))
+        , m_start(std::chrono::high_resolution_clock::now())
+        , m_loc(loc) {}
+
+    ~ScopedTimer() {
+        auto end = std::chrono::high_resolution_clock::now();
+        auto us = std::chrono::duration_cast<std::chrono::microseconds>(end - m_start).count();
+
+        auto now = std::chrono::system_clock::now();
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      now.time_since_epoch()) % 1000;
+
+        std::println("{:%H:%M:%S}.{:03d} {}|{}({}): {}: {} µs",
+                     now, static_cast<int32_t>(ms.count()),
+                     m_loc.file_name(), m_loc.function_name(), m_loc.line(),
+                     m_msg, us);
+    }
+};
+
+#define ST(fmt, ...) \
+    ScopedTimer(std::format(fmt __VA_OPT__(,) __VA_ARGS__), std::source_location::current());
 
 const std::unordered_map<std::string,UINT64> string_to_case{
    {"BackSpace", 1},

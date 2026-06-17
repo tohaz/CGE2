@@ -558,8 +558,8 @@ namespace aui {
   }
 
   void AUI::Draw() {
-    DT("cascade Draw({})", mDrawCounter++);
-    auto start = std::chrono::high_resolution_clock::now();
+    D3("cascade Draw({})", mDrawCounter++);
+    UNUSED auto start = std::chrono::high_resolution_clock::now();
 // 1. Redraw all registered windows to populate their respective buffers
     if(mWindowType == AUIWindowType::XCB) {
       for(auto &pair : mXcbWindowMap) {
@@ -631,8 +631,8 @@ namespace aui {
     }
     mDrawCommands.clear();
     FlushConnection();// Safely executes xcb_flush() or wl_display_flush()
-    auto end = std::chrono::high_resolution_clock::now();
-    DT("Backend commit took {} us", std::chrono::duration_cast<std::chrono::microseconds>(end-start).count());
+    UNUSED auto end = std::chrono::high_resolution_clock::now();
+    D3("Backend commit took {} us", std::chrono::duration_cast<std::chrono::microseconds>(end-start).count());
     D3("AUI::Draw: flushed connection");
   }
 
@@ -946,14 +946,12 @@ namespace aui {
       wl_display_disconnect(mWaylandDisplay);
       mWaylandDisplay = nullptr;
     }
-
     if(mFTCManager) {
       FTC_Manager_Done(mFTCManager);
       mFTCManager = nullptr;
 // The manager has now freed the face; mark it invalid
       mFtDefaultFace = nullptr;
     }
-
     for(auto &pair : mPreRenderedGlyphs) {
       delete[] pair.second.bitmap;
     }
@@ -968,7 +966,6 @@ namespace aui {
       FT_Done_FreeType(mFtLibrary);
       mFtLibrary = nullptr;
     }
-
     if(mSelfPipeFds[0] >= 0) {
       close(mSelfPipeFds[0]);
       mSelfPipeFds[0] = -1;

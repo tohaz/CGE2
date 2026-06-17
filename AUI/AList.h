@@ -5,6 +5,8 @@ namespace aui {
 
   class AScrollBar;
 
+  using SelectionChangedCallback = std::function<void(AWindow*, AWidget*, void*)>;
+
   class AList: public AWidget {
     private:
 // Data
@@ -43,6 +45,9 @@ namespace aui {
           int32_t offsetY) const;
       bool mAutoHideScrollbars = true;
       void RecalcScrollFromAlignment();
+      SelectionChangedCallback mOnSelectionChanged;
+      void* mSelectionUserData = nullptr;
+      void NotifySelectionChanged();
     protected:
     public:
       AList();
@@ -105,6 +110,8 @@ namespace aui {
       uint32_t GetLineHeight() {return mLineHeight;}
       AScrollBar* GetVScrollBar();
       uint32_t ComputeStringWidth(const std::string& str) const;
+      void SetOnSelectionChanged(SelectionChangedCallback callback, void* userData = nullptr);
+
   };
 
 }// namespace aui

@@ -78,15 +78,18 @@ namespace aui {
   }
 
   void AList::RemoveItem(size_t index) {
-    if(index >= mData.size())
-      return;
-    mData.erase(mData.begin() + static_cast<ptrdiff_t>(index));
-    mTag.erase(mTag.begin() + static_cast<ptrdiff_t>(index));
-    RecalcMaxWidth();
-    if(mParentWindow)
-      mParentWindow->Draw();
+      if (index >= mData.size())
+          return;
+      bool wasSelected = mTag[index];
+      mData.erase(mData.begin() + static_cast<ptrdiff_t>(index));
+      mTag.erase(mTag.begin() + static_cast<ptrdiff_t>(index));
+      RecalcMaxWidth();
+      if (wasSelected) {
+          NotifySelectionChanged(); // selection set changed
+      }
+      if (mParentWindow)
+          mParentWindow->Draw();
   }
-
   void AList::Clear() {
     mData.clear();
     mTag.clear();
@@ -114,25 +117,42 @@ namespace aui {
   }
 
   void AList::SelectAll(bool selected) {
+    bool changed = false;
     for(size_t i = 0; i < mTag.size(); ++i) {
-      mTag[i] = selected;
+      if(mTag[i] != selected) {
+        mTag[i] = selected;
+        changed = true;
+      }
     }
-    if(mParentWindow)
-      mParentWindow->Draw();
+    if(changed) {
+      NotifySelectionChanged();
+      if(mParentWindow)
+        mParentWindow->Draw();
+    }
   }
 
   void AList::SelectIndex(size_t index, bool selected) {
     if(index >= mTag.size())
       return;
+    bool changed = false;
     if(!mMultiSelect && selected) {
-// Single‑select mode: clear all others first
+// Single‑select: clear all others first
       for(size_t i = 0; i < mTag.size(); ++i) {
-        mTag[i] = false;
+        if(mTag[i] != false) {
+          mTag[i] = false;
+          changed = true;
+        }
       }
     }
-    mTag[index] = selected;
-    if(mParentWindow)
-      mParentWindow->Draw();
+    if(mTag[index] != selected) {
+      mTag[index] = selected;
+      changed = true;
+    }
+    if(changed) {
+      NotifySelectionChanged();
+      if(mParentWindow)
+        mParentWindow->Draw();
+    }
   }
 
   bool AList::IsSelected(size_t index) const {
@@ -151,11 +171,18 @@ namespace aui {
   }
 
   void AList::ClearSelection() {
-    for(size_t i = 0; i < mTag.size(); ++i) {
-      mTag[i] = false;
-    }
-    if(mParentWindow)
-      mParentWindow->Draw();
+      bool changed = false;
+      for (size_t i = 0; i < mTag.size(); ++i) {
+          if (mTag[i]) {
+              mTag[i] = false;
+              changed = true;
+          }
+      }
+      if (changed) {
+          NotifySelectionChanged();
+          if (mParentWindow)
+              mParentWindow->Draw();
+      }
   }
 
   void AList::RecalcMaxWidth() {
@@ -931,10 +958,21 @@ namespace aui {
 
   void AList::SetMultiSelect(bool enable) {
     if(mMultiSelect == enable) {
-      E("already it that selection mode")
+      E("already in that selection mode")
     }
     mMultiSelect = enable;
     ClearSelection();
+  }
+
+  void AList::SetOnSelectionChanged(SelectionChangedCallback callback, void* userData) {
+      mOnSelectionChanged = std::move(callback);
+      mSelectionUserData = userData;
+  }
+
+  void AList::NotifySelectionChanged() {
+      if (mOnSelectionChanged) {
+          mOnSelectionChanged(mParentWindow, this, mSelectionUserData);
+      }
   }
 
   AList::~AList() {

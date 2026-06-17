@@ -7,11 +7,14 @@ namespace aui {
   using ClickCallback = std::function<void(AWindow*, AWidget*, void*, int32_t, int32_t, bool)>;
   using MouseMoveCallback = std::function<void(AWindow*, AWidget*, void*, int32_t, int32_t)>;
   using ScrollCallback = std::function<void(AWindow*, AWidget*, void*, int32_t)>;
-
   void DrawTextEx(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t absX, int32_t absY,
         int32_t drawW, int32_t drawH, const std::string &text, FT_Face face, uint32_t fontSize, AUIHAlign hAlign,
         AUIVAlign vAlign, int32_t xOffset, uint32_t textColor, int32_t maxContentWidth);
-
+  void DrawLine(uint32_t *buffer, uint32_t bufferWidth, uint32_t bufferHeight, int32_t x0, int32_t y0, int32_t x1,
+      int32_t y1, uint32_t color);
+  void DrawThickLine(uint32_t* buffer, uint32_t bufferWidth, uint32_t bufferHeight,
+                            int32_t x0, int32_t y0, int32_t x1, int32_t y1,
+                            uint32_t color, uint32_t thickness);
 
   // Fill a rectangle with a solid color.
 // All coordinates and sizes are assumed to be already clipped to the buffer bounds.
@@ -64,6 +67,7 @@ namespace aui {
       friend class AList;
       friend class AInputBox;
       friend class ATable;
+      friend class AComboBox;
     private:
       uint64_t mId = 0U;
       bool mEnabled = true;
@@ -191,6 +195,7 @@ namespace aui {
       void ForwardMoveToChildren(int32_t localX, int32_t localY);
       // Forward a mouse wheel event to the child under the last known mouse position
       void ForwardWheelToChildren(int32_t delta);
+      void BringChildToFront(AWidget* child);
 
 
 

@@ -118,8 +118,6 @@ namespace aui {
   }
 
   void AWindow::OnMousePress(int32_t x, int32_t y, uint32_t button) {
-    ScopedTimer total_timer("AWindow::OnMousePress total");
-
 // Normalize button codes
     uint32_t normalized = button;
     if(button == 272)
@@ -130,10 +128,8 @@ namespace aui {
       normalized = 2;
     if(normalized != 1)
       return;// only left button
-
 // Already dragging?
     if(mDragWidget) {
-      ScopedTimer drag_timer("drag branch");
       int32_t localX = x - mDragWidget->X();
       int32_t localY = y - mDragWidget->Y();
       if(localX >= 0 && localX < static_cast<int32_t>(mDragWidget->SizeX()) && localY >= 0
@@ -143,30 +139,22 @@ namespace aui {
       ForceDraw();
       return;
     }
-
 // Find the topmost widget that wants the press
     int32_t childIndex = 0;
     for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
       std::string label = "DispatchClick child " + std::to_string(childIndex++);
-      ScopedTimer dispatch_timer(label.c_str());
       bool consumed = (*it)->DispatchClick(x, y, true);
       if(consumed) {
         if(!mDragWidget) {
-          ScopedTimer set_timer("SetDragWidget");
           SetDragWidget(it->get());
         }
         break;
       }
     }
-
-// Focus handling
-    {
-      ScopedTimer focus_timer("focus handling");
-      if(mDragWidget && mDragWidget->IsFocusable())
-        SetFocus(mDragWidget);
-      else if(!mDragWidget)
-        ClearFocus();
-    }
+    if(mDragWidget && mDragWidget->IsFocusable())
+      SetFocus(mDragWidget);
+    else if(!mDragWidget)
+      ClearFocus();
   }
 
   void AWindow::OnMouseRelease(int32_t x, int32_t y, uint32_t button) {
@@ -332,6 +320,17 @@ namespace aui {
     }
     else
       E()
+  }
+
+  void AWindow::BringChildToFront(AWidget *child) {
+    auto it = std::find_if(mWidg.begin(), mWidg.end(), [child](const std::unique_ptr<AWidget> &ptr) {
+      return ptr.get() == child;
+    });
+    if(it != mWidg.end() && it != mWidg.end() - 1) {
+      std::unique_ptr<AWidget> ptr = std::move(*it);
+      mWidg.erase(it);
+      mWidg.push_back(std::move(ptr));
+    }
   }
 
   AWindow::~AWindow() {

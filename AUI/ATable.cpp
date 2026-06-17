@@ -941,8 +941,6 @@ namespace aui {
   }
 
   std::pair<int64_t, int64_t> ATable::ScreenToCell(int32_t localX, int32_t localY, int32_t, int32_t) const {
-    ScopedTimer total_timer("ScreenToCell total");
-
 // Header area check
     if(localX < static_cast<int32_t>(mRowHeaderWidth) || localY < static_cast<int32_t>(mColumnHeaderHeight)) {
       return {-1, -1};
@@ -950,19 +948,13 @@ namespace aui {
 
 // Get starting column/row from scroll offsets
     ATableRangeData1 colStart, rowStart;
-    {
-      ScopedTimer offset_timer("Offset2Column/Row");
-      colStart = Offset2Column(mHOffset);
-      rowStart = Offset2Row(mVOffset);
-    }
-
+    colStart = Offset2Column(mHOffset);
+    rowStart = Offset2Row(mVOffset);
     int64_t targetRow = -1, targetCol = -1;
-
 // Column search
     int64_t currX = static_cast<int64_t>(mRowHeaderWidth) - colStart.offset;
     auto itCol = mColumnW.lower_bound(colStart.cell);
     {
-      ScopedTimer col_timer("column search");
       for(; itCol != mColumnW.end(); ++itCol) {
         int64_t colW = itCol->second.first;
         if(localX >= currX && localX < currX + colW) {
@@ -974,12 +966,10 @@ namespace aui {
           break;
       }
     }
-
 // Row search
     int64_t currY = static_cast<int64_t>(mColumnHeaderHeight) - rowStart.offset;
     auto itRow = mRowH.lower_bound(rowStart.cell);
     {
-      ScopedTimer row_timer("row search");
       for(; itRow != mRowH.end(); ++itRow) {
         int64_t rowH = itRow->second.first;
         if(localY >= currY && localY < currY + rowH) {

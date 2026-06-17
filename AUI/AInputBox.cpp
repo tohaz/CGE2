@@ -1,5 +1,4 @@
 #include "AUILib.h"
-//#include <FTGL/ftgl.h>
 
 namespace aui {
 
@@ -109,12 +108,12 @@ namespace aui {
 
       std::string displayText = GetDisplayText();// handles password mode
       if(!displayText.empty()) {
-///        DrawTextEx(buffer, parentWidth, parentHeight, clientX, clientY, clientW, clientH, displayText, face, mFontSize,
-///            mHAlign, mVAlign, 0, textColor, clientW);
+        DrawTextEx(buffer, parentWidth, parentHeight, clientX, clientY, clientW, clientH, displayText, face, mFontSize,
+            mHAlign, mVAlign, 0, textColor, clientW);
       }
       else if(!mPlaceholder.empty() && !IsFocused()) {
-///        DrawTextEx(buffer, parentWidth, parentHeight, clientX, clientY, clientW, clientH, mPlaceholder, face, mFontSize,
-///            mHAlign, mVAlign, 0, placeholderColor, clientW);
+        DrawTextEx(buffer, parentWidth, parentHeight, clientX, clientY, clientW, clientH, mPlaceholder, face, mFontSize,
+            mHAlign, mVAlign, 0, placeholderColor, clientW);
       }
     }
 // 5. Draw cursor (only when enabled)
