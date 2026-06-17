@@ -5,15 +5,17 @@ namespace aui {
   AList::AList() :
       mLineSpacing(0), mMultiSelect(false), mScrollbarsEnabled(false), mDragScrollbar(nullptr) {
     D2("AList constructed");
-    mSizeX = 200;
-    mSizeY = 150;
+    mX = AUI_LIST_X;
+    mY = AUI_LIST_Y;
+    mSizeX = AUI_LIST_SZX;
+    mSizeY = AUI_LIST_SZY;
     mBGColor = 0xFFCCCCCC;
     mTextColor = 0xFF000000;
     mFontSize = 14;
     mBorderThick = 1;
     mBorderColor = 0xFF888888;
     mWidgetType = AUIWidgetType::defaultList;
-    mHAlign = AUIHAlign::left;
+    mHAlign = AUIHAlign::right;
     mVAlign = AUIVAlign::top;
     RecalcLineHeight();// this will set mLineHeight
   }
@@ -39,9 +41,30 @@ namespace aui {
   void AList::AddItem(const std::string &text) {
     mData.push_back(text);
     mTag.push_back(false);
-    RecalcMaxWidth();
+// Measure only the new string
+    uint32_t newWidth = ComputeStringWidth(text);
+    if(newWidth > mMaxWidthPx) {
+      mMaxWidthPx = newWidth;
+    }
+// Update scrollbars (vertical range changes because item count increased)
+    UpdateScrollbarRanges();
     if(mParentWindow)
       mParentWindow->Draw();
+  }
+
+  uint32_t AList::ComputeStringWidth(const std::string &str) const {
+    if(!mEnginePtr)
+      return 0;
+    FT_Face face = mEnginePtr->GetDefaultFontFace();
+    if(!face)
+      return 0;
+    FT_Set_Pixel_Sizes(face, 0, mFontSize);
+    uint32_t width = 0;
+    for(char c : str) {
+      if(FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_DEFAULT) == 0)
+        width += static_cast<uint32_t>(face->glyph->advance.x >> 6);
+    }
+    return width;
   }
 
   void AList::InsertItem(size_t index, const std::string &text) {
@@ -326,8 +349,9 @@ namespace aui {
       }
 // Draw text
       if(face) {
+        int32_t effectiveWidth = (int32_t)std::max(mMaxWidthPx, static_cast<uint32_t>(clientW));
         DrawTextEx(buffer, parentWidth, parentHeight, clientX, clientY + visibleStartY, clientW, visibleHeight,
-            mData[i], face, mFontSize, mHAlign, mLineTextVAlign, mHOffset, mTextColor, (int32_t) mMaxWidthPx);
+            mData[i], face, mFontSize, mHAlign, mLineTextVAlign, mHOffset, mTextColor, effectiveWidth);
       }
     }
 // ------------------------------------------------------------------

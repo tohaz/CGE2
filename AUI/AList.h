@@ -104,6 +104,7 @@ namespace aui {
       uint32_t GetMaxContentWidth() {return mMaxWidthPx;}
       uint32_t GetLineHeight() {return mLineHeight;}
       AScrollBar* GetVScrollBar();
+      uint32_t ComputeStringWidth(const std::string& str) const;
   };
 
 }// namespace aui

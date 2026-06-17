@@ -3,7 +3,11 @@
 namespace aui {
 
   ABox::ABox() {
-    D3("")
+    D3()
+    mX = AUI_BOX_X;
+    mY = AUI_BOX_Y;
+    mSizeX = AUI_BOX_SZX;
+    mSizeY = AUI_BOX_SZY;
   }
 
   ABox* ABox::AttachTo(AWindow *parent) {

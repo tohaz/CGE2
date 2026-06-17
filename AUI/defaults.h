@@ -166,12 +166,12 @@ struct AUIKeyEvent {
     AUIModifier modifiers;      // active modifiers
 };
 
-// CGWindow
+// AWindow
 #define AUI_DEFAULT_WINDOW_TITLE "aui dummy title, set me plz"
 #define AUI_DEFAULT_WINDOW_SZX 500
 #define AUI_DEFAULT_WINDOW_SZY 300
 #define AUI_DEFAULT_WINDOW_BG 0xFFAAAAAAU
-// CGButton
+// AButton
 #define AUI_DEFAULT_BUTTON_X 10
 #define AUI_DEFAULT_BUTTON_Y 10
 #define AUI_DEFAULT_BUTTON_SZX 80
@@ -179,7 +179,7 @@ struct AUIKeyEvent {
 // disabled for now as it conflicts with content drawing
 //#define AUI_DEFAULT_BUTTON_BORDERW 3
 #define AUI_DEFAULT_BUTTON_BG 0xFFCCCCCC
-// CGInput
+// AInputBox
 #define AUI_DEFAULT_INPUT_X 15
 #define AUI_DEFAULT_INPUT_Y 15
 #define AUI_DEFAULT_INPUT_SZX 80
@@ -189,22 +189,24 @@ struct AUIKeyEvent {
 #define AUI_DEFAULT_INPUT_CURSORW 2
 #define AUI_DEFAULT_INPUT_CURSORH 10
 #define AUI_DEFAULT_INPUT_BORDERW 2
-
-// CGLabel
+// ALabel
 #define AUI_DEFAULT_LABEL_BG 0xFFBBBBBB
 #define AUI_DEFAULT_LABEL_SZX 120
 #define AUI_DEFAULT_LABEL_SZY 30
 #define AUI_DEFAULT_LABEL_BORDERW 0
-// CGList
+// AList
 #define AUI_LIST_X 20
 #define AUI_LIST_Y 20
-#define AUI_LIST_FG_COLOR 0xFF333333
 #define AUI_LIST_SZX 300
 #define AUI_LIST_SZY 200
-#define AUI_LIST_ARROWSZ1 15
-#define AUI_LIST_ARROWSZ2 15
+#define AUI_LIST_FG_COLOR 0xFF333333
 #define AUI_LIST_BG 0xFFCCCCCC
-// CGTable
+// ABox
+#define AUI_BOX_X 25
+#define AUI_BOX_Y 25
+#define AUI_BOX_SZX 100
+#define AUI_BOX_SZY 100
+// ATable
 #define AUI_TABLE_X 20
 #define AUI_TABLE_Y 20
 #define AUI_TABLE_SZX 300

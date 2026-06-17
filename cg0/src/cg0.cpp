@@ -21,28 +21,19 @@ int32_t main() {
   AWindow *w = au->MainWnd();
   w->EnableResize();
   w->Resize(1024, 768);
-  ABox *bx = ABox::AttachTo(w);
-  bx->Move(0, 0);
-  bx->Resize(1024, 768);
   auto start = std::chrono::steady_clock::now();
+//  UNUSED ABox *bx = ABox::AttachTo(w);
+//  bx->Move(0, 0);
+//  bx->Resize(1024, 768);
 
-  UNUSED ATable *ta = ATable::AttachTo(bx);
-  ta->AddColumns(2);// now internal resizing won't exceed parent
-  ta->AddRows(2);
-  ta->Resize(100, 100);// then position
-  ta->Move(0, 0);
-  ta->Resize(1024, 768);// then position
-  ta->SetBGColor(0xFFFFFFFF);
-  ta->SetAutoWiden(false);
-  ta->BeginBatch();
-    for(int32_t i = 0; i < 1000; i++) {
-      for(int32_t j = 0; j < 10; j++)
-//        ta->SetCellData(i, j, "a");
-        ta->SetCellData(i, j, generate_random_alphanumeric(10));
+  UNUSED AList *li = AList::AttachTo(w);
+
+  for (int i = 0; i < 1000; ++i) {
+    li->AddItem("Item " + std::to_string(i));
   }
-  ta->EndBatch();
-  ta->SetScrollbarsEnabled(true);
-  //1300ms for my setup for 10 random chars and million cells
+
+  li->SetHAlignment(AUIHAlign::right);
+
   D1("init {} ms", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count());
   au->ProcessMessages();
   delete au;
