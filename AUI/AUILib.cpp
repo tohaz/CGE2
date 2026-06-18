@@ -9,6 +9,10 @@ extern "C" {
   }
 }
 
+extern "C" const uint8_t _binary_fonts_DejaVuSans_Bold_ttf_start[];
+extern "C" const uint8_t _binary_fonts_DejaVuSans_Bold_ttf_end[];
+size_t g_embedded_font_size = (size_t) _binary_fonts_DejaVuSans_Bold_ttf_end - (size_t) _binary_fonts_DejaVuSans_Bold_ttf_start;
+
 namespace aui {
 
   AUI::AUI() {
@@ -265,19 +269,62 @@ namespace aui {
   AUI* AUI::Create(const std::string &windowTitle) {
     AUI *au = new AUI();
     if(FT_Init_FreeType(&au->mFtLibrary) != 0) {
+      E("FT_Init_FreeType failed");
       delete au;
       return nullptr;
     }
-    const char *fontPath = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
-    if(FT_New_Face(au->mFtLibrary, fontPath, 0, &au->mFtDefaultFace) != 0) {
-      fontPath = "/usr/share/fonts/DejaVuSans-Bold.ttf";
-      if(FT_New_Face(au->mFtLibrary, fontPath, 0, &au->mFtDefaultFace) != 0) {
-        delete au;
-        return nullptr;
+    FT_Error err = FT_Err_Unknown_File_Format;
+// ------------------------------------------------------------------
+// 1. Try system fonts
+// ------------------------------------------------------------------
+    const char *fontPaths[] = {
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/DejaVuSans-Bold.ttf" };
+    for(size_t i = 0; i < sizeof(fontPaths) / sizeof(fontPaths[0]); ++i) {
+      err = FT_New_Face(au->mFtLibrary, fontPaths[i], 0, &au->mFtDefaultFace);
+      if(err == 0) {
+        D1("Loaded system font: {}", fontPaths[i]);
+        break;
+      }
+      else {
+        D3("FT_New_Face failed for {}: error {}", fontPaths[i], err);
       }
     }
+
+// ------------------------------------------------------------------
+// 2. Fallback to embedded font if available
+// ------------------------------------------------------------------
+    if(err != 0) {
+      D1("System font not found, trying embedded font");
+// Verify that the embedded font data is non‑empty
+      if(g_embedded_font_size > 0) {
+        err = FT_New_Memory_Face(au->mFtLibrary, _binary_fonts_DejaVuSans_Bold_ttf_start, (int64_t) g_embedded_font_size, 0,
+            &au->mFtDefaultFace);
+        if(err == 0) {
+          D1("Loaded embedded font ({} bytes)", g_embedded_font_size);
+        }
+        else {
+          E("FT_New_Memory_Face failed: error {}", err);
+        }
+      }
+      else {
+        E("Embedded font data is empty (size 0) – check objcopy");
+      }
+    }
+// ------------------------------------------------------------------
+// 3. If still no font, abort
+// ------------------------------------------------------------------
+    if(err != 0) {
+      E("No font could be loaded (last error {})", err);
+      delete au;
+      return nullptr;
+    }
+
     FT_Set_Pixel_Sizes(au->mFtDefaultFace, 0, 14);
-// Initialize FreeType cache manager (only for bitmap glyphs)
+
+// ------------------------------------------------------------------
+// FreeType cache manager
+// ------------------------------------------------------------------
     FT_Error error = FTC_Manager_New(au->mFtLibrary, AUI::kMaxFaces, AUI::kMaxSizes, AUI::kMaxBytes, ftc_face_requester,
         au, &au->mFTCManager);
     if(error) {
@@ -288,11 +335,14 @@ namespace aui {
       error = FTC_ImageCache_New(au->mFTCManager, &au->mFTCImageCache);
       if(error)
         E("FTC_ImageCache_New failed: {}", error);
-// No FTC_CMapCache – we use our own advance cache
     }
+
     au->mFtDefaultFace->generic.data = au;
     au->PreRenderAscii(14);
-// Wayland or XCB setup
+
+// ------------------------------------------------------------------
+// Wayland / XCB setup (unchanged)
+// ------------------------------------------------------------------
     const char *waylandEnv = getenv("WAYLAND_DISPLAY");
     if(waylandEnv) {
       au->mWindowType = AUIWindowType::Wayland;
@@ -317,11 +367,13 @@ namespace aui {
     else {
       au->mWindowType = AUIWindowType::XCB;
     }
+
     au->mMainWnd = AWindow::AttachTo(au, windowTitle);
     if(!au->mMainWnd) {
       delete au;
       return nullptr;
     }
+
     au->Draw();
     return au;
   }

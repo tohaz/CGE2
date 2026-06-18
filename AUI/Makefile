@@ -28,6 +28,7 @@ OBJ_DIR := $(LIB_DIR)/obj
 
 CXX := g++
 AR  := ar
+
 # Wayland Protocol Scanner config
 WAYLAND_SCANNER   := wayland-scanner
 PROTOCOLS_DIR     := $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)
@@ -41,9 +42,8 @@ DECORATION_XML    := $(PROTOCOLS_DIR)/unstable/xdg-decoration/xdg-decoration-uns
 SCALE_XML         := $(PROTOCOLS_DIR)/staging/fractional-scale/fractional-scale-v1.xml
 
 ifeq ($(wildcard $(XDG_SHELL_XML)),)
-  $(error Ошибка: Файл $(XDG_SHELL_XML) не найден. Установите пакет wayland-protocols)
+  $(error Error: $(XDG_SHELL_XML) not found. Install wayland-protocols package)
 endif
-
 
 # Generated files
 GEN_SRCS          := $(OBJ_DIR)/xdg-shell-protocol.c \
@@ -66,8 +66,7 @@ BASE_FLAGS := -fmax-errors=25 -std=c++26 -pedantic -pedantic-errors -Wall -Wextr
               
 GIT_VERSION := $(shell git describe --always --dirty --tags 2>/dev/null || echo "unknown")
 BASE_FLAGS  += -DAUI_GIT_VERSION=\"$(GIT_VERSION)\"              
-BASE_FLAGS += -I$(OBJ_DIR)
-              
+BASE_FLAGS  += -I$(OBJ_DIR)
 
 # Optimization logic based on BUILD_MODE
 ifeq ($(BUILD_MODE), release)
@@ -79,36 +78,50 @@ else
 endif
 CXXFLAGS += -I$(SRC_DIR)/freetype2/include -I$(SRC_DIR)/freetype2/include/freetype/config
 
+# Source files and base objects
 SRC_FILES  := $(wildcard $(SRC_DIR)/*.cpp)
 OBJ_FILES  := $(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/%.o, $(SRC_FILES))
-# Add wayland generated object to the final library list
 OBJ_FILES  += $(GEN_OBJS)
+
+# ------------------------------------------------------------------
+# Font embedding – appended after base objects
+# ------------------------------------------------------------------
+FONT_FILE := $(SRC_DIR)/fonts/DejaVuSans-Bold.ttf 
+FONT_OBJ  := $(OBJ_DIR)/font_data.o
+
+ifneq ($(wildcard $(FONT_FILE)),)
+  OBJ_FILES += $(FONT_OBJ)
+  CXXFLAGS += -DAUI_EMBEDDED_FONT
+else
+  $(warning Font file $(FONT_FILE) not found – using system font fallback)
+endif
 
 LIB_NAME   := libAUI.a
 STATIC_LIB := $(LIB_DIR)/$(LIB_NAME)
 
 # --- Rules ---
 
-# Default target: The library is the main goal
 all: $(STATIC_LIB)
 
-# Mode switching targets
 release srelease:
 	+@$(MAKE) BUILD_MODE=$@ all
 
-# Archive the library: All OBJ_FILES must be finished first
+# Convert font to object
+$(FONT_OBJ): $(FONT_FILE) | $(OBJ_DIR)
+	@echo "Converting font to object: $<"
+	objcopy -I binary -O elf64-x86-64 -B i386:x86-64 $< $@
+
+# Archive the library
 $(STATIC_LIB): $(OBJ_FILES)
 	@echo "--- Archiving AUI Library [Mode: $(BUILD_MODE)] ---"
 	$(AR) rcs $@ $(OBJ_FILES)
 
-# Compile objects:
-# Uses order-only dependency '| $(OBJ_DIR)' to ensure directory exists 
-# BEFORE compilation starts, without relying on timestamps.
+# Compile C++ objects
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
 	@echo "Compiling AUI [$(BUILD_MODE)]: $<"
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Specific triggers to match target names with their XML sources
+# Generate Wayland protocol sources and headers
 $(OBJ_DIR)/xdg-shell-protocol.c: $(XDG_SHELL_XML) | $(OBJ_DIR)
 	@echo "Generating Wayland protocol source: $@"
 	$(WAYLAND_SCANNER) private-code $< $@
@@ -130,24 +143,24 @@ $(OBJ_DIR)/fractional-scale-v1-client-protocol.h: $(SCALE_XML) | $(OBJ_DIR)
 	@echo "Generating Wayland protocol header: $@"
 	$(WAYLAND_SCANNER) client-header $< $@
 
-# Precise dependencies mapping to prevent race condition during parallel build
+# Dependencies to avoid race conditions
 $(OBJ_DIR)/xdg-shell-protocol.o: $(OBJ_DIR)/xdg-shell-protocol.c $(OBJ_DIR)/xdg-shell-client-protocol.h
 $(OBJ_DIR)/xdg-decoration-protocol.o: $(OBJ_DIR)/xdg-decoration-protocol.c $(OBJ_DIR)/xdg-decoration-unstable-v1-client-protocol.h
 $(OBJ_DIR)/fractional-scale-protocol.o: $(OBJ_DIR)/fractional-scale-protocol.c $(OBJ_DIR)/fractional-scale-v1-client-protocol.h
 
-# Static pattern rule to compile all generated C files safely
+# Compile generated C files (Wayland) with relaxed warnings
 $(GEN_OBJS): $(OBJ_DIR)/%.o: $(OBJ_DIR)/%.c
 	@echo "Compiling generated Wayland code [$(BUILD_MODE)]: $<"
 	$(CXX) $(CXXFLAGS) -Wno-pedantic -Wno-cast-qual -Wno-attributes -c $< -o $@
 
-# Create mode-specific directories
+# Create directories
 $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)
 
 # Include auto-generated dependencies
 -include $(OBJ_FILES:.o=.d)
 
-# Clean only the current mode and remove empty Custom directory in debug mode
+# Clean
 clean:
 	@echo "--- Cleaning AUI Library [$(BUILD_MODE)] ---"
 	@if [ "$(BUILD_MODE)" = "debug" ]; then \
