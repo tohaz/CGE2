@@ -11,7 +11,8 @@ extern "C" {
 
 extern "C" const uint8_t _binary_fonts_DejaVuSans_Bold_ttf_start[];
 extern "C" const uint8_t _binary_fonts_DejaVuSans_Bold_ttf_end[];
-size_t g_embedded_font_size = (size_t) _binary_fonts_DejaVuSans_Bold_ttf_end - (size_t) _binary_fonts_DejaVuSans_Bold_ttf_start;
+size_t g_embedded_font_size = (size_t) _binary_fonts_DejaVuSans_Bold_ttf_end
+    - (size_t) _binary_fonts_DejaVuSans_Bold_ttf_start;
 
 namespace aui {
 
@@ -277,8 +278,7 @@ namespace aui {
 // ------------------------------------------------------------------
 // 1. Try system fonts
 // ------------------------------------------------------------------
-    const char *fontPaths[] = {
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    const char *fontPaths[] = { "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/DejaVuSans-Bold.ttf" };
     for(size_t i = 0; i < sizeof(fontPaths) / sizeof(fontPaths[0]); ++i) {
       err = FT_New_Face(au->mFtLibrary, fontPaths[i], 0, &au->mFtDefaultFace);
@@ -298,8 +298,8 @@ namespace aui {
       D1("System font not found, trying embedded font");
 // Verify that the embedded font data is non‑empty
       if(g_embedded_font_size > 0) {
-        err = FT_New_Memory_Face(au->mFtLibrary, _binary_fonts_DejaVuSans_Bold_ttf_start, (int64_t) g_embedded_font_size, 0,
-            &au->mFtDefaultFace);
+        err = FT_New_Memory_Face(au->mFtLibrary, _binary_fonts_DejaVuSans_Bold_ttf_start,
+            (int64_t) g_embedded_font_size, 0, &au->mFtDefaultFace);
         if(err == 0) {
           D1("Loaded embedded font ({} bytes)", g_embedded_font_size);
         }
@@ -612,6 +612,7 @@ namespace aui {
   void AUI::Draw() {
     D3("cascade Draw({})", mDrawCounter++);
     UNUSED auto start = std::chrono::high_resolution_clock::now();
+
 // 1. Redraw all registered windows to populate their respective buffers
     if(mWindowType == AUIWindowType::XCB) {
       for(auto &pair : mXcbWindowMap) {
@@ -625,16 +626,35 @@ namespace aui {
           pair.second->Draw();
       }
     }
-    if(mDrawCommands.size() == 0) {
+    if(mDrawCommands.empty()) {
       D3("zero commands");
       return;
     }
     D3("AUI::Draw: processing {} commands", mDrawCommands.size());
     std::lock_guard<std::mutex> lock(mCommandMutex);
     for(const auto &cmd : mDrawCommands) {
-// ------------------------------------------------------------------
-// XCB Graphics Pipeline Routing
-// ------------------------------------------------------------------
+// --------------------------------------------------------------
+//  NEW: Validate that the target window/surface still exists
+// --------------------------------------------------------------
+      bool valid = false;
+      if(cmd.type == DrawCommandType::Xcb) {
+        auto it = mXcbWindowMap.find(cmd.xcb.windowId);
+        if(it != mXcbWindowMap.end())
+          valid = true;
+      }
+      else if(cmd.type == DrawCommandType::Wayland) {
+        uint64_t id = reinterpret_cast<uint64_t>(cmd.wayland.surface);
+        auto it = mWaylandSurfaceMap.find(id);
+        if(it != mWaylandSurfaceMap.end())
+          valid = true;
+      }
+      if(!valid) {
+        D3("Skipping draw command for destroyed window");
+        continue;// skip this command, it will be cleared along with the rest
+      }
+// --------------------------------------------------------------
+// XCB Graphics Pipeline
+// --------------------------------------------------------------
       if(cmd.type == DrawCommandType::Xcb) {
         if(!mXcbConnection)
           E("Draw: XCB command but mXcbConnection is null");
@@ -667,24 +687,27 @@ namespace aui {
           D1("xcb_image_create_native failed");
         }
       }
-
+// --------------------------------------------------------------
+// Wayland Graphics Pipeline
+// --------------------------------------------------------------
       else if(cmd.type == DrawCommandType::Wayland) {
         const auto &wl = cmd.wayland;
         if(wl.surface && wl.buffer) {
 // 1. Re-attach the buffer to tell the server we want to update the frame
           wl_surface_attach(wl.surface, wl.buffer, 0, 0);
-// 2. FUNDAMENTAL WAYLAND STEP: Tell the compositor that the pixels inside
-// the shared memory pool have changed and it must re-read them.
+// 2. Tell the compositor that the pixels inside the shared memory pool
+//    have changed and it must re-read them.
           wl_surface_damage(wl.surface, 0, 0, static_cast<int32_t>(wl.width), static_cast<int32_t>(wl.height));
 // 3. Submit the state and flush the connection
           wl_surface_commit(wl.surface);
         }
       }
     }
+// All commands (including skipped ones) are cleared after processing
     mDrawCommands.clear();
-    FlushConnection();// Safely executes xcb_flush() or wl_display_flush()
+    FlushConnection();
     UNUSED auto end = std::chrono::high_resolution_clock::now();
-    D3("Backend commit took {} us", std::chrono::duration_cast<std::chrono::microseconds>(end-start).count());
+    D3("Backend commit took {} us", std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
     D3("AUI::Draw: flushed connection");
   }
 
@@ -752,6 +775,7 @@ namespace aui {
 
   void AUI::UnregisterWindow(uint64_t nativeId) {
     D2("UnregisterWindow: nativeId={}", nativeId);
+    ClearDrawCommandsForWindow(nativeId);
     if(mWindowType == AUIWindowType::XCB) {
       auto it = mXcbWindowMap.find(nativeId);
       if(it == mXcbWindowMap.end()) {
@@ -759,12 +783,6 @@ namespace aui {
       }
       mXcbWindowMap.erase(it);
       D2("Removed XCB window, map size now {}", mXcbWindowMap.size());
-      std::lock_guard<std::mutex> lock(mCommandMutex);
-      mDrawCommands.erase(
-          std::remove_if(mDrawCommands.begin(), mDrawCommands.end(), [nativeId](const DrawCommand &cmd) {
-            return cmd.type == DrawCommandType::Xcb && cmd.xcb.windowId == nativeId;
-          }),
-          mDrawCommands.end());
     }
     else {
       auto it = mWaylandSurfaceMap.find(nativeId);

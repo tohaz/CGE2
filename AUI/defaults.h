@@ -1,7 +1,7 @@
 #ifndef DEFAULTS_H_
 #define DEFAULTS_H_
 
-#define DEBUG_LEVEL 1
+#define DEBUG_LEVEL 2
 
 // try {deference 0}
 // catch(SegmentationFault:) {}
@@ -251,14 +251,21 @@ enum class AUIHAlign {
 };
 
 enum class AUIVAlign {
-  center = 1,
-  top = 2,
-  bottom = 3
+    center = 1,
+    top = 2,
+    bottom = 3
 };
 
 enum class AUIWidgetStyle {
     Flat = 1,
     Simple3D = 2
+};
+
+enum class AUIDirection {
+    left = 1,
+    right = 2,
+    top = 3,
+    bottom = 4
 };
 
 enum class AUICursorType {
@@ -364,6 +371,20 @@ enum class AUICursorType {
             E("Test failed: {} != {} (actual: {}, expected: {})", #actual, #expected, act, exp); \
             return errcode; \
         } \
+    } while(0)
+
+// ------------------------------------------------------------------
+// Floating-point equality test with tolerance (returns on failure)
+// ------------------------------------------------------------------
+#define TEST_ASSERT_DOUBLE_EQ(actual, expected, errcode)                  \
+    do {                                                                 \
+        double a = (actual);                                             \
+        double e = (expected);                                           \
+        if (std::abs(a - e) > 1e-9) {                                    \
+            E("Test failed: {} == {} (got {}, expected {})",             \
+              #actual, #expected, a, e);                                 \
+            return errcode;                                              \
+        }                                                                \
     } while(0)
 
 class ScopedTimer {

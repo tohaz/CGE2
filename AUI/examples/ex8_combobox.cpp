@@ -9,7 +9,7 @@ int32_t main() {
 
   AWindow* win = au->MainWnd();
   win->EnableResize();
-  win->Resize(600, 400);
+  win->Resize(400, 300);
 
   // 2. Primary combobox (fruits)
   AComboBox* cbFruits = AComboBox::AttachTo(win);

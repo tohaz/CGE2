@@ -68,6 +68,7 @@ namespace aui {
       friend class AInputBox;
       friend class ATable;
       friend class AComboBox;
+      friend class AProgressBar;
     private:
       uint64_t mId = 0U;
       bool mEnabled = true;

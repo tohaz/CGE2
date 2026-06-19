@@ -30,7 +30,7 @@ namespace aui {
   }
 
   std::string NumberToBaseString(UINT64 n) {
-    D3("entering with '{}', alphabet len '{}'", n, mAlphabetLen)
+    D3("entering with '{}', alphabet len '{}'", n, BaseAlphabet.size())
     std::string result = "";
     do {
       result += BaseAlphabet[n % BaseAlphabet.size()];

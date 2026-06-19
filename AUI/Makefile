@@ -12,10 +12,8 @@ ifeq ($(OS),Darwin)
   NPROCS := $(shell sysctl -n hw.ncpu)
 endif
 
-# Enable multithreading
-ifeq ($(filter -j%,$(MAKEFLAGS)),)
-  MAKEFLAGS += -j$(NPROCS)
-endif
+# Enable multithreading for sub‑makes
+MAKEFLAGS += -j$(NPROCS)
 
 # Directory logic: debug stays in Custom, others in Custom/mode
 ifeq ($(BUILD_MODE), debug)
@@ -36,7 +34,6 @@ ifeq ($(PROTOCOLS_DIR),)
   PROTOCOLS_DIR   := /usr/share/wayland-protocols
 endif
 
-# XML Paths
 XDG_SHELL_XML     := $(PROTOCOLS_DIR)/stable/xdg-shell/xdg-shell.xml
 DECORATION_XML    := $(PROTOCOLS_DIR)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
 SCALE_XML         := $(PROTOCOLS_DIR)/staging/fractional-scale/fractional-scale-v1.xml
@@ -68,7 +65,7 @@ GIT_VERSION := $(shell git describe --always --dirty --tags 2>/dev/null || echo 
 BASE_FLAGS  += -DAUI_GIT_VERSION=\"$(GIT_VERSION)\"              
 BASE_FLAGS  += -I$(OBJ_DIR)
 
-# Optimization logic based on BUILD_MODE
+# Optimization logic
 ifeq ($(BUILD_MODE), release)
   CXXFLAGS := $(BASE_FLAGS) -O3 -ffunction-sections -fdata-sections -DFT2_BUILD_LIBRARY
 else ifeq ($(BUILD_MODE), srelease)
@@ -78,14 +75,12 @@ else
 endif
 CXXFLAGS += -I$(SRC_DIR)/freetype2/include -I$(SRC_DIR)/freetype2/include/freetype/config
 
-# Source files and base objects
+# Source files and objects
 SRC_FILES  := $(wildcard $(SRC_DIR)/*.cpp)
 OBJ_FILES  := $(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/%.o, $(SRC_FILES))
 OBJ_FILES  += $(GEN_OBJS)
 
-# ------------------------------------------------------------------
-# Font embedding – appended after base objects
-# ------------------------------------------------------------------
+# Font embedding
 FONT_FILE := $(SRC_DIR)/fonts/DejaVuSans-Bold.ttf 
 FONT_OBJ  := $(OBJ_DIR)/font_data.o
 
@@ -99,25 +94,36 @@ endif
 LIB_NAME   := libAUI.a
 STATIC_LIB := $(LIB_DIR)/$(LIB_NAME)
 
-# --- Rules ---
+# ------------------------------------------------------------------
+# Build FreeType dependency – done first via 'all' recipe
+# ------------------------------------------------------------------
+FREETYPE_DIR := $(SRC_DIR)/freetype2
+FREETYPE_MK  := AUIFreeType.mk
 
-all: $(STATIC_LIB)
+.PHONY: all build_aui
+all:
+	@echo "--- Building FreeType (mode: $(BUILD_MODE)) ---"
+	$(MAKE) -C $(FREETYPE_DIR) -f $(FREETYPE_MK) BUILD_MODE=$(BUILD_MODE)
+	@echo "--- Building AUI Library (mode: $(BUILD_MODE)) ---"
+	$(MAKE) build_aui BUILD_MODE=$(BUILD_MODE)
 
-release srelease:
-	+@$(MAKE) BUILD_MODE=$@ all
+# Target that actually builds the library
+build_aui: $(STATIC_LIB)
 
-# Convert font to object
-$(FONT_OBJ): $(FONT_FILE) | $(OBJ_DIR)
+# --- Rules for compiling and archiving ---
+
+# Font object – depends on headers if it includes anything (safe to add)
+$(FONT_OBJ): $(FONT_FILE) $(GEN_HDRS) | $(OBJ_DIR)
 	@echo "Converting font to object: $<"
 	objcopy -I binary -O elf64-x86-64 -B i386:x86-64 $< $@
 
-# Archive the library
 $(STATIC_LIB): $(OBJ_FILES)
 	@echo "--- Archiving AUI Library [Mode: $(BUILD_MODE)] ---"
 	$(AR) rcs $@ $(OBJ_FILES)
 
-# Compile C++ objects
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
+# Compile C++ objects – explicitly depend on all generated Wayland headers
+# so they are built before any source is compiled.
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp $(GEN_HDRS) | $(OBJ_DIR)
 	@echo "Compiling AUI [$(BUILD_MODE)]: $<"
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
@@ -143,24 +149,23 @@ $(OBJ_DIR)/fractional-scale-v1-client-protocol.h: $(SCALE_XML) | $(OBJ_DIR)
 	@echo "Generating Wayland protocol header: $@"
 	$(WAYLAND_SCANNER) client-header $< $@
 
-# Dependencies to avoid race conditions
+# Dependencies for generated objects
 $(OBJ_DIR)/xdg-shell-protocol.o: $(OBJ_DIR)/xdg-shell-protocol.c $(OBJ_DIR)/xdg-shell-client-protocol.h
 $(OBJ_DIR)/xdg-decoration-protocol.o: $(OBJ_DIR)/xdg-decoration-protocol.c $(OBJ_DIR)/xdg-decoration-unstable-v1-client-protocol.h
 $(OBJ_DIR)/fractional-scale-protocol.o: $(OBJ_DIR)/fractional-scale-protocol.c $(OBJ_DIR)/fractional-scale-v1-client-protocol.h
 
-# Compile generated C files (Wayland) with relaxed warnings
-$(GEN_OBJS): $(OBJ_DIR)/%.o: $(OBJ_DIR)/%.c
+# Compile generated C files with relaxed warnings – these also need the headers
+$(GEN_OBJS): $(OBJ_DIR)/%.o: $(OBJ_DIR)/%.c $(GEN_HDRS)
 	@echo "Compiling generated Wayland code [$(BUILD_MODE)]: $<"
 	$(CXX) $(CXXFLAGS) -Wno-pedantic -Wno-cast-qual -Wno-attributes -c $< -o $@
 
-# Create directories
 $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)
 
-# Include auto-generated dependencies
 -include $(OBJ_FILES:.o=.d)
 
 # Clean
+.PHONY: clean
 clean:
 	@echo "--- Cleaning AUI Library [$(BUILD_MODE)] ---"
 	@if [ "$(BUILD_MODE)" = "debug" ]; then \
@@ -168,6 +173,12 @@ clean:
 	else \
 		rm -rf $(LIB_DIR); \
 	fi
+	@echo "--- Cleaning FreeType ---"
+	$(MAKE) -C $(FREETYPE_DIR) -f $(FREETYPE_MK) clean
 
-.PHONY: all clean release srelease
-
+# Release / srelease shortcuts
+.PHONY: release srelease
+release srelease:
+	$(MAKE) BUILD_MODE=$@ all
+	
+	

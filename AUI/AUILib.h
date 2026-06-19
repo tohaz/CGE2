@@ -39,6 +39,7 @@
 #include <regex>
 #include <source_location>
 #include <string>
+#include <shared_mutex>
 #include <string.h>
 #include <stack>
 #include <sstream>
@@ -60,6 +61,7 @@
 #include "AInputBox.h"
 #include "ATable.h"
 #include "AComboBox.h"
+#include "AProgressBar.h"
 #include "IWindowContext.h"
 #include "XcbWindowContext.h"
 #include "WaylandWindowContext.h"

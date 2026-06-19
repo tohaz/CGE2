@@ -76,27 +76,20 @@ namespace aui {
     D2("AWindow::Close entered, nativeId={}", mNativeId);
     AUI *ep = mBackend ? mBackend->GetEnginePtr() : nullptr;
     bool isMain = (ep && ep->MainWnd() == this);
-    uint64_t nativeId = mNativeId;// copy before potential deletion
-
-// Clear draw commands using the local nativeId
-    if(ep) {
-      std::lock_guard<std::mutex> lock(ep->GetCommandMutex());
-      auto &commands = ep->GetDrawCommands();
-      commands.erase(std::remove_if(commands.begin(), commands.end(), [nativeId](const DrawCommand &cmd) {
-        return cmd.type == DrawCommandType::Xcb && cmd.xcb.windowId == nativeId;
-      }),
-      commands.end());
+    if(isMain) {
+// Do NOT unregister/destroy the main window now.
+// Just break the event loop; the window will be destroyed
+// when the AUI is deleted in main() after the worker thread joins.
+      if(ep)
+        ep->ExitAUI();
+// Optional: hide the window so it disappears immediately.
+// if (mBackend) mBackend->Hide();
     }
-
-    if(ep) {
-      ep->UnregisterWindow(nativeId);
+    else {
+// For non‑main windows, immediate destruction is acceptable.
+      if(ep)
+        ep->UnregisterWindow(mNativeId);
     }
-
-    if(isMain && ep) {
-      D2("Exiting AUI");
-      ep->ExitAUI();
-    }
-// No further accesses to 'this' members
   }
 
   void AWindow::SetTitle(const std::string &title) {

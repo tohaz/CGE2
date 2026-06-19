@@ -17,6 +17,7 @@ namespace aui {
       friend class AInputBox;
       friend class ATable;
       friend class AComboBox;
+      friend class AProgressBar;
     private:
       std::unique_ptr<IWindowContext> mBackend;
       std::string mWindowTitle;
