@@ -1,10 +1,6 @@
 #ifndef ATABLE_H_
 #define ATABLE_H_
 
-#include "AWidget.h"
-#include <map>
-#include <string>
-
 namespace aui {
 
 // Cell data structure (same as old version)

@@ -1,13 +1,6 @@
 #ifndef APROGRESSBAR_H_
 #define APROGRESSBAR_H_
 
-#include "AUILib.h"
-#include <functional>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <atomic>
-
 namespace aui {
 
   class AProgressBar: public AWidget {

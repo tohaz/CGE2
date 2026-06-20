@@ -283,14 +283,13 @@ namespace aui {
     for(size_t i = 0; i < sizeof(fontPaths) / sizeof(fontPaths[0]); ++i) {
       err = FT_New_Face(au->mFtLibrary, fontPaths[i], 0, &au->mFtDefaultFace);
       if(err == 0) {
-        D1("Loaded system font: {}", fontPaths[i]);
+        D3("Loaded system font: {}", fontPaths[i]);
         break;
       }
       else {
         D3("FT_New_Face failed for {}: error {}", fontPaths[i], err);
       }
     }
-
 // ------------------------------------------------------------------
 // 2. Fallback to embedded font if available
 // ------------------------------------------------------------------
@@ -319,9 +318,7 @@ namespace aui {
       delete au;
       return nullptr;
     }
-
     FT_Set_Pixel_Sizes(au->mFtDefaultFace, 0, 14);
-
 // ------------------------------------------------------------------
 // FreeType cache manager
 // ------------------------------------------------------------------
@@ -339,7 +336,6 @@ namespace aui {
 
     au->mFtDefaultFace->generic.data = au;
     au->PreRenderAscii(14);
-
 // ------------------------------------------------------------------
 // Wayland / XCB setup (unchanged)
 // ------------------------------------------------------------------
@@ -367,13 +363,11 @@ namespace aui {
     else {
       au->mWindowType = AUIWindowType::XCB;
     }
-
     au->mMainWnd = AWindow::AttachTo(au, windowTitle);
     if(!au->mMainWnd) {
       delete au;
       return nullptr;
     }
-
     au->Draw();
     return au;
   }
@@ -393,11 +387,11 @@ namespace aui {
       if(ctx) {
         wl_display_roundtrip(mWaylandDisplay);
         D2("Initial configuration sync done.");
-        if(ctx->GetSoftwareBuffer() == nullptr) {
-          uint32_t w = ctx->mPendingWidth ? ctx->mPendingWidth : mMainWnd->SizeX();
-          uint32_t h = ctx->mPendingHeight ? ctx->mPendingHeight : mMainWnd->SizeY();
-          ctx->CreateShmBuffer(w, h);
-        }
+//        if(ctx->GetSoftwareBuffer() == nullptr) {
+//          uint32_t w = ctx->mPendingWidth ? ctx->mPendingWidth : mMainWnd->SizeX();
+//          uint32_t h = ctx->mPendingHeight ? ctx->mPendingHeight : mMainWnd->SizeY();
+//          ctx->CreateShmBuffer(w, h);
+//        }
         uint32_t w = ctx->mPendingWidth ? ctx->mPendingWidth : mMainWnd->SizeX();
         uint32_t h = ctx->mPendingHeight ? ctx->mPendingHeight : mMainWnd->SizeY();
         if(ctx->mPendingResizeEnabled) {
@@ -411,12 +405,7 @@ namespace aui {
         if(mMainWnd) {
           mMainWnd->Draw();
         }
-        this->Draw();
-        D2("Initial frame committed securely via double-buffer pipeline.");
-// WAIT FOR FIRST BUFFER RELEASE – fixes black window
         wl_display_roundtrip(mWaylandDisplay);
-        D2("First buffer released, redrawing to ensure window content");
-        this->Draw();
       }
     }
     else {
@@ -521,7 +510,6 @@ namespace aui {
     while (!mShouldExit) {
       if(mWindowType == AUIWindowType::XCB && mXcbConnection && xcb_connection_has_error(mXcbConnection)) {
         D1("XCB connection error detected at loop start, exiting AUI");
-        ExitAUI();
         break;
       }
       if(mXcbConnection)
@@ -605,6 +593,7 @@ namespace aui {
       }
 // Do NOT call Draw() here – it would cause unnecessary redraws.
 // Widget property changes already trigger Draw() when needed.
+      FlushConnection();
     }
     D2("AUI::ProcessMessages() -> Clean exit.");
   }
@@ -614,18 +603,18 @@ namespace aui {
     UNUSED auto start = std::chrono::high_resolution_clock::now();
 
 // 1. Redraw all registered windows to populate their respective buffers
-    if(mWindowType == AUIWindowType::XCB) {
-      for(auto &pair : mXcbWindowMap) {
-        if(pair.second)
-          pair.second->Draw();
-      }
-    }
-    else if(mWindowType == AUIWindowType::Wayland) {
-      for(auto &pair : mWaylandSurfaceMap) {
-        if(pair.second)
-          pair.second->Draw();
-      }
-    }
+//    if(mWindowType == AUIWindowType::XCB) {
+//      for(auto &pair : mXcbWindowMap) {
+//        if(pair.second)
+//          pair.second->Draw();
+//      }
+//    }
+//    else if(mWindowType == AUIWindowType::Wayland) {
+//      for(auto &pair : mWaylandSurfaceMap) {
+//        if(pair.second)
+//          pair.second->Draw();
+//      }
+//    }
     if(mDrawCommands.empty()) {
       D3("zero commands");
       return;
@@ -681,11 +670,11 @@ namespace aui {
           D3("xcb_image_put returned {}", ret.sequence);
           xcb_free_gc(conn, temp_gc);
           xcb_image_destroy(img);
-          xcb_flush(conn);
         }
         else {
           D1("xcb_image_create_native failed");
         }
+        xcb_flush(conn);
       }
 // --------------------------------------------------------------
 // Wayland Graphics Pipeline
@@ -747,6 +736,7 @@ namespace aui {
       if(!mWaylandDisplay)
         E("FlushConnection: Wayland backend but mWaylandDisplay is null");
       wl_display_flush(mWaylandDisplay);
+      if(mXcbConnection)xcb_flush(mXcbConnection);
     }
   }
 
@@ -776,21 +766,42 @@ namespace aui {
   void AUI::UnregisterWindow(uint64_t nativeId) {
     D2("UnregisterWindow: nativeId={}", nativeId);
     ClearDrawCommandsForWindow(nativeId);
+
+    AWindow *win = nullptr;
     if(mWindowType == AUIWindowType::XCB) {
       auto it = mXcbWindowMap.find(nativeId);
       if(it == mXcbWindowMap.end()) {
         E("UnregisterWindow: XCB window not found (nativeId={})", nativeId);
+        return;
+      }
+      win = it->second.get();
+// Remove from pending draw list
+      {
+        std::lock_guard<std::mutex> lock(mPendingDrawMutex);
+        mPendingDrawWindows.erase(std::remove(mPendingDrawWindows.begin(), mPendingDrawWindows.end(), win),
+            mPendingDrawWindows.end());
+      }
+      if(mFocusedWindow == win) {
+        mFocusedWindow = nullptr;
       }
       mXcbWindowMap.erase(it);
-      D2("Removed XCB window, map size now {}", mXcbWindowMap.size());
     }
     else {
       auto it = mWaylandSurfaceMap.find(nativeId);
       if(it == mWaylandSurfaceMap.end()) {
         E("UnregisterWindow: Wayland surface not found (nativeId={})", nativeId);
+        return;
+      }
+      win = it->second.get();
+      {
+        std::lock_guard<std::mutex> lock(mPendingDrawMutex);
+        mPendingDrawWindows.erase(std::remove(mPendingDrawWindows.begin(), mPendingDrawWindows.end(), win),
+            mPendingDrawWindows.end());
+      }
+      if(mFocusedWindow == win) {
+        mFocusedWindow = nullptr;
       }
       mWaylandSurfaceMap.erase(it);
-      D2("Removed Wayland surface, map size now {}", mWaylandSurfaceMap.size());
     }
   }
 
@@ -839,8 +850,8 @@ namespace aui {
   }
 
   xcb_connection_t* AUI::GetXcbConnection() {
-    if(mWindowType != AUIWindowType::XCB)
-      E("GetXcbConnection called when backend is not XCB");
+    // we support both backends in Wayland
+//    if(mWindowType != AUIWindowType::XCB) E("GetXcbConnection called when backend is not XCB");
     if(!mXcbOwned)
       InitXcb();
     if(!mXcbConnection)
@@ -963,8 +974,9 @@ namespace aui {
   AUI::~AUI() {
     mXcbWindowMap.clear();
     mWaylandSurfaceMap.clear();
-// mMainWnd is now a dangling pointer; we set to nullptr to avoid accidental use.
+    // mMainWnd is now a dangling pointer; we set to nullptr to avoid accidental use.
     mMainWnd = nullptr;
+    D3("set mMainWnd to nullptr")
     if(mXcbConnection && mXcbOwned) {
 // Process any remaining events
       xcb_generic_event_t *ev;
@@ -1026,7 +1038,6 @@ namespace aui {
       delete[] pair.second.bitmap;
     }
     mPreRenderedGlyphs.clear();
-
 // Do NOT call FT_Done_Face if the manager already freed it
     if(mFtDefaultFace) {
       FT_Done_Face(mFtDefaultFace);

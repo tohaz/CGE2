@@ -69,6 +69,7 @@ namespace aui {
       friend class ATable;
       friend class AComboBox;
       friend class AProgressBar;
+      friend class AMenu;
     private:
       uint64_t mId = 0U;
       bool mEnabled = true;
@@ -127,6 +128,18 @@ namespace aui {
                           int32_t offsetX, int32_t offsetY, int32_t xOffset) const;
       int32_t mLastMouseX = 0;
       int32_t mLastMouseY = 0;
+      int32_t mMinSizeX = 10;
+      int32_t mMinSizeY = 10;
+      int32_t mItemSizeX = 16;
+      int32_t mItemSizeY = 16;
+      int32_t mLeftMargin = 1;     // Distance from left border to content
+      int32_t mRightMargin = 1;
+      int32_t mTopMargin = 1;
+      int32_t mBottomMargin = 1;
+      int32_t mOffsetX = 0;
+      int32_t mOffsetY = 0;
+      int32_t mMaxSizeX = 0;
+      int32_t mMaxSizeY = 0;
     public:
       virtual ~AWidget() = default;
       virtual void Draw(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,

@@ -21,6 +21,7 @@ int main() {
     if (p > 100.0) p = 0.0;
     return p;
   });
+  p1->SetUpdateInterval(50);
   // ---- 2: Horizontal right-to-left, stripes ----
   AProgressBar* p2 = AProgressBar::AttachTo(win);
   p2->Move(50, 100);
@@ -143,3 +144,4 @@ int main() {
   delete au;
   return 0;
 }
+

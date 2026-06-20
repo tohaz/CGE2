@@ -1,38 +1,38 @@
 #ifndef DEFAULTS_H_
 #define DEFAULTS_H_
 
-#define DEBUG_LEVEL 2
+#define DEBUG_LEVEL 1
 
 // try {deference 0}
 // catch(SegmentationFault:) {}
 
 #define UNUSED [[maybe_unused]]
 
-static auto gAUI_timer_start = std::chrono::high_resolution_clock::now();
+//static auto gAUI_timer_start = std::chrono::high_resolution_clock::now();
 
 inline void print_stack() {
   void* buffer[64];
-  size_t first = 0, last = 0;
-  int8_t* demangled = 0;
-  std::string entry = "", mangled = "";
-  int size = backtrace(buffer, 64), status = 0;
+  int size = backtrace(buffer, 64);
   char** symbols = backtrace_symbols(buffer, size);
+  if (!symbols) return;
   for (int i = 1; i < size; ++i) {
-    entry = symbols[i];
-    first = entry.find('(');
-    last = entry.find('+');
+    std::string entry = symbols[i];
+    size_t first = entry.find('(');
+    size_t last = entry.find('+');
     if (first != std::string::npos && last != std::string::npos && first < last) {
-      mangled = entry.substr(first + 1, last - first - 1);
-      demangled = (int8_t*)abi::__cxa_demangle(mangled.c_str(), nullptr, nullptr, &status);
-      if (status == 0) {
-        printf("  #%d %s\n", i, demangled);
-        free(demangled);
+      std::string mangled = entry.substr(first + 1, last - first - 1);
+      int status = 0;
+      // Используем char*, как требует стандарт abi::__cxa_demangle
+      char* demangled = abi::__cxa_demangle(mangled.c_str(), nullptr, nullptr, &status);
+      if (status == 0 && demangled) {
+        std::printf("  #%d %s\n", i, demangled);
+        std::free(demangled);
         continue;
       }
     }
-    printf(" #%d %s\n", i, symbols[i]);
+    std::printf(" #%d %s\n", i, symbols[i]);
   }
-  free(symbols);
+  std::free(symbols);
 }
 
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
@@ -215,7 +215,7 @@ enum class AUIWidgetType {
   defaultLabel = 1004,
   defaultInputBox = 1005,
   defaultTable = 1006,
-  defaultPopupMenu = 1007,
+  defaultMenu = 1007,
   defaultModalWindow = 1008,
   defaultComboBox = 1009,
   defaultProgressBar = 1010,
@@ -251,181 +251,267 @@ enum class AUIHAlign {
 };
 
 enum class AUIVAlign {
-    center = 1,
-    top = 2,
-    bottom = 3
+  center = 1, top = 2, bottom = 3
 };
 
 enum class AUIWidgetStyle {
-    Flat = 1,
-    Simple3D = 2
+  Flat = 1, Simple3D = 2
 };
 
 enum class AUIDirection {
-    left = 1,
-    right = 2,
-    top = 3,
-    bottom = 4
+  left = 1, right = 2, top = 3, bottom = 4
 };
 
 enum class AUICursorType {
-    Default,
-    HResize,
-    VResize
+  Default, HResize, VResize
 };
 
 #ifndef AUI_GIT_VERSION
 #define AUI_GIT_VERSION "Not a controlled build"
 #endif
 
-
-#define DT(fmt, ...) \
-  do { \
-    auto now = std::chrono::system_clock::now(); \
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000; \
-    std::println("{:%H:%M:%S}.{:03d} {}|{}({}): " fmt, now, (int32_t)ms.count(), __FILE__, __func__, __LINE__ __VA_OPT__(,) __VA_ARGS__); \
-  } while (0);
-
-// DD stands for Debug Do. D1-D4 and W() are removed on release build (DEBUG_LEVEL 0)
-#ifndef DEBUG_LEVEL
-    #define DEBUG_LEVEL 0
-#endif
-#if DEBUG_LEVEL > 0
-    #define INTERNAL_PRINT(prefix, lvl, fmt, ...)try { \
-            std::println("{}{} {}|{}({}): " fmt, prefix, lvl, __FILE__, __func__, __LINE__ __VA_OPT__(,) __VA_ARGS__); \
-        } catch (const std::exception& __debug_e) { \
-            std::print("!!! DEBUG FORMAT ERROR at {}|{}({}): ", __FILE__, __func__, __LINE__); \
-            std::println("{} !!!", __debug_e.what()); \
+namespace detail {
+// 1. Compile-time check to detect if the format string contains printf-style specifiers (%)
+  constexpr bool IsPrintfStyle(std::string_view fmt) {
+    for(size_t i = 0; i < fmt.size(); ++i) {
+      if(fmt[i] == '%') {
+        if(i + 1 < fmt.size() && fmt[i + 1] == '%') {
+          i++;// Skip escaped '%%'
+          continue;
         }
-    // Default debug macro (Level 1)
-    #define D(fmt, ...) do { INTERNAL_PRINT("D", 1, fmt __VA_OPT__(,) __VA_ARGS__); } while (0);
-    // E() - Fatal Error: Prints, dumps stack, and exits.
-    #define E(fmt, ...) do {INTERNAL_PRINT("E", 1, fmt __VA_OPT__(,) __VA_ARGS__);print_stack();exit(1); \
-    } while (0);
-    // DD() - Executes any code only in debug builds
-    #define DD(...) do { __VA_ARGS__;  } while (0);
-    // W() - Lightweight marker
-    #define W() do { try { std::println("W {}|{}({})", __FILE__, __func__, __LINE__); } catch(...) {} } while (0);
-    // DS() - Global Stack Trace
-    #define DS() do { D("\n---Trace at {}:{}---", __FILE__, __LINE__) print_stack(); } while (0);
+        return true;
+      }
+    }
+    return false;
+  }
+
+// 2. Universal output engine (Protected by int32_t types against the aggressive '#define int' macro)
+  template<typename ... Args>
+  void SmartInternalPrint(std::string_view prefix, int32_t lvl, const char *file, const char *func, int32_t line,
+      Args &&... args) {
+    try {
+      std::string header = std::format("{}{} {}|{}({}): ", prefix, lvl, file, func, line);
+
+// Case A: No arguments provided at all (e.g., D() or E() empty calls)
+      if constexpr (sizeof...(args) == 0) {
+        std::print("{}\n", header);
+      }
+      else {
+// Extract the first argument as the primary payload/format string
+        auto payload = [](auto &&first, auto &&... rest) {
+          return std::pair { std::forward<decltype(first)>(first), sizeof...(rest) };
+        }(std::forward<Args>(args)...);
+
+// Case B: Exactly one argument provided (treated as a raw unformatted text string)
+        if constexpr (sizeof...(args) == 1) {
+          std::print("{}{}\n", header, std::get < 0 > (payload));
+        }
+        else {
+// Case C: Multiple arguments provided. Extract format string and forward parameters:
+          auto [fmt_arg, rest_size] = payload;
+          std::string_view fmt = fmt_arg;
+
+          if(IsPrintfStyle(fmt)) {
+            std::print("{}", header);
+// Forward parameters into standard C printf via a helper lambda unpacking the variadic tail
+            [&](auto&&, auto &&... actual_args) {
+              std::printf(fmt.data(), std::forward<decltype(actual_args)>(actual_args)...);
+            }(std::forward<Args>(args)...);
+            std::print("\n");
+          }
+          else {
+// Modern C++ curly-braces {} style
+            [&](auto&&, auto &&... actual_args) {
+              std::string message = std::vformat(fmt, std::make_format_args(actual_args...));
+              std::print("{}{}\n", header, message);
+            }(std::forward<Args>(args)...);
+          }
+        }
+      }
+    } catch (const std::exception &__debug_e) {
+      std::print("!!! DEBUG FORMAT ERROR at {}|{}({}): ", file, func, line);
+      std::println("{} !!!", __debug_e.what());
+    }
+  }
+
+// 3. Dedicated timestamp printing engine for the DT macro
+  template<typename ... Args>
+  void SmartDateTimePrint(const char *file, const char *func, int32_t line, Args &&... args) {
+    try {
+      auto now = std::chrono::system_clock::now();
+      auto ms = std::chrono::duration_cast < std::chrono::milliseconds > (now.time_since_epoch()) % 1000;
+      std::string header = std::format("{:%H:%M:%S}.{:03d} {}|{}({}): ", now, static_cast<int32_t>(ms.count()), file,
+          func, line);
+
+      if constexpr (sizeof...(args) == 0) {
+        std::print("{}Timestamp marker\n", header);
+      }
+      else {
+        if constexpr (sizeof...(args) == 1) {
+          auto [fmt_arg, _] = [](auto &&first, auto &&... rest) {
+            return std::pair { first, 0 };
+          }(std::forward<Args>(args)...);
+          std::print("{}{}\n", header, fmt_arg);
+        }
+        else {
+          auto [fmt_arg, _] = [](auto &&first, auto &&... rest) {
+            return std::pair { first, sizeof...(rest) };
+          }(std::forward<Args>(args)...);
+          std::string_view fmt = fmt_arg;
+
+          if(IsPrintfStyle(fmt)) {
+            std::print("{}", header);
+            [&](auto&&, auto &&... actual_args) {
+              std::printf(fmt.data(), std::forward<decltype(actual_args)>(actual_args)...);
+            }(std::forward<Args>(args)...);
+            std::print("\n");
+          }
+          else {
+            [&](auto&&, auto &&... actual_args) {
+              std::string message = std::vformat(fmt, std::make_format_args(actual_args...));
+              std::print("{}{}\n", header, message);
+            }(std::forward<Args>(args)...);
+          }
+        }
+      }
+    } catch (const std::exception &__debug_e) {
+      std::print("!!! DEBUG FORMAT ERROR at {}|{}({}): ", file, func, line);
+      std::println("{} !!!", __debug_e.what());
+    }
+  }
+}
+
+// --- MANDATORY DT MACRO ---
+#define DT(...) \
+    do { ::detail::SmartDateTimePrint(__FILE__, __func__, __LINE__ __VA_OPT__(,) __VA_ARGS__); } while (0);
+
+// Original setup configuration for debug levels
+#ifndef DEBUG_LEVEL
+  #define DEBUG_LEVEL 0
+#endif
+
+#if DEBUG_LEVEL > 0
+// Internal base printing macro (Seamlessly passes all variadic arguments via __VA_OPT__)
+#define INTERNAL_PRINT(prefix, lvl, ...) \
+        ::detail::SmartInternalPrint(prefix, static_cast<int32_t>(lvl), __FILE__, __func__, static_cast<int32_t>(__LINE__) __VA_OPT__(,) __VA_ARGS__)
+
+// Complete original macro suite (DEBUG MODE) with mandatory trailing semicolons
+#define D(...)       do { INTERNAL_PRINT("D", 1 __VA_OPT__(,) __VA_ARGS__); } while (0);
+#define E(...)       do { INTERNAL_PRINT("E", 1 __VA_OPT__(,) __VA_ARGS__); print_stack(); exit(1); } while (0);
+#define DD(...)      do { __VA_ARGS__; } while (0);
+#define W()          do { try { std::println("W {}|{}({})", __FILE__, __func__, __LINE__); } catch(...) {} } while (0);
+#define DS()         do { D("\n---Trace at {}:{}---", __FILE__, __LINE__); print_stack(); } while (0);
 #else
-    // RELEASE MODE (DEBUG_LEVEL 0)
-    #define D(...)  do {} while (0);
-    #define E(...)  do {} while (0);
-    #define DD(...) do {} while (0);
-    #define W()     do {} while (0);
-    #define DS()    do {} while (0);
+    // Complete original macro suite (RELEASE MODE) matching your exact structure
+    #define D(...)       do {} while (0);
+    #define E(...)       do {} while (0);
+    #define DD(...)      do {} while (0);
+    #define W()          do {} while (0);
+    #define DS()         do {} while (0);
 #endif
 
 // --- LEVEL 1 ---
 #if DEBUG_LEVEL >= 1
-    #define D1(fmt, ...) do { INTERNAL_PRINT("D", 1, fmt __VA_OPT__(,) __VA_ARGS__); } while (0);
-    #define DS1() DS()
+#define D1(...) do { INTERNAL_PRINT("D", 1 __VA_OPT__(,) __VA_ARGS__); } while (0);
+#define DS1()   DS()
 #else
-    #define D1(...)  do {} while (0);
-    #define DS1()    do {} while (0);
+  #define D1(...) do {} while (0);
+  #define DS1()   do {} while (0);
 #endif
 
 // --- LEVEL 2 ---
 #if DEBUG_LEVEL >= 2
-    #define D2(fmt, ...) do { INTERNAL_PRINT("D", 2, fmt __VA_OPT__(,) __VA_ARGS__); } while (0);
-    #define DS2() DS()
+#define D2(...) do { INTERNAL_PRINT("D", 2 __VA_OPT__(,) __VA_ARGS__); } while (0);
+#define DS2()   DS()
 #else
-    #define D2(...)  do {} while (0);
-    #define DS2()    do {} while (0);
+  #define D2(...) do {} while (0);
+  #define DS2()   do {} while (0);
 #endif
 
 // --- LEVEL 3 ---
 #if DEBUG_LEVEL >= 3
-    #define D3(fmt, ...) do { INTERNAL_PRINT("D", 3, fmt __VA_OPT__(,) __VA_ARGS__); } while (0);
-    #define DS3() DS()
+#define D3(...) do { INTERNAL_PRINT("D", 3 __VA_OPT__(,) __VA_ARGS__); } while (0);
+#define DS3()   DS()
 #else
-    #define D3(...)  do {} while (0);
-    #define DS3()    do {} while (0);
+  #define D3(...) do {} while (0);
+  #define DS3()   do {} while (0);
 #endif
 
 // --- LEVEL 4 ---
 #if DEBUG_LEVEL >= 4
-    #define D4(fmt, ...) do { INTERNAL_PRINT("D", 4, fmt __VA_OPT__(,) __VA_ARGS__); } while (0);
+#define D4(...) do { INTERNAL_PRINT("D", 4 __VA_OPT__(,) __VA_ARGS__); } while (0);
 #else
-    #define D4(...)  do {} while (0);
+  #define D4(...) do {} while (0);
 #endif
 
 #define TEST_ASSERT(cond, errcode) do { if(!(cond)) { E("Test failed: {}", #cond); return errcode; } } while(0)
 
 #define TEST_ASSERT_EQ(actual, expected, errcode) \
-    do { \
-        auto act = (actual); \
-        auto exp = (expected); \
-        if (act != exp) { \
-            E("Test failed: {} == {} (actual: {}, expected: {})", #actual, #expected, act, exp); \
-            return errcode; \
-        } \
-    } while(0)
+  do { \
+    auto act = (actual); \
+    auto exp = (expected); \
+    if (act != exp) { \
+      E("Test failed: {} == {} (actual: {}, expected: {})", #actual, #expected, act, exp); \
+      return errcode; \
+    } \
+  } while(0)
 
 #define TEST_ASSERT_NE(actual, expected, errcode) \
-    do { \
-        auto act = (actual); \
-        auto exp = (expected); \
-        if (act == exp) { \
-            E("Test failed: {} != {} (actual: {}, expected: {})", #actual, #expected, act, exp); \
-            return errcode; \
-        } \
-    } while(0)
+  do { \
+    auto act = (actual); \
+    auto exp = (expected); \
+    if (act == exp) { \
+      E("Test failed: {} != {} (actual: {}, expected: {})", #actual, #expected, act, exp); \
+      return errcode; \
+    } \
+  } while(0)
 
 // ------------------------------------------------------------------
 // Floating-point equality test with tolerance (returns on failure)
 // ------------------------------------------------------------------
 #define TEST_ASSERT_DOUBLE_EQ(actual, expected, errcode)                  \
-    do {                                                                 \
-        double a = (actual);                                             \
-        double e = (expected);                                           \
-        if (std::abs(a - e) > 1e-9) {                                    \
-            E("Test failed: {} == {} (got {}, expected {})",             \
-              #actual, #expected, a, e);                                 \
-            return errcode;                                              \
-        }                                                                \
-    } while(0)
+  do {                                                                 \
+    double a = (actual);                                             \
+    double e = (expected);                                           \
+    if (std::abs(a - e) > 1e-9) {                                    \
+      E("Test failed: {} == {} (got {}, expected {})",             \
+        #actual, #expected, a, e);                                 \
+      return errcode;                                              \
+    }                                                                \
+  } while(0)
 
 class ScopedTimer {
     std::string m_msg;
     std::chrono::time_point<std::chrono::high_resolution_clock> m_start;
     std::source_location m_loc;
 
-public:
-    // Only constructor: takes a pre‑formatted message and the caller’s location
-    ScopedTimer(std::string msg, const std::source_location& loc)
-        : m_msg(std::move(msg))
-        , m_start(std::chrono::high_resolution_clock::now())
-        , m_loc(loc) {}
-
+  public:
+// Only constructor: takes a pre‑formatted message and the caller’s location
+    ScopedTimer(std::string msg, const std::source_location &loc) :
+        m_msg(std::move(msg)), m_start(std::chrono::high_resolution_clock::now()), m_loc(loc) {
+    }
     ~ScopedTimer() {
-        auto end = std::chrono::high_resolution_clock::now();
-        auto us = std::chrono::duration_cast<std::chrono::microseconds>(end - m_start).count();
-
-        auto now = std::chrono::system_clock::now();
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      now.time_since_epoch()) % 1000;
-
-        std::println("{:%H:%M:%S}.{:03d} {}|{}({}): {}: {} µs",
-                     now, static_cast<int32_t>(ms.count()),
-                     m_loc.file_name(), m_loc.function_name(), m_loc.line(),
-                     m_msg, us);
+      auto end = std::chrono::high_resolution_clock::now();
+      auto us = std::chrono::duration_cast < std::chrono::microseconds > (end - m_start).count();
+      auto now = std::chrono::system_clock::now();
+      auto ms = std::chrono::duration_cast < std::chrono::milliseconds > (now.time_since_epoch()) % 1000;
+      std::println("{:%H:%M:%S}.{:03d} {}|{}({}): {}: {} µs", now, static_cast<int32_t>(ms.count()), m_loc.file_name(),
+          m_loc.function_name(), m_loc.line(), m_msg, us);
     }
 };
 
 #define ST(fmt, ...) \
-    ScopedTimer(std::format(fmt __VA_OPT__(,) __VA_ARGS__), std::source_location::current());
+  ScopedTimer(std::format(fmt __VA_OPT__(,) __VA_ARGS__), std::source_location::current());
 
 const std::unordered_map<std::string,UINT64> string_to_case{
-   {"BackSpace", 1},
-   {"space", 2},
-   {"Return", 3},
-   {"KP_Enter", 4},
-   {"Left", 5},
-   {"Right", 6},
-   {"Delete", 7},
-   {"Insert", 8}
+  {"BackSpace", 1},
+  {"space", 2},
+  {"Return", 3},
+  {"KP_Enter", 4},
+  {"Left", 5},
+  {"Right", 6},
+  {"Delete", 7},
+  {"Insert", 8}
 };
 
 static std::string BaseAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";

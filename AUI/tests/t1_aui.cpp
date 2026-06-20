@@ -7,7 +7,7 @@
 
 using namespace aui;
 
-#define TEST_ASSERT(cond, errcode) do { if(!(cond)) { E("Test failed: {}", #cond); return errcode; } } while(0)
+//#define TEST_ASSERT(cond, errcode) do { if(!(cond)) { E("Test failed: {}", #cond); return errcode; } } while(0)
 
 int32_t test_aui_lifecycle() {
   D1("test_aui_lifecycle start");
@@ -137,6 +137,51 @@ int32_t test_draw_command_queue() {
   return 0;
 }
 
+int32_t test_window_operations() {
+  D1("test_window_operations start");
+// 1. Create main window
+  AUI *au = AUI::Create("MainWindow");
+  TEST_ASSERT(au != nullptr, 1);
+  AWindow *mainWin = au->MainWnd();
+  TEST_ASSERT(mainWin != nullptr, 2);
+  mainWin->EnableResize();
+  mainWin->Resize(200, 200);
+  AUIWindowType type = au->GetWindowType();
+// 2. Create additional windows (if Wayland, create both)
+  AWindow *ww = nullptr;
+  AWindow *wx = nullptr;
+  if(type == AUIWindowType::Wayland) {
+    ww = AWindow::AttachTo(au, "Additional Wayland", AUIWindowType::Wayland);
+    wx = AWindow::AttachTo(au, "Additional X11", AUIWindowType::XCB);
+    TEST_ASSERT(ww != nullptr, 3);
+    TEST_ASSERT(wx != nullptr, 4);
+    ww->EnableResize();
+    ww->Resize(300, 300);
+    wx->Move(200, 10);// XCB move
+    wx->EnableResize();
+    wx->Resize(250, 250);
+  }
+  else {
+// XCB-only: create one extra XCB window
+    wx = AWindow::AttachTo(au, "Additional X11", AUIWindowType::XCB);
+    TEST_ASSERT(wx != nullptr, 5);
+    wx->EnableResize();
+    wx->Resize(300, 300);
+    wx->Move(200, 10);
+  }
+  if(ww) {
+    ww->Close();
+  }
+  if(wx) {
+    wx->Close();
+  }
+  au->ExitAUI();
+  delete au;
+  D1("test_window_operations passed");
+  return 0;
+}
+
+
 int main() {
 	//UNUSED char *qqq = new char[1]; // generate error
   UINT32 delay_ms = 50; // delay before thead calls window to close
@@ -166,6 +211,7 @@ int main() {
   testsfailed += test_backend_detection();
   testsfailed += test_multiple_windows();
   testsfailed += test_draw_command_queue();
+  testsfailed += test_window_operations();
   
   au->ProcessMessages();
   

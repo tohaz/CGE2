@@ -1,7 +1,5 @@
 #include "AUILib.h"
 
-
-
 namespace aui {
 
   void ClipRect(int32_t &x, int32_t &y, int32_t &w, int32_t &h, int32_t parentW, int32_t parentH) {

@@ -25,6 +25,7 @@ class IWindowContext {
     virtual void EnableResize() = 0;
     virtual void DisableResize() = 0;
     virtual void SetCursor(AUICursorType type) = 0;
+    virtual bool EnsureBuffer(uint32_t width, uint32_t height) = 0;
 };
 
 } // namespace aui

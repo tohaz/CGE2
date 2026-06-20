@@ -152,6 +152,8 @@ namespace aui {
   void WaylandWindowContext::CreateShmBuffer(uint32_t width, uint32_t height, WaylandBuffer *targetBuffers) {
     if(!targetBuffers)
       targetBuffers = mBuffers;
+    mBufferWidth = width;
+    mBufferHeight = height;
     D2("CreateShmBuffer: {}x{} (Double Buffered)", width, height);
     size_t stride = width * 4;
     size_t size = stride * height;
@@ -191,8 +193,7 @@ namespace aui {
   }
 
   void WaylandWindowContext::Move(UNUSED int32_t x, UNUSED int32_t y) {
-    E()
-// Stub
+    E("wayland windows are not supposed to be moved programmatically. compositor restricts it")
   }
 
   void WaylandWindowContext::EnableResize() {
@@ -297,27 +298,46 @@ namespace aui {
     }
   }
 
+//  void WaylandWindowContext::Resize(uint32_t width, uint32_t height) {
+//    if(width == 0 || height == 0 || mInResize)
+//      return;
+//    mInResize = true;
+//    DestroyShmBuffer(mOldBuffers, true);
+//    if(mAUI)
+//      mAUI->Draw();
+//    uint64_t nativeId = reinterpret_cast<uint64_t>(mSurface);
+//    if(mAUI)
+//      mAUI->ClearDrawCommandsForWindow(nativeId);
+//// Store current buffers as "old" and zero out mBuffers
+//    for(int32_t i = 0; i < 2; ++i) {
+//      mOldBuffers[i] = mBuffers[i];
+//      mBuffers[i] = WaylandBuffer { };
+//    }
+//    mHasOldBuffers = true;// if your code uses this flag
+//// Create new buffers with the new size
+//    CreateShmBuffer(width, height, mBuffers);
+//// Destroy old buffers asynchronously (keeps updates working)
+//    DestroyShmBuffer(mOldBuffers, false);
+//    mInResize = false;
+//  }
+
   void WaylandWindowContext::Resize(uint32_t width, uint32_t height) {
     if(width == 0 || height == 0 || mInResize)
       return;
     mInResize = true;
-    DestroyShmBuffer(mOldBuffers, true);
-    if(mAUI)
-      mAUI->Draw();
+    if(mWindow && !mWindow->IsResizeEnabled()) {
+      xdg_toplevel_set_min_size(mToplevel, SafeINT32(width), SafeINT32(height));
+      xdg_toplevel_set_max_size(mToplevel, SafeINT32(width), SafeINT32(height));
+      wl_surface_commit(mSurface);
+      wl_display_flush(mAUI->GetWaylandDisplay());
+    }
+// Clear stale draw commands
     uint64_t nativeId = reinterpret_cast<uint64_t>(mSurface);
     if(mAUI)
       mAUI->ClearDrawCommandsForWindow(nativeId);
-
-// Store current buffers as "old" and zero out mBuffers
-    for(int32_t i = 0; i < 2; ++i) {
-      mOldBuffers[i] = mBuffers[i];
-      mBuffers[i] = WaylandBuffer { };
-    }
-    mHasOldBuffers = true;// if your code uses this flag
-// Create new buffers with the new size
-    CreateShmBuffer(width, height, mBuffers);
-// Destroy old buffers asynchronously (keeps updates working)
-    DestroyShmBuffer(mOldBuffers, false);
+    mPendingWidth = width;
+    mPendingHeight = height;
+// Do NOT create/destroy buffers here; DoDraw will call EnsureBuffer.
     mInResize = false;
   }
 
@@ -380,6 +400,25 @@ namespace aui {
     wl_pointer_set_cursor(pointer, serial, mCursorSurface, static_cast<int32_t>(image->hotspot_x),
         static_cast<int32_t>(image->hotspot_y));
     mWindow->Draw();
+  }
+
+  bool WaylandWindowContext::EnsureBuffer(uint32_t width, uint32_t height) {
+    if(mBufferWidth == width && mBufferHeight == height && mBuffers[0].buffer && mBuffers[1].buffer) {
+      return true;// already have correct buffers
+    }
+// Move current buffers to old storage
+    for(uint32_t i = 0; i < 2; ++i) {
+      mOldBuffers[i] = mBuffers[i];
+      mBuffers[i] = WaylandBuffer { };
+    }
+    mHasOldBuffers = true;
+// Create new buffers
+    CreateShmBuffer(width, height, mBuffers);
+// Destroy old buffers asynchronously (they'll be freed when released)
+    DestroyShmBuffer(mOldBuffers, false);
+    mBufferWidth = width;
+    mBufferHeight = height;
+    return true;
   }
 
   WaylandWindowContext::~WaylandWindowContext() {

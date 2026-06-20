@@ -41,6 +41,7 @@ namespace aui {
     win->mWindowType = type;
     win->DisableResize();
     engine->RegisterWindow(win->mNativeId, std::unique_ptr<AWindow>(win));
+    win->Draw();
     return win;
   }
 
@@ -264,6 +265,9 @@ namespace aui {
 
   void AWindow::DoDraw() {
     D3("AWindow::DoDraw: start");
+    if (!mBackend->EnsureBuffer(mSizeX, mSizeY)) {
+      E("Failed to allocate buffer for window")
+    }
     if(!mBackend) {
       DT("no backend");
       return;
@@ -328,6 +332,16 @@ namespace aui {
 
   AWindow::~AWindow() {
     D3()
+  }
+
+  void AWindow::Move(int32_t x, int32_t y) {
+    if(mBackend) {
+      mBackend->Move(x, y);
+    }
+    else {
+      E("backend is 0")
+    }
+
   }
 
 }// namespace aui

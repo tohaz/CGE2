@@ -100,6 +100,7 @@ namespace aui {
       return;
     uint32_t values[2] = { static_cast<uint32_t>(x), static_cast<uint32_t>(y) };
     xcb_configure_window(conn, mWindowId, XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, values);
+    mWindow->Draw();
   }
 
   void XcbWindowContext::Resize(uint32_t width, uint32_t height) {
@@ -318,6 +319,14 @@ namespace aui {
 
   void XcbWindowContext::EnableResize() {
     ApplySizeHints(1, 1, 65535, 65535);
+  }
+
+  bool XcbWindowContext::EnsureBuffer(uint32_t width, uint32_t height) {
+    size_t needed = static_cast<size_t>(width) * height;
+    if(mSoftwareBuffer.size() != needed) {
+      mSoftwareBuffer.resize(needed, 0xFFAAAAAA);
+    }
+    return true;
   }
 
   void XcbWindowContext::DisableResize() {

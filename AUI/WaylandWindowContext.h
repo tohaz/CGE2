@@ -29,6 +29,8 @@ namespace aui {
       xdg_toplevel *mToplevel = nullptr;
       wl_cursor_theme* mCursorTheme = nullptr;
       wl_surface*     mCursorSurface = nullptr;
+      uint32_t mBufferWidth = 0;
+      uint32_t mBufferHeight = 0;
 
     protected:
 
@@ -54,6 +56,7 @@ namespace aui {
       bool mFramePending = false;
       bool mFrameSyncEnabled = false;
       virtual void SetCursor(AUICursorType type) override;
+      bool EnsureBuffer(uint32_t width, uint32_t height) override;
 
   };
 

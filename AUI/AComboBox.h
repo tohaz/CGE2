@@ -1,8 +1,6 @@
 #ifndef ACOMBOBOX_H_
 #define ACOMBOBOX_H_
 
-#include "AUILib.h"
-
 namespace aui {
 
 class AComboBox : public AWidget {

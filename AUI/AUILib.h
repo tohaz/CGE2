@@ -26,6 +26,7 @@
 #include <cxxabi.h>
 #include <execinfo.h>
 #include <flat_map>
+#include <format>
 #include <dirent.h>
 #include <iomanip>
 #include <iostream>
@@ -39,6 +40,7 @@
 #include <regex>
 #include <source_location>
 #include <string>
+#include <string_view>
 #include <shared_mutex>
 #include <string.h>
 #include <stack>
@@ -47,6 +49,7 @@
 #include <type_traits>
 #include <unistd.h>
 #include <unordered_map>
+#include <utility>
 #include <wayland-client.h>
 #include <wayland-cursor.h>
 #include <xcb/xcb.h>
@@ -61,6 +64,7 @@
 #include "AInputBox.h"
 #include "ATable.h"
 #include "AComboBox.h"
+#include "AMenu.h"
 #include "AProgressBar.h"
 #include "IWindowContext.h"
 #include "XcbWindowContext.h"
@@ -289,7 +293,7 @@ class AUI {
     friend class WaylandWindowContext;
 private:
   AUI();   // private constructor
-  AUIWindowType mWindowType = AUIWindowType::XCB;
+  AUIWindowType mWindowType = AUIWindowType::unset;
   // XCB resources
   xcb_connection_t* mXcbConnection = nullptr;
   xcb_screen_t* mXcbScreen = nullptr;

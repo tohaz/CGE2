@@ -2,7 +2,6 @@
 #define AWINDOW_H_
 
 namespace aui {
-
   class IWindowContext;
   class AUI;
   class AWidget;
@@ -18,6 +17,7 @@ namespace aui {
       friend class ATable;
       friend class AComboBox;
       friend class AProgressBar;
+      friend class AMenu;
     private:
       std::unique_ptr<IWindowContext> mBackend;
       std::string mWindowTitle;
@@ -40,6 +40,7 @@ namespace aui {
       explicit AWindow(std::unique_ptr<IWindowContext> backend);
       ~AWindow();
       static AWindow* AttachTo(AUI *engine, const std::string &title);
+      static AWindow* AttachTo(AUI *engine, const std::string &title, AUIWindowType type);
       void Draw();
       void Move(int32_t x, int32_t y);
       void Resize(uint32_t w, uint32_t h);
@@ -54,7 +55,6 @@ namespace aui {
       void SetBGColor(uint32_t col) {mBGColor = col;}
       void EnableResize();
       void DisableResize();
-      static AWindow* AttachTo(AUI *engine, const std::string &title, AUIWindowType type);
       void Close();
       uint64_t GetNativeId() const {return mNativeId;}
       bool IsResizeEnabled() {return mResizeEnabled;}

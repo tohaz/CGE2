@@ -38,6 +38,7 @@ namespace aui {
       uint32_t SizeY() const {return mSizeX;}
       uint64_t GetNativeWindowId() const {return mWindowId;}
       virtual void SetCursor(AUICursorType type) override;
+      bool EnsureBuffer(uint32_t width, uint32_t height) override;
   };
 
 }// namespace aui
