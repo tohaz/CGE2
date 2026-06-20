@@ -4,7 +4,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m'
 
-tests=("t1_aui" "t2_box" "t3_label" "t4_scrollbar" "t5_button" "t6_alist" "t7_inputbox" "t8_table" "t9_combobox" "t10_progressbar")
+tests=("t1_aui" "t2_box" "t3_label" "t4_scrollbar" "t5_button" "t6_list" "t7_inputbox" "t8_table" "t9_combobox" "t10_progressbar")
 cur_test=0
 
 run_env() {

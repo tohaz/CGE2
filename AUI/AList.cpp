@@ -680,6 +680,7 @@ namespace aui {
       D3("Before SetValue, mHOffset={}", mHOffset);
       mHScrollBar->SetValue(mHOffset);
     }
+    RecalcScrollFromAlignment();
     if(mParentWindow)
       mParentWindow->Draw();
   }
