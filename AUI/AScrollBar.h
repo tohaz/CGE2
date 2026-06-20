@@ -30,8 +30,7 @@ private:
   bool mArrowBottomPressed = false;
   bool mArrowLeftPressed = false;
   bool mArrowRightPressed = false;
-  uint32_t GetTrackLength() const;      // length along the scrollbar axis (height for vertical, width for horizontal)
-  uint32_t GetThumbLength() const;      // clamped to at least 20 pixels
+  int32_t mDragOffset = 0;   // offset from thumb's top to click point
   int32_t ValueFromCoord(int32_t coord) const;
   int32_t mLastDrawnValue = 0;
   bool IsInTopArrow(int32_t localX, int32_t localY) const;
@@ -81,6 +80,13 @@ public:
   void SetPosition(int32_t x, int32_t y) { mX = x; mY = y; }
   void SetVisible(bool visible) { mVisible = visible; if(mParentWindow) mParentWindow->Draw(); }
   bool IsVisible() const { return mVisible; }
+  uint32_t GetTrackLength() const;      // length along the scrollbar axis (height for vertical, width for horizontal)
+  uint32_t GetThumbLength() const;      // clamped to at least 20 pixels
+  void SetShowArrows(bool show) {
+      mShowArrows = show;
+      if (mParentWindow) mParentWindow->Draw();
+  }
+
 };
 
 } // namespace aui

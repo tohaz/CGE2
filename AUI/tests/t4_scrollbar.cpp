@@ -205,6 +205,36 @@ int32_t test_scrollbar_drag() {
   return 0;
 }
 
+int32_t test_scrollbar_large_range() {
+    D1("test_scrollbar_regression start");
+
+    AScrollBar sb;
+    sb.SetOrientation(AUIOrientation::vertical);
+    sb.Resize(20, 200);                 // height = 200 px
+    sb.SetRange(0, 10000000);           // huge range
+    sb.SetPageStep(1000);
+    sb.SetSingleStep(100);
+    sb.SetShowArrows(true);             // CRITICAL: arrows ON – trackStart = 12
+
+    // Get thumb geometry
+    uint32_t thumbPos = sb.GetThumbPosition();   // should be 0 at min
+    uint32_t thumbLen = sb.GetThumbLength();     // will be clamped to 20
+    uint32_t trackStart = 12;                    // default arrowSize
+
+    // Click on the center of the thumb (absolute coordinate)
+    int32_t thumbCenterY = SafeINT32(trackStart + thumbPos + thumbLen / 2);
+    bool consumed = sb.OnMouseClick(10, thumbCenterY, true);
+    TEST_ASSERT(consumed, 1);
+
+    // If the bug is present, the value will have jumped to a large number.
+    // With the fix, the value remains 0.
+    int32_t newValue = sb.GetValue();
+    TEST_ASSERT_EQ(newValue, 0, 2);   // this will fail if the bug returns
+
+    D1("test_scrollbar_regression passed");
+    return 0;
+}
+
 // ------------------------------------------------------------------
 // Main: run all tests with async exit
 // ------------------------------------------------------------------
@@ -227,7 +257,7 @@ int main() {
   testsfailed += test_scrollbar_callback();
   testsfailed += test_scrollbar_click_in_track();
   testsfailed += test_scrollbar_drag();
-
+  testsfailed += test_scrollbar_large_range();
   au->ProcessMessages();
   handle.get();
   delete au;

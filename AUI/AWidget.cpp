@@ -70,6 +70,7 @@ namespace aui {
 
   void AWidget::SetBGColor(uint32_t color) {
     mBGColor = color;
+    if(mParentWindow) mParentWindow->Draw();
   }
 
   bool AWidget::DispatchClick(int32_t parentX, int32_t parentY, bool pressed) {

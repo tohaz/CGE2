@@ -243,18 +243,18 @@ namespace aui {
   }
 
   bool AScrollBar::OnMouseClick(int32_t localX, int32_t localY, bool pressed) {
-    D2("localX={}, localY={}, pressed={}, mDragging={}", localX, localY, pressed, mDragging);
+    D2("AScrollBar::OnMouseClick: x={}, y={}, pressed={}", localX, localY, pressed);
     if(!pressed) {
       mDragging = false;
+      mDragOffset = 0;
       mArrowTopPressed = false;
       mArrowBottomPressed = false;
       mArrowLeftPressed = false;
       mArrowRightPressed = false;
       if(mParentWindow && mParentWindow->GetDragWidget() == this) {
         mParentWindow->SetDragWidget(nullptr);
-        return true;
       }
-      D2("AScrollBar::OnMouseClick: RELEASE - mDragging set to false, drag widget cleared");
+      D2("AScrollBar::OnMouseClick: RELEASE - drag ended");
       return false;
     }
     if(mShowArrows) {
@@ -272,7 +272,7 @@ namespace aui {
           return true;
         }
       }
-      else {// horizontal
+      else {
         if(IsInLeftArrow(localX, localY)) {
           mArrowLeftPressed = true;
           SetValue(mValue - mSingleStep);
@@ -287,49 +287,50 @@ namespace aui {
         }
       }
     }
-
-// 2. Thumb / track handling
     int32_t coord = (mOrientation == AUIOrientation::vertical) ? localY : localX;
+    uint32_t trackStart = mShowArrows ? mArrowSize : 0;
     uint32_t thumbPos = GetThumbPosition();
     uint32_t thumbLen = GetThumbLength();
-
-// Click on the thumb -> start dragging
-    if(coord >= static_cast<int32_t>(thumbPos) && coord <= static_cast<int32_t>(thumbPos + thumbLen)) {
+    uint32_t thumbAbsPos = trackStart + thumbPos;
+    if(coord >= static_cast<int32_t>(thumbAbsPos) && coord <= static_cast<int32_t>(thumbAbsPos + thumbLen)) {
+      mDragging = true;
+      mDragOffset = coord - static_cast<int32_t>(thumbAbsPos);
       if(mParentWindow) {
         mParentWindow->SetDragWidget(this);
       }
-      else {
-        D("mParentWindow is 0")
-      }
-      mDragging = true;
-      mDragStartPos = coord;
-      mDragStartValue = mValue;
-      D2("AScrollBar::OnMouseClick: PRESS on thumb - started dragging, startVal={}", mValue);
+      D2("AScrollBar::OnMouseClick: thumb pressed, drag offset={}", mDragOffset);
       return true;
     }
-// Click in the track (not on thumb) -> jump to that position
-    else {
-      D2("click outside thumb")
-      int32_t newValue = ValueFromCoord(coord);
-      SetValue(newValue);
-      D2("AScrollBar::OnMouseClick: PRESS in track - jumped to {}", newValue);
-      return true;
-    }
+    int32_t trackCoord = coord - static_cast<int32_t>(trackStart);
+    int32_t newValue = ValueFromCoord(trackCoord);
+    SetValue(newValue);
+    D2("AScrollBar::OnMouseClick: track clicked, jumped to {}", newValue);
+    return true;
   }
 
   void AScrollBar::OnMouseMove(int32_t localX, int32_t localY) {
-    D3("AScrollBar::OnMouseMove: localX={}, localY={}, mDragging={}", localX, localY, mDragging);
+    D3("AScrollBar::OnMouseMove: x={}, y={}, dragging={}", localX, localY, mDragging);
     if(!mDragging)
       return;
-// Safety: if parent window no longer has this as drag widget, stop dragging
     if(mParentWindow && mParentWindow->GetDragWidget() != this) {
-      D2("Drag widget changed, resetting mDragging");
+      D2("AScrollBar::OnMouseMove: drag widget changed, resetting drag");
       mDragging = false;
       return;
     }
     int32_t coord = (mOrientation == AUIOrientation::vertical) ? localY : localX;
-    int32_t newValue = ValueFromCoord(coord);
-    D3("  coord={}, newValue={}", coord, newValue);
+    uint32_t trackStart = mShowArrows ? mArrowSize : 0;
+    uint32_t trackLen = GetTrackLength();
+    uint32_t thumbLen = GetThumbLength();
+    int32_t thumbAbsPos = coord - mDragOffset;
+    int32_t minAbs = static_cast<int32_t>(trackStart);
+    int32_t maxAbs = static_cast<int32_t>(trackStart + trackLen - thumbLen);
+    if(thumbAbsPos < minAbs)
+      thumbAbsPos = minAbs;
+    if(thumbAbsPos > maxAbs)
+      thumbAbsPos = maxAbs;
+    int32_t thumbPos = thumbAbsPos - minAbs;
+    int32_t newValue = ValueFromCoord(thumbPos);
+    D3("AScrollBar::OnMouseMove: thumbAbsPos={}, newValue={}", thumbAbsPos, newValue);
     SetValue(newValue);
   }
 
