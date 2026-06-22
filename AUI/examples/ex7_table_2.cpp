@@ -34,11 +34,16 @@ int32_t main() {
   ta->Resize(1024, 768);
   ta->SetBGColor(0xFFFFFFFF);
   ta->SetAutoWiden(false);
-  ta->BeginBatch();
-    for(int32_t i = 0; i < 1000000; i++) {
-      for(int32_t j = 0; j < 100; j++)
+  uint32_t nr = 10000, nc = 100;
+  ta->BeginBatch(nr * nc);
+  {
+    ST("table insertion");
+    for(uint32_t i = 0; i < nr; i++) {
+      for(uint32_t j = 0; j < nc; j++)
 //        ta->SetCellData(i, j, "a");
         ta->SetCellData(i, j, generate_random_alphanumeric(1));
+  }
+
   }
   ta->EndBatch();
   ta->SetScrollbarsEnabled(true);
@@ -48,3 +53,4 @@ int32_t main() {
   delete au;
   return 0;
 }
+
