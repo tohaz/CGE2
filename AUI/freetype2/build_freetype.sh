@@ -1,1 +1,1 @@
-make -f AUIFreeType.mk
+make -f AUIFreeType.mk -j$(nproc)
