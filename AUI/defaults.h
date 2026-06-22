@@ -1,7 +1,7 @@
 #ifndef DEFAULTS_H_
 #define DEFAULTS_H_
 
-#define DEBUG_LEVEL 1
+#define DEBUG_LEVEL 2
 
 // try {deference 0}
 // catch(SegmentationFault:) {}
@@ -495,13 +495,14 @@ class ScopedTimer {
       auto us = std::chrono::duration_cast < std::chrono::microseconds > (end - m_start).count();
       auto now = std::chrono::system_clock::now();
       auto ms = std::chrono::duration_cast < std::chrono::milliseconds > (now.time_since_epoch()) % 1000;
-      std::println("{:%H:%M:%S}.{:03d} {}|{}({}): {}: {} µs", now, static_cast<int32_t>(ms.count()), m_loc.file_name(),
-          m_loc.function_name(), m_loc.line(), m_msg, us);
+      std::locale::global(std::locale(""));
+      std::println("{:%H:%M:%S}.{:03d} {}|{}({}): {}: {:L} µs", now, static_cast<int32_t>(ms.count()),
+          m_loc.file_name(), m_loc.function_name(), m_loc.line(), m_msg, us);
     }
 };
 
 #define ST(fmt, ...) \
-  ScopedTimer(std::format(fmt __VA_OPT__(,) __VA_ARGS__), std::source_location::current());
+  ScopedTimer timer_##__LINE__(std::format(fmt __VA_OPT__(,) __VA_ARGS__), std::source_location::current())
 
 const std::unordered_map<std::string,UINT64> string_to_case{
   {"BackSpace", 1},

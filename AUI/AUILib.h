@@ -27,6 +27,7 @@
 #include <execinfo.h>
 #include <flat_map>
 #include <format>
+#include <future>
 #include <dirent.h>
 #include <iomanip>
 #include <iostream>
@@ -124,7 +125,17 @@ struct DrawCommand {
   AUIModifier translate_modifiers(uint16_t state);
   AUIKeyCode translate_keysym(xcb_keysym_t sym);
   std::string NumberToBaseString(UINT64 n);
+
+
+  int32_t find_closest_strike(FT_Face face, int32_t target_ppem);
+  uint8_t* scale_bgra_bitmap(const uint8_t* src, int32_t srcW, int32_t srcH,
+                                    int32_t dstW, int32_t dstH, int32_t srcPitch,
+                                    int32_t& dstPitch);
   void ClipRect(int32_t &x, int32_t &y, int32_t &w, int32_t &h, int32_t parentW, int32_t parentH);
+  void DrawTextEx(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t absX, int32_t absY,
+      int32_t drawW, int32_t drawH, const std::string &text, FT_Face face, uint32_t fontSize, AUIHAlign hAlign,
+      AUIVAlign vAlign, int32_t xOffset, uint32_t textColor, int32_t maxContentWidth);
+
 
 #pragma GCC push_options
 #pragma GCC optimize ("O2")
@@ -305,6 +316,7 @@ private:
   // FreeType
   FT_Library mFtLibrary = nullptr;
   FT_Face mFtDefaultFace = nullptr;
+  FT_Face mFallbackFace = nullptr;
   FTC_Manager mFTCManager = nullptr;
   FTC_ImageCache mFTCImageCache = nullptr;
   FTC_CMapCache mFTCCMapCache = nullptr;
@@ -409,7 +421,9 @@ public:
   std::unordered_map<uint64_t, std::pair<int32_t, int32_t>>& GetMetricsCache() { return mMetricsCache; }
   void SetLastPointerSerial(uint32_t serial) { mLastPointerSerial = serial; }
   uint32_t GetLastPointerSerial() const { return mLastPointerSerial; }
-
+  FT_Face GetFallbackFace() const { return mFallbackFace; }
+  const uint8_t* GetScaledEmoji(FT_Face face, FT_UInt glyph_index, uint32_t size, int32_t& outWidth, int32_t& outHeight, int32_t& outPitch);
+  std::unordered_map<uint64_t, std::vector<uint8_t>> mScaledEmojiCache; // key: ((glyph_index << 32) | size)
 };
 
 } // namespace aui

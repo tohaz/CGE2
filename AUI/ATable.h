@@ -13,8 +13,13 @@ namespace aui {
   struct ATableRangeData2;
   class ATable: public AWidget {
     private:
-      std::map<int64_t, std::map<int64_t, AUICellData>> mRows;// row -> col -> cell
-      std::map<int64_t, std::map<int64_t, AUICellData*>> mColumns;// col -> row -> cell pointer (fast column access)
+      ATable();
+      std::unordered_map<uint64_t, AUICellData> mCells;
+      // Helper to safely pack two 32-bit IDs into one 64-bit lookup key
+      inline uint64_t MakeCellKey(int64_t row, int64_t col) const {
+          return (static_cast<uint64_t>(static_cast<uint32_t>(row)) << 32) |
+                  static_cast<uint32_t>(col);
+      }
       std::map<int64_t, std::pair<int64_t, std::string>> mRowH;// row -> (height, label)
       std::map<int64_t, std::pair<int64_t, std::string>> mColumnW;// col -> (width, label)
       int64_t mHOffset = 0;// horizontal scroll offset (pixels)
@@ -70,40 +75,39 @@ namespace aui {
       int32_t MeasureTextWidth(const std::string &text) const;
       std::unique_ptr<AScrollBar> mVScrollBar;
       std::unique_ptr<AScrollBar> mHScrollBar;
-      AScrollBar* mDragScrollbar = nullptr;
+      AScrollBar *mDragScrollbar = nullptr;
       bool mAutoHideScrollbars = true;
-      void UpdateScrollbarRanges();   // after data/size changes
-      void RecalcScrollFromAlignment(); // after alignment changes
-      mutable std::vector<int64_t> mRowPrefix;   // cumulative row heights (size = R+1)
-      mutable std::vector<int64_t> mRowIds;      // row IDs in key order (size = R)
+      void UpdateScrollbarRanges();// after data/size changes
+      void RecalcScrollFromAlignment();// after alignment changes
+      mutable std::vector<int64_t> mRowPrefix;// cumulative row heights (size = R+1)
+      mutable std::vector<int64_t> mRowIds;// row IDs in key order (size = R)
       mutable bool mRowPrefixDirty = true;
-      mutable std::vector<int64_t> mColPrefix;   // cumulative column widths (size = C+1)
-      mutable std::vector<int64_t> mColIds;      // column IDs in key order (size = C)
+      mutable std::vector<int64_t> mColPrefix;// cumulative column widths (size = C+1)
+      mutable std::vector<int64_t> mColIds;// column IDs in key order (size = C)
       mutable bool mColPrefixDirty = true;
       void RebuildRowPrefix() const;
       void RebuildColPrefix() const;
-      /////////////////
+/////////////////
       int32_t mBatchDepth = 0;
       std::unordered_map<int64_t, int32_t> mBatchRowToIdx;
       std::unordered_map<int64_t, int32_t> mBatchColToIdx;
       std::vector<int64_t> mBatchIdxToRow;
       std::vector<int64_t> mBatchIdxToCol;
       std::vector<std::vector<AUICellData>> mBatchCells;
-      // Resizing state
-       bool        mResizing = false;
-       bool        mResizeColumn = false;       // true = column, false = row
-       int64_t     mResizeTargetId = -1;        // row or column ID being resized
-       int32_t     mResizeStartMouse = 0;       // initial mouse coordinate (X for col, Y for row)
-       int32_t     mResizeStartSize = 0;        // original width/height before drag
-       int32_t     mResizeMinSize = 10;         // minimum allowed size
-       bool        mResizeHover = false;        // cursor over a separator (for feedback)
-       int64_t     mResizeHoverId = -1;         // which separator under cursor
-       bool        mResizeHoverColumn = false;  // orientation
-      /////////////////
-       bool HitTestSeparator(int32_t localX, int32_t localY, bool &isColumn, int64_t &id) const;
+// Resizing state
+      bool mResizing = false;
+      bool mResizeColumn = false;// true = column, false = row
+      int64_t mResizeTargetId = -1;// row or column ID being resized
+      int32_t mResizeStartMouse = 0;// initial mouse coordinate (X for col, Y for row)
+      int32_t mResizeStartSize = 0;// original width/height before drag
+      int32_t mResizeMinSize = 10;// minimum allowed size
+      bool mResizeHover = false;// cursor over a separator (for feedback)
+      int64_t mResizeHoverId = -1;// which separator under cursor
+      bool mResizeHoverColumn = false;// orientation
+/////////////////
+      bool HitTestSeparator(int32_t localX, int32_t localY, bool &isColumn, int64_t &id) const;
 
     public:
-      ATable();
       ~ATable() override = default;
       static ATable* AttachTo(AWindow *parent);
       static ATable* AttachTo(AWidget *parent);
@@ -169,7 +173,7 @@ namespace aui {
         mRowHeightResizeEnabled = enable;
       }
       size_t RowCount() const {
-        return mRows.size();
+        return mRowH.size();
       }
       size_t ColumnCount() const {
         return mColumnW.size();
@@ -177,32 +181,59 @@ namespace aui {
       void AddColumns(UINT32 number);
       void AddRows(UINT32 number);
       void SetScrollbarsEnabled(bool enable);
-      bool AreScrollbarsEnabled() const { return mVScrollBar && mHScrollBar; }
-      void SetAutoHideScrollbars(bool enable) { mAutoHideScrollbars = enable; UpdateScrollbarRanges(); }
-      AScrollBar* GetVScrollBar() { return mVScrollBar.get(); }
-      AScrollBar* GetHScrollBar() { return mHScrollBar.get(); }
+      bool AreScrollbarsEnabled() const {
+        return mVScrollBar && mHScrollBar;
+      }
+      void SetAutoHideScrollbars(bool enable) {
+        mAutoHideScrollbars = enable;
+        UpdateScrollbarRanges();
+      }
+      AScrollBar* GetVScrollBar() {
+        return mVScrollBar.get();
+      }
+      AScrollBar* GetHScrollBar() {
+        return mHScrollBar.get();
+      }
       void ScrollTo(int32_t xOffset, int32_t yOffset);
-      void SetGridColor(uint32_t color) { mGridColor = color; }
-      void SetSelectionColor(uint32_t color) { mSelectionColor = color; }
-      void SetCursorBorderColor(uint32_t color) { mCursorBorderColor = color; }
-      uint32_t GetHeaderBgColor() const { return mHeaderBgColor; }
-      uint32_t GetHeaderTextColor() const { return mHeaderTextColor; }
-      void SetHeaderBgColor(uint32_t color) { mHeaderBgColor = color; }
-      void SetHeaderTextColor(uint32_t color) { mHeaderTextColor = color; }
+      void SetGridColor(uint32_t color) {
+        mGridColor = color;
+      }
+      void SetSelectionColor(uint32_t color) {
+        mSelectionColor = color;
+      }
+      void SetCursorBorderColor(uint32_t color) {
+        mCursorBorderColor = color;
+      }
+      uint32_t GetHeaderBgColor() const {
+        return mHeaderBgColor;
+      }
+      uint32_t GetHeaderTextColor() const {
+        return mHeaderTextColor;
+      }
+      void SetHeaderBgColor(uint32_t color) {
+        mHeaderBgColor = color;
+      }
+      void SetHeaderTextColor(uint32_t color) {
+        mHeaderTextColor = color;
+      }
       void BeginBatch();
+      void BeginBatch(uint32_t prealloc);
       void EndBatch();
       void UpdateLayout();
       int64_t GetRowHeight(int64_t row) const {
-          auto it = mRowH.find(row);
-          return (it != mRowH.end()) ? it->second.first : -1;
+        auto it = mRowH.find(row);
+        return (it != mRowH.end()) ? it->second.first : -1;
       }
       int64_t GetColumnWidth(int64_t col) const {
-          auto it = mColumnW.find(col);
-          return (it != mColumnW.end()) ? it->second.first : -1;
+        auto it = mColumnW.find(col);
+        return (it != mColumnW.end()) ? it->second.first : -1;
       }
-      int64_t GetTotalContentWidth() const  { return mTotalContentWidth; }
-      int64_t GetTotalContentHeight() const { return mTotalContentHeight; }
-
+      int64_t GetTotalContentWidth() const {
+        return mTotalContentWidth;
+      }
+      int64_t GetTotalContentHeight() const {
+        return mTotalContentHeight;
+      }
   };
 
 }// namespace aui

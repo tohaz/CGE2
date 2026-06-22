@@ -255,24 +255,23 @@ namespace aui {
 // rowRange.offset is the number of pixels from the top of the starting row
 // to the top of the visible client area.
     int64_t yPos = static_cast<int64_t>(clientAbsY) - rowRange.offset;
+// ... (Keep the external outer layout and vector setup identical)
 
 // ---- Iterate over existing rows in the visible range ----
     for(size_t ri = rowIdx; ri < mRowIds.size() && mRowIds[ri] <= rowRange.cell2; ++ri) {
       int64_t rowId = mRowIds[ri];
       auto rowIt = mRowH.find(rowId);
       if(rowIt == mRowH.end())
-        continue;// should not happen
+        continue;
       int64_t rowH = rowIt->second.first;
       int64_t rowTop = yPos;
       int64_t rowBottom = yPos + rowH;
 
-// Skip rows completely outside the client area (safety check)
       if(rowBottom < clientAbsY || rowTop > clientAbsY + clientH) {
         yPos += rowH;
         continue;
       }
 
-// ---- Initial horizontal position for this row ----
       int64_t xPos = static_cast<int64_t>(clientAbsX) - colRange.offset;
 
 // ---- Iterate over existing columns in the visible range ----
@@ -280,35 +279,28 @@ namespace aui {
         int64_t colId = mColIds[ci];
         auto colIt = mColumnW.find(colId);
         if(colIt == mColumnW.end())
-          continue;// should not happen
+          continue;
         int64_t colW = colIt->second.first;
         int64_t colLeft = xPos;
         int64_t colRight = xPos + colW;
 
-// Skip columns completely outside the client area
         if(colRight < clientAbsX || colLeft > clientAbsX + clientW) {
           xPos += colW;
           continue;
         }
 
-// ---- Compute visible rectangle for this cell ----
         int32_t drawX = std::max(static_cast<int32_t>(colLeft), clientAbsX);
         int32_t drawY = std::max(static_cast<int32_t>(rowTop), clientAbsY);
         int32_t drawW = std::min(static_cast<int32_t>(colRight), clientAbsX + clientW) - drawX;
         int32_t drawH = std::min(static_cast<int32_t>(rowBottom), clientAbsY + clientH) - drawY;
+
         if(drawW <= 0 || drawH <= 0) {
           xPos += colW;
           continue;
         }
 
-// Clip to parent area (redundant but safe)
         ClipRect(drawX, drawY, drawW, drawH, static_cast<int32_t>(parentWidth), static_cast<int32_t>(parentHeight));
-        if(drawW <= 0 || drawH <= 0) {
-          xPos += colW;
-          continue;
-        }
 
-// ---- Cell background (including selection) ----
         uint32_t bgColor = mBGColor;
         if(mRowSelectMode && rowId == mSelectedRow)
           bgColor = mSelectionColor;
@@ -317,45 +309,37 @@ namespace aui {
 
         FillRect(buffer, parentWidth, drawX, drawY, drawW, drawH, bgColor);
 
-// ---- Draw cell text ----
-        auto rowData = mRows.find(rowId);
-        if(rowData != mRows.end()) {
-          auto cellData = rowData->second.find(colId);
-          if(cellData != rowData->second.end() && !cellData->second.data.empty()) {
-            int32_t textRectX = static_cast<int32_t>(colLeft) + 2;
-            int32_t textRectY = static_cast<int32_t>(rowTop);
-            int32_t textRectW = static_cast<int32_t>(colW) - 4;
-            int32_t textRectH = static_cast<int32_t>(rowH);
-            if(textRectX + textRectW > drawX && textRectX < drawX + drawW && textRectY + textRectH > drawY
-                && textRectY < drawY + drawH) {
-              DrawTextEx(buffer, parentWidth, parentHeight, textRectX, textRectY, textRectW, textRectH,
-                  cellData->second.data, face, mFontSize, cellData->second.hAlign, AUIVAlign::center, 0, mTextColor,
-                  textRectW);
-            }
-          }
+// ---- REFACTORED: O(1) Flat Cell Fetch ----
+        uint64_t cellKey = MakeCellKey(rowId, colId);
+        auto cellIt = mCells.find(cellKey);
+
+        if(cellIt != mCells.end() && !cellIt->second.data.empty()) {
+          int32_t textRectX = static_cast<int32_t>(colLeft) + 2;
+          int32_t textRectY = static_cast<int32_t>(rowTop);
+          int32_t textRectW = static_cast<int32_t>(colW) - 4;
+          int32_t textRectH = static_cast<int32_t>(rowH);
+
+          DrawTextEx(buffer, parentWidth, parentHeight, textRectX, textRectY, textRectW, textRectH, cellIt->second.data,
+              face, mFontSize, cellIt->second.hAlign, AUIVAlign::center, 0, mTextColor, textRectW);
         }
 
-// ---- Grid lines (right and bottom) ----
+// Grid lines and Cursor border rendering logic remains untouched...
         int32_t gridX = static_cast<int32_t>(colRight - 1);
-        if(gridX >= drawX && gridX < drawX + drawW) {
+        if(gridX >= drawX && gridX < drawX + drawW)
           DrawVLine(buffer, parentWidth, gridX, drawY, drawH, mGridColor);
-        }
 
         int32_t gridY = static_cast<int32_t>(rowBottom - 1);
-        if(gridY >= drawY && gridY < drawY + drawH) {
+        if(gridY >= drawY && gridY < drawY + drawH)
           DrawHLine(buffer, parentWidth, drawX, gridY, drawW, mGridColor);
-        }
 
-// ---- Cursor border ----
         if(rowId == mCursorRow && colId == mCursorCol && !mRowSelectMode) {
           DrawRectBorder(buffer, parentWidth, drawX, drawY, drawW, drawH, mCursorBorderColor);
         }
 
         xPos += colW;
-      }// end columns
-
+      }
       yPos += rowH;
-    }// end rows
+    }
   }
 
   void ATable::OnMouseMove(int32_t localX, int32_t localY) {
@@ -429,71 +413,74 @@ namespace aui {
   }
 
   void ATable::AddRow() {
-    int64_t newId = mRows.empty() ? 0 : mRows.rbegin()->first + 1;
-    mRows[newId];
-    int64_t defaultHeight = 24;
-    mRowH[newId] = { defaultHeight, std::to_string(newId) };
-    mTotalContentHeight += defaultHeight;
+// Look at mRowH or mRowIds to determine the next ID index safely
+    int64_t newId = mRowH.empty() ? 0 : mRowH.rbegin()->first + 1;
+
+// Explicitly seed the default heights just like before
+    mRowH[newId] = { 24, std::to_string(newId) };
+    mTotalContentHeight += 24;
     mRowPrefixDirty = true;
-    UpdateLayout();
+    UpdateScrollbarRanges();
   }
 
   void ATable::AddColumn() {
     int64_t newId = mColumnW.empty() ? 0 : mColumnW.rbegin()->first + 1;
-    mColumns[newId];// empty map of pointers
-    int64_t defaultWidth = 80;
-    std::string defaultLabel = NumberToBaseString(static_cast<uint64_t>(newId));
-    mColumnW[newId] = { defaultWidth, defaultLabel };
-    mTotalContentWidth += defaultWidth;
+
+    mColumnW[newId] = { 80, std::to_string(newId) };
+    mTotalContentWidth += 80;
     mColPrefixDirty = true;
-    UpdateLayout();
+    UpdateScrollbarRanges();
   }
 
   void ATable::RemoveRow(int64_t rowIdx) {
-    auto rowIt = mRows.find(rowIdx);
-    if(rowIt == mRows.end())
-      return;
-    for(auto& [col, colMap] : mColumns) {
-      colMap.erase(rowIdx);
-    }
-    mRows.erase(rowIt);
-    auto hIt = mRowH.find(rowIdx);
-    if(hIt != mRowH.end()) {
-      mTotalContentHeight -= hIt->second.first;
+      auto rowIt = mRowH.find(rowIdx);
+      if (rowIt == mRowH.end()) return;
+
+      mTotalContentHeight -= rowIt->second.first;
+      mRowH.erase(rowIt);
+
+      // FIXED: Iterate through our flat map directly using a safe erase pattern
+      for (auto it = mCells.begin(); it != mCells.end(); ) {
+          int64_t r = static_cast<int64_t>(it->first >> 32);
+          if (r == rowIdx) {
+              it = mCells.erase(it);
+          } else {
+              ++it;
+          }
+      }
+
       mRowPrefixDirty = true;
-      mRowH.erase(hIt);
-    }
-    if(mCursorRow == rowIdx)
-      mCursorRow = -1;
-    if(mSelectedRow == rowIdx)
-      mSelectedRow = -1;
-    if(mParentWindow)
-      mParentWindow->Draw();
+      UpdateScrollbarRanges();
   }
 
   void ATable::RemoveColumn(int64_t colIdx) {
-    for(auto& [row, rowData] : mRows) {
-      rowData.erase(colIdx);
-    }
-    mColumns.erase(colIdx);
-    auto wIt = mColumnW.find(colIdx);
-    if(wIt != mColumnW.end()) {
-      mTotalContentWidth -= wIt->second.first;
-      mColumnW.erase(wIt);
-    }
-    if(mCursorCol == colIdx)
-      mCursorCol = -1;
-    mColPrefixDirty = true;
-    if(mParentWindow)
-      mParentWindow->Draw();
+      auto colIt = mColumnW.find(colIdx);
+      if (colIt == mColumnW.end()) return;
+
+      mTotalContentWidth -= colIt->second.first;
+      mColumnW.erase(colIt);
+
+      // FIXED: Clear matching column entries reliably regardless of layout state
+      for (auto it = mCells.begin(); it != mCells.end(); ) {
+          int64_t c = static_cast<int64_t>(it->first & 0xFFFFFFFF);
+          if (c == colIdx) {
+              it = mCells.erase(it);
+          } else {
+              ++it;
+          }
+      }
+
+      mColPrefixDirty = true;
+      UpdateScrollbarRanges();
   }
 
   void ATable::Clear() {
-    mRows.clear();
-    mColumns.clear();
+    mCells.clear();
     mRowH.clear();
     mColumnW.clear();
-    mColPrefixDirty = true;// <-- add
+    mRowIds.clear();
+    mColIds.clear();
+    mColPrefixDirty = true;
     mRowPrefixDirty = true;
     mTotalContentHeight = 0;
     mTotalContentWidth = 0;
@@ -504,57 +491,54 @@ namespace aui {
   }
 
   std::string ATable::GetCellData(int64_t row, int64_t col) const {
-    auto rowIt = mRows.find(row);
-    if(rowIt == mRows.end())
+    uint64_t key = MakeCellKey(row, col);
+    auto it = mCells.find(key);
+    if(it == mCells.end()) {
       return "";
-    auto colIt = rowIt->second.find(col);
-    if(colIt == rowIt->second.end())
-      return "";
-    return colIt->second.data;
+    }
+    return it->second.data;
   }
 
   AUICellData& ATable::GetOrCreateCell(int64_t row, int64_t col) {
-    if(mRows.find(row) == mRows.end()) {
-      if(mRowH.find(row) == mRowH.end()) {
-        mRowH[row] = { 24, std::to_string(row) };
-        mTotalContentHeight += 24;
-      }
+// Dynamically tracking row bounds just like before
+    if(mRowH.find(row) == mRowH.end()) {
+      mRowH[row] = { 24, std::to_string(row) };
+      mTotalContentHeight += 24;
+      mRowPrefixDirty = true;
     }
-    auto &rowData = mRows[row];
-    auto it = rowData.find(col);
-    if(it == rowData.end()) {
-      if(mColumnW.find(col) == mColumnW.end()) {
-        mColumnW[col] = { 80, std::to_string(col) };
-        mTotalContentWidth += 80;
-      }
-      AUICellData newCell;
-      auto inserted = rowData.insert( { col, newCell });
-      it = inserted.first;
-      mColumns[col][row] = &it->second;
+    if(mColumnW.find(col) == mColumnW.end()) {
+      mColumnW[col] = { 80, std::to_string(col) };
+      mTotalContentWidth += 80;
+      mColPrefixDirty = true;
     }
-    return it->second;
+    uint64_t key = MakeCellKey(row, col);
+// std::unordered_map[] constructs the value if it doesn't exist yet
+    return mCells[key];
   }
 //
   void ATable::AutoWidenColumn(int64_t col) {
-    int64_t maxWidth = 0;
     auto colIt = mColumnW.find(col);
-    if(colIt != mColumnW.end()) {
-      int32_t headerW = MeasureTextWidth(colIt->second.second);
-      maxWidth = std::max(maxWidth, static_cast<int64_t>(headerW + 20));
-    }
-    for(auto& [row, rowData] : mRows) {
-      auto cellIt = rowData.find(col);
-      if(cellIt != rowData.end()) {
-        int32_t textW = MeasureTextWidth(cellIt->second.data);
-        maxWidth = std::max(maxWidth, static_cast<int64_t>(textW + 10));
+    if(colIt == mColumnW.end())
+      return;
+
+    int32_t maxWidth = MeasureTextWidth(colIt->second.second);// Start with header label
+
+    for(int64_t rowId : mRowIds) {
+      uint64_t key = MakeCellKey(rowId, col);
+      auto cellIt = mCells.find(key);
+      if(cellIt != mCells.end() && !cellIt->second.data.empty()) {
+        int32_t cellW = MeasureTextWidth(cellIt->second.data);
+        if(cellW > maxWidth)
+          maxWidth = cellW;
       }
     }
-    int64_t oldW = mColumnW[col].first;
-    if(maxWidth > oldW) {
-      mTotalContentWidth += (maxWidth - oldW);
-      mColumnW[col].first = maxWidth;
-    }
+
+    int64_t newWidth = maxWidth + 15;// Padding space
+    mTotalContentWidth -= colIt->second.first;
+    colIt->second.first = newWidth;
+    mTotalContentWidth += newWidth;
     mColPrefixDirty = true;
+    UpdateScrollbarRanges();
   }
 
   void ATable::DrawIntersectionBox(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
@@ -871,9 +855,9 @@ namespace aui {
   }
 
   void ATable::RemoveLastRow() {
-    if(mRows.empty())
+    if(mRowH.empty())
       return;
-    int64_t lastRow = mRows.rbegin()->first;
+    int64_t lastRow = mRowH.rbegin()->first;
     RemoveRow(lastRow);
   }
 
@@ -1105,19 +1089,31 @@ namespace aui {
     }
   }
 
+  void ATable::BeginBatch(uint32_t prealloc) {
+      if (mBatchDepth++ == 0) {
+          mBatchRowToIdx.clear();
+          mBatchColToIdx.clear();
+          mBatchIdxToRow.clear();
+          mBatchIdxToCol.clear();
+          mBatchCells.clear();
+          mCells.reserve(prealloc);
+          uint32_t estimatedRows = static_cast<uint32_t>(std::sqrt(prealloc));
+          mBatchCells.reserve(prealloc);
+          mBatchRowToIdx.reserve(estimatedRows);
+          mBatchIdxToRow.reserve(estimatedRows);
+      }
+  }
   void ATable::EndBatch() {
     if(--mBatchDepth > 0)
       return;
 
 // 1. Ensure all rows exist in the real maps
     for(int64_t row : mBatchIdxToRow) {
-      if(mRows.find(row) == mRows.end()) {
-        mRows[row];
+      if(mRowH.find(row) == mRowH.end()) {
         mRowH[row] = { 24, std::to_string(row) };
         mTotalContentHeight += 24;
       }
     }
-
 // 2. Ensure all columns exist
     for(int64_t col : mBatchIdxToCol) {
       if(mColumnW.find(col) == mColumnW.end()) {
@@ -1127,38 +1123,44 @@ namespace aui {
     }
     mRowPrefixDirty = true;
     mColPrefixDirty = true;
+    for (size_t r = 0; r < mBatchCells.size(); ++r) {
+            int64_t row = mBatchIdxToRow[r];
 
-// 3. Copy batch data to real maps – one pass, using size_t indices
-    for(size_t ri = 0; ri < mBatchIdxToRow.size(); ++ri) {
-      int64_t row = mBatchIdxToRow[ri];
-      auto &rowMap = mRows[row];// O(log R) once per row
-      const auto &batchRow = mBatchCells[ri];
-      for(size_t ci = 0; ci < batchRow.size(); ++ci) {
-        const auto &batchCell = batchRow[ci];
-        if(!batchCell.data.empty()) {
-          int64_t col = mBatchIdxToCol[ci];
-          rowMap[col] = batchCell;// O(log C) per cell – unavoidable
+            if (mRowH.find(row) == mRowH.end()) {
+                mRowH[row] = { 24, std::to_string(row) };
+                mTotalContentHeight += 24;
+                mRowPrefixDirty = true;
+            }
+
+            for (size_t c = 0; c < mBatchCells[r].size(); ++c) {
+                int64_t col = mBatchIdxToCol[c];
+
+                if (mColumnW.find(col) == mColumnW.end()) {
+                    mColumnW[col] = { 80, std::to_string(col) };
+                    mTotalContentWidth += 80;
+                    mColPrefixDirty = true;
+                }
+
+                // Direct assignment straight to your fast O(1) cell map
+                uint64_t key = MakeCellKey(row, col);
+                mCells[key] = mBatchCells[r][c];
+            }
         }
-      }
-    }
 
-// 4. Auto-widen once per column if enabled
-    if(mAutoWiden) {
-      for(int64_t col : mBatchIdxToCol) {
-        AutoWidenColumn(col);
-      }
-    }
+        // Clean out batch staging containers
+        mBatchCells.clear();
+        mBatchRowToIdx.clear();
+        mBatchColToIdx.clear();
+        mBatchIdxToRow.clear();
+        mBatchIdxToCol.clear();
 
-// 5. Cleanup and redraw
-    mBatchRowToIdx.clear();
-    mBatchColToIdx.clear();
-    mBatchIdxToRow.clear();
-    mBatchIdxToCol.clear();
-    mBatchCells.clear();
+        mRowPrefixDirty = true;
+        mColPrefixDirty = true;
+        UpdateScrollbarRanges();
 
-    if(mParentWindow) {
-      mParentWindow->Draw();
-    }
+        if (mParentWindow) {
+            mParentWindow->Draw();
+        }
   }
 
   void ATable::SetCellData(int64_t row, int64_t col, const std::string &text, AUIHAlign hAlign) {
@@ -1256,7 +1258,7 @@ namespace aui {
     UpdateScrollbarRanges();
   }
 
-  // Returns true if a separator is found, and fills out parameters.
+// Returns true if a separator is found, and fills out parameters.
   bool ATable::HitTestSeparator(int32_t localX, int32_t localY, bool &isColumn, int64_t &id) const {
 // Column header hit test
     if(localY >= 0 && localY < static_cast<int32_t>(mColumnHeaderHeight)) {

@@ -268,108 +268,88 @@ namespace aui {
   static const wl_registry_listener registry_listener = { .global = registry_global, .global_remove = registry_remove };
 
   AUI* AUI::Create(const std::string &windowTitle) {
-    AUI *au = new AUI();
-    if(FT_Init_FreeType(&au->mFtLibrary) != 0) {
-      E("FT_Init_FreeType failed");
-      delete au;
-      return nullptr;
-    }
-    FT_Error err = FT_Err_Unknown_File_Format;
-// ------------------------------------------------------------------
-// 1. Try system fonts
-// ------------------------------------------------------------------
-    const char *fontPaths[] = { "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/DejaVuSans-Bold.ttf" };
-    for(size_t i = 0; i < sizeof(fontPaths) / sizeof(fontPaths[0]); ++i) {
-      err = FT_New_Face(au->mFtLibrary, fontPaths[i], 0, &au->mFtDefaultFace);
-      if(err == 0) {
-        D3("Loaded system font: {}", fontPaths[i]);
-        break;
+      AUI *au = new AUI();
+      if(FT_Init_FreeType(&au->mFtLibrary) != 0) {
+          E("FT_Init_FreeType failed");
+          delete au;
+          return nullptr;
       }
-      else {
-        D3("FT_New_Face failed for {}: error {}", fontPaths[i], err);
+      FT_Error err = FT_Err_Unknown_File_Format;
+      // Load primary font (DejaVuSans)
+      const char *fontPaths[] = {
+          "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+          "/usr/share/fonts/DejaVuSans-Bold.ttf"
+      };
+      for(size_t i = 0; i < sizeof(fontPaths) / sizeof(fontPaths[0]); ++i) {
+          err = FT_New_Face(au->mFtLibrary, fontPaths[i], 0, &au->mFtDefaultFace);
+          if(err == 0) {
+              D1("Loaded system font: {}", fontPaths[i]);
+              break;
+          }
       }
-    }
-// ------------------------------------------------------------------
-// 2. Fallback to embedded font if available
-// ------------------------------------------------------------------
-    if(err != 0) {
-      D1("System font not found, trying embedded font");
-// Verify that the embedded font data is non‑empty
-      if(g_embedded_font_size > 0) {
-        err = FT_New_Memory_Face(au->mFtLibrary, _binary_fonts_DejaVuSans_Bold_ttf_start,
-            (int64_t) g_embedded_font_size, 0, &au->mFtDefaultFace);
-        if(err == 0) {
-          D1("Loaded embedded font ({} bytes)", g_embedded_font_size);
-        }
-        else {
-          E("FT_New_Memory_Face failed: error {}", err);
-        }
+      if(err != 0) {
+          if(g_embedded_font_size > 0) {
+              err = FT_New_Memory_Face(au->mFtLibrary, _binary_fonts_DejaVuSans_Bold_ttf_start,
+                  (int64_t) g_embedded_font_size, 0, &au->mFtDefaultFace);
+              if(err == 0) D1("Loaded embedded font");
+          }
       }
-      else {
-        E("Embedded font data is empty (size 0) – check objcopy");
+      if(err != 0) {
+          E("No primary font");
+          delete au;
+          return nullptr;
       }
-    }
-// ------------------------------------------------------------------
-// 3. If still no font, abort
-// ------------------------------------------------------------------
-    if(err != 0) {
-      E("No font could be loaded (last error {})", err);
-      delete au;
-      return nullptr;
-    }
-    FT_Set_Pixel_Sizes(au->mFtDefaultFace, 0, 14);
-// ------------------------------------------------------------------
-// FreeType cache manager
-// ------------------------------------------------------------------
-    FT_Error error = FTC_Manager_New(au->mFtLibrary, AUI::kMaxFaces, AUI::kMaxSizes, AUI::kMaxBytes, ftc_face_requester,
-        au, &au->mFTCManager);
-    if(error) {
-      E("FTC_Manager_New failed: {}", error);
-      au->mFTCManager = nullptr;
-    }
-    else {
-      error = FTC_ImageCache_New(au->mFTCManager, &au->mFTCImageCache);
-      if(error)
-        E("FTC_ImageCache_New failed: {}", error);
-    }
+      FT_Set_Pixel_Sizes(au->mFtDefaultFace, 0, 14);
 
-    au->mFtDefaultFace->generic.data = au;
-    au->PreRenderAscii(14);
-// ------------------------------------------------------------------
-// Wayland / XCB setup (unchanged)
-// ------------------------------------------------------------------
-    const char *waylandEnv = getenv("WAYLAND_DISPLAY");
-    if(waylandEnv) {
-      au->mWindowType = AUIWindowType::Wayland;
-      au->mWaylandDisplay = wl_display_connect(nullptr);
-      if(!au->mWaylandDisplay) {
-        delete au;
-        return nullptr;
+      // Load fallback color emoji font (NotoColorEmoji)
+      const char* emojiPath = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf";
+      err = FT_New_Face(au->mFtLibrary, emojiPath, 0, &au->mFallbackFace);
+      if(err == 0) {
+          D1("Loaded fallback font: {}", emojiPath);
+          FT_Select_Charmap(au->mFallbackFace, FT_ENCODING_UNICODE);
+          if(FT_IS_SCALABLE(au->mFallbackFace)) {
+              FT_Set_Pixel_Sizes(au->mFallbackFace, 0, 14);
+          } else {
+              int32_t strike = find_closest_strike(au->mFallbackFace, 14);
+              if(strike >= 0) FT_Select_Size(au->mFallbackFace, strike);
+          }
+      } else {
+          D1("Failed to load fallback font {}", emojiPath);
+          au->mFallbackFace = nullptr;
       }
-      au->mWaylandRegistry = wl_display_get_registry(au->mWaylandDisplay);
-      wl_registry_add_listener(au->mWaylandRegistry, &registry_listener, au);
-      if(wl_display_roundtrip(au->mWaylandDisplay) == -1) {
-        E("wl_display_roundtrip failed");
+
+      // FreeType cache manager
+      FT_Error error = FTC_Manager_New(au->mFtLibrary, AUI::kMaxFaces, AUI::kMaxSizes, AUI::kMaxBytes, ftc_face_requester,
+          au, &au->mFTCManager);
+      if(error) {
+          E("FTC_Manager_New failed");
+      } else {
+          error = FTC_ImageCache_New(au->mFTCManager, &au->mFTCImageCache);
+          if(error) E("FTC_ImageCache_New failed");
       }
-      if(wl_display_roundtrip(au->mWaylandDisplay) == -1) {
-        E("second roundtrip failed");
+
+      au->mFtDefaultFace->generic.data = au;
+      au->PreRenderAscii(14);
+      // Wayland/XCB setup (unchanged)
+      const char *waylandEnv = getenv("WAYLAND_DISPLAY");
+      if(waylandEnv) {
+          au->mWindowType = AUIWindowType::Wayland;
+          au->mWaylandDisplay = wl_display_connect(nullptr);
+          if(!au->mWaylandDisplay) { delete au; return nullptr; }
+          au->mWaylandRegistry = wl_display_get_registry(au->mWaylandDisplay);
+          wl_registry_add_listener(au->mWaylandRegistry, &registry_listener, au);
+          wl_display_roundtrip(au->mWaylandDisplay);
+          wl_display_roundtrip(au->mWaylandDisplay);
+          if(!au->mWaylandCompositor || !au->mWaylandShm || !au->mWaylandXdgBase) {
+              delete au; return nullptr;
+          }
+      } else {
+          au->mWindowType = AUIWindowType::XCB;
       }
-      if(!au->mWaylandCompositor || !au->mWaylandShm || !au->mWaylandXdgBase) {
-        delete au;
-        return nullptr;
-      }
-    }
-    else {
-      au->mWindowType = AUIWindowType::XCB;
-    }
-    au->mMainWnd = AWindow::AttachTo(au, windowTitle);
-    if(!au->mMainWnd) {
-      delete au;
-      return nullptr;
-    }
-    au->Draw();
-    return au;
+      au->mMainWnd = AWindow::AttachTo(au, windowTitle);
+      if(!au->mMainWnd) { delete au; return nullptr; }
+      au->Draw();
+      return au;
   }
 
   void AUI::ProcessMessages() {
@@ -387,11 +367,6 @@ namespace aui {
       if(ctx) {
         wl_display_roundtrip(mWaylandDisplay);
         D2("Initial configuration sync done.");
-//        if(ctx->GetSoftwareBuffer() == nullptr) {
-//          uint32_t w = ctx->mPendingWidth ? ctx->mPendingWidth : mMainWnd->SizeX();
-//          uint32_t h = ctx->mPendingHeight ? ctx->mPendingHeight : mMainWnd->SizeY();
-//          ctx->CreateShmBuffer(w, h);
-//        }
         uint32_t w = ctx->mPendingWidth ? ctx->mPendingWidth : mMainWnd->SizeX();
         uint32_t h = ctx->mPendingHeight ? ctx->mPendingHeight : mMainWnd->SizeY();
         if(ctx->mPendingResizeEnabled) {
@@ -601,20 +576,6 @@ namespace aui {
   void AUI::Draw() {
     D3("cascade Draw({})", mDrawCounter++);
     UNUSED auto start = std::chrono::high_resolution_clock::now();
-
-// 1. Redraw all registered windows to populate their respective buffers
-//    if(mWindowType == AUIWindowType::XCB) {
-//      for(auto &pair : mXcbWindowMap) {
-//        if(pair.second)
-//          pair.second->Draw();
-//      }
-//    }
-//    else if(mWindowType == AUIWindowType::Wayland) {
-//      for(auto &pair : mWaylandSurfaceMap) {
-//        if(pair.second)
-//          pair.second->Draw();
-//      }
-//    }
     if(mDrawCommands.empty()) {
       D3("zero commands");
       return;
@@ -736,7 +697,8 @@ namespace aui {
       if(!mWaylandDisplay)
         E("FlushConnection: Wayland backend but mWaylandDisplay is null");
       wl_display_flush(mWaylandDisplay);
-      if(mXcbConnection)xcb_flush(mXcbConnection);
+      if(mXcbConnection)
+        xcb_flush(mXcbConnection);
     }
   }
 
@@ -850,8 +812,7 @@ namespace aui {
   }
 
   xcb_connection_t* AUI::GetXcbConnection() {
-    // we support both backends in Wayland
-//    if(mWindowType != AUIWindowType::XCB) E("GetXcbConnection called when backend is not XCB");
+// we support both backends in Wayland
     if(!mXcbOwned)
       InitXcb();
     if(!mXcbConnection)
@@ -971,10 +932,81 @@ namespace aui {
     return (it != mPreRenderedGlyphs.end()) ? &it->second : nullptr;
   }
 
+  const uint8_t* AUI::GetScaledEmoji(FT_Face face, FT_UInt glyph_index, uint32_t size,
+                                     int32_t& outWidth, int32_t& outHeight, int32_t& outPitch) {
+      uint64_t key = (static_cast<uint64_t>(glyph_index) << 32) | size;
+      auto it = mScaledEmojiCache.find(key);
+      if (it != mScaledEmojiCache.end()) {
+          // We need to extract width/height/pitch from the stored data.
+          // We'll store them in the vector at the beginning.
+          const uint8_t* data = it->second.data();
+          outWidth = *reinterpret_cast<const int32_t*>(data);
+          outHeight = *reinterpret_cast<const int32_t*>(data + 4);
+          outPitch = *reinterpret_cast<const int32_t*>(data + 8);
+          return data + 12;
+      }
+
+      // Load the glyph with color (no render to get original bitmap)
+      FT_Error err = FT_Load_Glyph(face, glyph_index, FT_LOAD_COLOR | FT_LOAD_NO_HINTING);
+      if (err) return nullptr;
+
+      FT_GlyphSlot slot = face->glyph;
+      FT_Bitmap* bitmap = &slot->bitmap;
+
+      // If it's not a bitmap, convert it (e.g., if it's PNG format)
+      if (slot->format != FT_GLYPH_FORMAT_BITMAP) {
+          FT_Glyph glyph;
+          if (FT_Get_Glyph(slot, &glyph) != 0) return nullptr;
+          if (FT_Glyph_To_Bitmap(&glyph, FT_RENDER_MODE_NORMAL, nullptr, 1) != 0) {
+              FT_Done_Glyph(glyph);
+              return nullptr;
+          }
+          FT_BitmapGlyph bmpGlyph = (FT_BitmapGlyph)glyph;
+          bitmap = &bmpGlyph->bitmap;
+          // But we need to keep the glyph until we copy the data
+          // We'll copy the data and then free.
+          // However, we need the slot's metrics? We'll use the bitmap directly.
+      }
+
+      // If pixel_mode is not BGRA, we cannot handle color; fallback to grayscale.
+      if (bitmap->pixel_mode != FT_PIXEL_MODE_BGRA) {
+          // We could fallback to grayscale but we want color, so return nullptr.
+          return nullptr;
+      }
+
+      int32_t targetSize = static_cast<int32_t>(size);
+      int32_t dstW = targetSize;
+      int32_t dstH = targetSize;
+      int32_t dstPitch;
+      uint8_t* scaled = scale_bgra_bitmap(bitmap->buffer, (int32_t)bitmap->width, (int32_t)bitmap->rows,
+                                          dstW, dstH, bitmap->pitch, dstPitch);
+      if (!scaled) return nullptr;
+
+      // Store in cache: width, height, pitch, then pixel data
+      std::vector<uint8_t> cacheData;
+      cacheData.reserve((size_t)(12 + dstH * dstPitch));
+      const int32_t w = dstW, h = dstH, p = dstPitch;
+      const uint8_t* wPtr = reinterpret_cast<const uint8_t*>(&w);
+      const uint8_t* hPtr = reinterpret_cast<const uint8_t*>(&h);
+      const uint8_t* pPtr = reinterpret_cast<const uint8_t*>(&p);
+      cacheData.insert(cacheData.end(), wPtr, wPtr + 4);
+      cacheData.insert(cacheData.end(), hPtr, hPtr + 4);
+      cacheData.insert(cacheData.end(), pPtr, pPtr + 4);
+      cacheData.insert(cacheData.end(), scaled, scaled + dstH * dstPitch);
+      delete[] scaled;
+
+      auto [it2, inserted] = mScaledEmojiCache.emplace(key, std::move(cacheData));
+      const uint8_t* data = it2->second.data();
+      outWidth = *reinterpret_cast<const int32_t*>(data);
+      outHeight = *reinterpret_cast<const int32_t*>(data + 4);
+      outPitch = *reinterpret_cast<const int32_t*>(data + 8);
+      return data + 12;
+  }
+
   AUI::~AUI() {
     mXcbWindowMap.clear();
     mWaylandSurfaceMap.clear();
-    // mMainWnd is now a dangling pointer; we set to nullptr to avoid accidental use.
+// mMainWnd is now a dangling pointer; we set to nullptr to avoid accidental use.
     mMainWnd = nullptr;
     D3("set mMainWnd to nullptr")
     if(mXcbConnection && mXcbOwned) {

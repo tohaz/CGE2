@@ -112,7 +112,14 @@ namespace aui {
   }
 
   void AWindow::OnMousePress(int32_t x, int32_t y, uint32_t button) {
-// Normalize button codes
+    if(AMenu::IsActiveMenuVisible() && !AMenu::IsPointInsideActiveMenu(x, y))
+      AMenu::DismissActiveMenu();
+    AMenu *perm = AMenu::GetPermanentMenu();
+    if(perm) {
+      AMenu *sub = perm->GetActiveSubMenu();
+      if(sub && sub->IsVisible() && !AMenu::IsPointInsideMenuHierarchy(sub, x, y))
+        perm->CloseSubMenu();
+    }
     uint32_t normalized = button;
     if(button == 272)
       normalized = 1;
@@ -121,27 +128,25 @@ namespace aui {
     else if(button == 274)
       normalized = 2;
     if(normalized != 1)
-      return;// only left button
-// Already dragging?
+      return;
     if(mDragWidget) {
       int32_t localX = x - mDragWidget->X();
       int32_t localY = y - mDragWidget->Y();
       if(localX >= 0 && localX < static_cast<int32_t>(mDragWidget->SizeX()) && localY >= 0
-          && localY < static_cast<int32_t>(mDragWidget->SizeY())) {
+          && localY < static_cast<int32_t>(mDragWidget->SizeY()))
         mDragWidget->OnMouseClick(localX, localY, true);
-      }
       ForceDraw();
       return;
     }
-// Find the topmost widget that wants the press
-    int32_t childIndex = 0;
     for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
-      std::string label = "DispatchClick child " + std::to_string(childIndex++);
-      bool consumed = (*it)->DispatchClick(x, y, true);
+      AWidget *widget = it->get();
+      if(!widget->IsVisible())
+        continue;
+      bool isMenu = dynamic_cast<AMenu*>(widget) != nullptr;
+      bool consumed = widget->DispatchClick(x, y, true);
       if(consumed) {
-        if(!mDragWidget) {
-          SetDragWidget(it->get());
-        }
+        if(!mDragWidget && !isMenu)
+          SetDragWidget(widget);
         break;
       }
     }
@@ -152,7 +157,6 @@ namespace aui {
   }
 
   void AWindow::OnMouseRelease(int32_t x, int32_t y, uint32_t button) {
-    D2("OnMouseRelease: drag widget = {}", (void*)mDragWidget);
     if(mDragWidget) {
       int32_t localX = x - mDragWidget->X();
       int32_t localY = y - mDragWidget->Y();
@@ -163,7 +167,10 @@ namespace aui {
       uint32_t normalized = (button == 272) ? 1 : (button == 273) ? 3 : (button == 274) ? 2 : button;
       if(normalized == 1) {
         for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
-          if((*it)->DispatchClick(x, y, false))
+          AWidget *widget = it->get();
+          if(!widget->IsVisible())
+            continue;
+          if(widget->DispatchClick(x, y, false))
             break;
         }
       }
@@ -265,7 +272,7 @@ namespace aui {
 
   void AWindow::DoDraw() {
     D3("AWindow::DoDraw: start");
-    if (!mBackend->EnsureBuffer(mSizeX, mSizeY)) {
+    if(!mBackend->EnsureBuffer(mSizeX, mSizeY)) {
       E("Failed to allocate buffer for window")
     }
     if(!mBackend) {
@@ -330,10 +337,6 @@ namespace aui {
     }
   }
 
-  AWindow::~AWindow() {
-    D3()
-  }
-
   void AWindow::Move(int32_t x, int32_t y) {
     if(mBackend) {
       mBackend->Move(x, y);
@@ -341,7 +344,29 @@ namespace aui {
     else {
       E("backend is 0")
     }
+  }
 
+  void AWindow::RemoveWidget(AWidget *widget) {
+    if(!widget)
+      return;
+    auto it = std::find_if(mWidg.begin(), mWidg.end(), [widget](const std::unique_ptr<AWidget> &ptr) {
+      return ptr.get() == widget;
+    });
+    if(it == mWidg.end())
+      return;// not found
+// Clear any internal references to this widget
+    if(mDragWidget == widget)
+      mDragWidget = nullptr;
+    if(mHoverWidget == widget)
+      mHoverWidget = nullptr;
+    if(mFocusedWidget == widget)
+      mFocusedWidget = nullptr;
+    mWidg.erase(it);// widget is destroyed via unique_ptr
+    ForceDraw();// redraw immediately
+  }
+
+  AWindow::~AWindow() {
+    D3()
   }
 
 }// namespace aui

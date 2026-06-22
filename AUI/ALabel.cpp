@@ -63,22 +63,43 @@ namespace aui {
   }
 
   void ALabel::Draw(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
-      int32_t offsetY) const {
-    int32_t absX = offsetX + mX;
-    int32_t absY = offsetY + mY;
-    uint32_t drawW = std::min(mSizeX, parentWidth - static_cast<uint32_t>(absX));
-    uint32_t drawH = std::min(mSizeY, parentHeight - static_cast<uint32_t>(absY));
-    if(drawW > 0 && drawH > 0) {
-      uint32_t bgColor = mBGColor & 0x00FFFFFFU;
-      for(uint32_t row = 0; row < drawH; ++row) {
-        size_t lineStart = (static_cast<size_t>(absY) + row) * parentWidth + static_cast<size_t>(absX);
-        for(uint32_t col = 0; col < drawW; ++col) {
-          buffer[lineStart + col] = bgColor;
-        }
-      }
-    }
-    DrawBorder(buffer, parentWidth, parentHeight, offsetX, offsetY);
-    DrawText(buffer, parentWidth, parentHeight, offsetX, offsetY);
-  }
+                    int32_t offsetY) const {
+      int32_t absX = offsetX + mX;
+      int32_t absY = offsetY + mY;
+      uint32_t drawW = std::min(mSizeX, parentWidth - static_cast<uint32_t>(absX));
+      uint32_t drawH = std::min(mSizeY, parentHeight - static_cast<uint32_t>(absY));
 
+      // ---- Draw background ----
+      if (drawW > 0 && drawH > 0) {
+          uint32_t bgColor = mBGColor & 0x00FFFFFFU;
+          for (uint32_t row = 0; row < drawH; ++row) {
+              size_t lineStart = (static_cast<size_t>(absY) + row) * parentWidth + static_cast<size_t>(absX);
+              for (uint32_t col = 0; col < drawW; ++col) {
+                  buffer[lineStart + col] = bgColor;
+              }
+          }
+      }
+      DrawBorder(buffer, parentWidth, parentHeight, offsetX, offsetY);
+
+      // ---- Draw text ----
+      if (!mText.empty()) {
+          AUI *engine = static_cast<AUI*>(mEnginePtr);
+          if (engine) {
+              FT_Face face = engine->GetDefaultFontFace();
+              if (face) {
+                  // Add small padding
+                  int32_t textX = absX + 4;
+                  int32_t textY = absY + 2;
+                  int32_t textW = static_cast<int32_t>(drawW) - 8;
+                  int32_t textH = static_cast<int32_t>(drawH) - 4;
+                  if (textW > 0 && textH > 0) {
+                      DrawTextEx(buffer, parentWidth, parentHeight,
+                                 textX, textY, textW, textH,
+                                 mText, face, mFontSize,
+                                 mHAlign, mVAlign, 0, mTextColor, textW);
+                  }
+              }
+          }
+      }
+  }
 }// namespace aui

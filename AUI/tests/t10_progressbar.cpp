@@ -1,6 +1,3 @@
-#include <chrono>
-#include <future>
-#include <thread>
 #include "AUILib.h"
 
 using namespace aui;

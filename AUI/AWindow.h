@@ -78,6 +78,7 @@ namespace aui {
       bool KeepFocusOnMouseLeave() const { return mKeepFocusOnMouseLeave; }
       void SetCursor(AUICursorType type);
       void BringChildToFront(AWidget *child);
+      void RemoveWidget(AWidget* widget);
 
 
   };

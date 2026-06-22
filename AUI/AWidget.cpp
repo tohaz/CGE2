@@ -70,7 +70,8 @@ namespace aui {
 
   void AWidget::SetBGColor(uint32_t color) {
     mBGColor = color;
-    if(mParentWindow) mParentWindow->Draw();
+    if(mParentWindow)
+      mParentWindow->Draw();
   }
 
   bool AWidget::DispatchClick(int32_t parentX, int32_t parentY, bool pressed) {
@@ -105,7 +106,7 @@ namespace aui {
     D2("AWidget::OnMouseClick default at ({},{}) pressed={}", localX, localY, pressed);
     bool consumed = (mClickCallback != nullptr);
     InvokeClickCallback(localX, localY, pressed);
-    //mParentWindow->ForceDraw();
+//mParentWindow->ForceDraw();
     return consumed;
   }
 
@@ -534,18 +535,20 @@ namespace aui {
   }
 
   int32_t AWidget::MeasureTextWidth(const std::string &text) const {
-      if (!mEnginePtr) return 0;
-      FT_Face face = mEnginePtr->GetDefaultFontFace();
-      if (!face) return 0;
-      FT_Set_Pixel_Sizes(face, 0, mFontSize);
-      int32_t width = 0;
-      for (char c : text) {
-          FT_ULong charCode = static_cast<FT_ULong>(static_cast<uint8_t>(c));
-          FT_UInt glyph_index = FT_Get_Char_Index(face, charCode);
-          FT_Fixed advance = mEnginePtr->GetCachedAdvance(glyph_index, mFontSize);
-          width += static_cast<int32_t>(advance >> 6);
-      }
-      return width;
+    if(!mEnginePtr)
+      return 0;
+    FT_Face face = mEnginePtr->GetDefaultFontFace();
+    if(!face)
+      return 0;
+    FT_Set_Pixel_Sizes(face, 0, mFontSize);
+    int32_t width = 0;
+    for(char c : text) {
+      FT_ULong charCode = static_cast<FT_ULong>(static_cast<uint8_t>(c));
+      FT_UInt glyph_index = FT_Get_Char_Index(face, charCode);
+      FT_Fixed advance = mEnginePtr->GetCachedAdvance(glyph_index, mFontSize);
+      width += static_cast<int32_t>(advance >> 6);
+    }
+    return width;
   }
 
   void AWidget::DrawChildren(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
@@ -693,6 +696,42 @@ namespace aui {
       std::unique_ptr<AWidget> ptr = std::move(*it);
       mWidg.erase(it);
       mWidg.push_back(std::move(ptr));
+    }
+  }
+
+  void AWidget::GetAbsolutePosition(int32_t &outX, int32_t &outY) const {
+    outX = mX;
+    outY = mY;
+    if(mParentWidget) {
+      int32_t px, py;
+      mParentWidget->GetAbsolutePosition(px, py);
+      outX += px;
+      outY += py;
+    }
+    else if(mParentWindow) {
+// If this widget is directly attached to a window (not a child of another widget),
+// add the window's screen position.
+      if (static_cast<const void*>(this) != static_cast<const void*>(mParentWindow)) {
+        outX += mParentWindow->X();
+        outY += mParentWindow->Y();
+      }
+    }
+// If both mParentWidget and mParentWindow are nullptr, we are a top-level window.
+// In that case, mX/mY already represent the screen position.
+  }
+
+  void AWidget::RemoveWidget(AWidget *widget) {
+    if(!widget)
+      return;
+    auto it = std::find_if(mWidg.begin(), mWidg.end(), [widget](const std::unique_ptr<AWidget> &ptr) {
+      return ptr.get() == widget;
+    });
+    if(it == mWidg.end())
+      return;
+    mWidg.erase(it);// child widget and its descendants are destroyed
+// Request a redraw of the top-level window, if any
+    if(mParentWindow) {
+      mParentWindow->ForceDraw();
     }
   }
 

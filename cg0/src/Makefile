@@ -80,7 +80,7 @@ CPPFLAGS := -I$(AUI_ROOT) -I$(AUI_ROOT)/freetype2/include
 # -lxcb-image    : XCB image functions
 # -lxcb-keysyms  : XCB keysym helper functions (xcb_key_symbols_*)
 LIBS := -lAUI -lX11 -lX11-xcb -lxcb -lxcb-cursor -lXrender -lwayland-client \
-        -lfreetype -lxkbcommon -lxkbcommon-x11 -lxcb-image -lxcb-keysyms
+        -lfreetype -lxkbcommon -lxkbcommon-x11 -lxcb-image -lxcb-keysyms -lpng -lz
 
 # Source and Object discovery
 SRCS := $(wildcard $(SRC_DIR)/*.cpp)
