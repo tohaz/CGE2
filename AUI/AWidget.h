@@ -54,6 +54,16 @@ namespace aui {
     DrawVLine(buffer, bufferWidth, x + w - 1, y + 1, h - 2, color);// right
   }
 
+  struct ARect { int32_t x, y; uint32_t w, h; };
+  // 2. Pack the typographic style
+  struct ATextStyle {
+      uint32_t color;
+      uint32_t fontSize;
+      AUIHAlign hAlign;
+      AUIVAlign vAlign;
+      double angle;
+  };
+
   class AWidget {
       friend class ABox;
       friend class AButton;
@@ -137,6 +147,7 @@ namespace aui {
       int32_t mOffsetY = 0;
       int32_t mMaxSizeX = 0;
       int32_t mMaxSizeY = 0;
+      double mAngle = 0.0;
     public:
       virtual ~AWidget() = default;
       virtual void Draw(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
@@ -265,6 +276,8 @@ namespace aui {
       void ForwardWheelToChildren(int32_t delta);
       void BringChildToFront(AWidget *child);
       void RemoveWidget(AWidget *widget);
+      void SetAngle(double degrees) { mAngle = degrees * M_PI / 180.0; }
+      double GetAngle() const { return mAngle * 180.0 / M_PI; }
   };
 
 }

@@ -1,7 +1,7 @@
 #ifndef DEFAULTS_H_
 #define DEFAULTS_H_
 
-#define DEBUG_LEVEL 2
+#define DEBUG_LEVEL 1
 
 // try {deference 0}
 // catch(SegmentationFault:) {}
@@ -480,24 +480,44 @@ namespace detail {
     }                                                                \
   } while(0)
 
+
+inline std::string FormatWithSpaces(uint64_t value) {
+    std::string s = std::to_string(value);
+    int32_t n = (int32_t)s.length() - 3;
+    while (n > 0) {
+        s.insert((size_t)n, " ");
+        n -= 3;
+    }
+    return s;
+}
+
 class ScopedTimer {
     std::string m_msg;
     std::chrono::time_point<std::chrono::high_resolution_clock> m_start;
     std::source_location m_loc;
-
   public:
 // Only constructor: takes a pre‑formatted message and the caller’s location
     ScopedTimer(std::string msg, const std::source_location &loc) :
         m_msg(std::move(msg)), m_start(std::chrono::high_resolution_clock::now()), m_loc(loc) {
     }
     ~ScopedTimer() {
-      auto end = std::chrono::high_resolution_clock::now();
-      auto us = std::chrono::duration_cast < std::chrono::microseconds > (end - m_start).count();
-      auto now = std::chrono::system_clock::now();
-      auto ms = std::chrono::duration_cast < std::chrono::milliseconds > (now.time_since_epoch()) % 1000;
-      std::locale::global(std::locale(""));
-      std::println("{:%H:%M:%S}.{:03d} {}|{}({}): {}: {:L} µs", now, static_cast<int32_t>(ms.count()),
-          m_loc.file_name(), m_loc.function_name(), m_loc.line(), m_msg, us);
+        auto end = std::chrono::high_resolution_clock::now();
+        auto us = std::chrono::duration_cast<std::chrono::microseconds>(end - m_start).count();
+        auto now = std::chrono::system_clock::now();
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+
+        // Format the number manually to guarantee zero heap leakage
+        std::string formatted_us = FormatWithSpaces((uint64_t)us);
+
+        // Print normally without using the :L locale flag
+        std::println("{:%H:%M:%S}.{:03d} {}|{}({}): {}: {} µs",
+            now,
+            static_cast<int32_t>(ms.count()),
+            m_loc.file_name(),
+            m_loc.function_name(),
+            m_loc.line(),
+            m_msg,
+            formatted_us);
     }
 };
 

@@ -300,7 +300,6 @@ namespace aui {
           return nullptr;
       }
       FT_Set_Pixel_Sizes(au->mFtDefaultFace, 0, 14);
-
       // Load fallback color emoji font (NotoColorEmoji)
       const char* emojiPath = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf";
       err = FT_New_Face(au->mFtLibrary, emojiPath, 0, &au->mFallbackFace);
@@ -317,7 +316,6 @@ namespace aui {
           D1("Failed to load fallback font {}", emojiPath);
           au->mFallbackFace = nullptr;
       }
-
       // FreeType cache manager
       FT_Error error = FTC_Manager_New(au->mFtLibrary, AUI::kMaxFaces, AUI::kMaxSizes, AUI::kMaxBytes, ftc_face_requester,
           au, &au->mFTCManager);
@@ -327,7 +325,6 @@ namespace aui {
           error = FTC_ImageCache_New(au->mFTCManager, &au->mFTCImageCache);
           if(error) E("FTC_ImageCache_New failed");
       }
-
       au->mFtDefaultFace->generic.data = au;
       au->PreRenderAscii(14);
       // Wayland/XCB setup (unchanged)
@@ -564,6 +561,10 @@ namespace aui {
         D3("Self-pipe wakeup read trigger");
         char buf[8];
         if(read(mSelfPipeFds[0], buf, sizeof(buf)) > 0) {
+          FlushPendingDraws();          // renders into buffer and enqueues command
+          if (!mDrawCommands.empty()) {
+              this->Draw();
+          }
         }
       }
 // Do NOT call Draw() here – it would cause unnecessary redraws.
@@ -575,6 +576,7 @@ namespace aui {
 
   void AUI::Draw() {
     D3("cascade Draw({})", mDrawCounter++);
+    D3("[AUI] Draw() called, command count = {}", mDrawCommands.size());
     UNUSED auto start = std::chrono::high_resolution_clock::now();
     if(mDrawCommands.empty()) {
       D3("zero commands");
@@ -658,7 +660,7 @@ namespace aui {
     FlushConnection();
     UNUSED auto end = std::chrono::high_resolution_clock::now();
     D3("Backend commit took {} us", std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
-    D3("AUI::Draw: flushed connection");
+    D3("[AUI] Draw() finished, commands remain {}", mDrawCommands.size());
   }
 
   void AUI::EnqueueDrawCommand(const DrawCommand &cmd) {
@@ -842,31 +844,31 @@ namespace aui {
   }
 
   void AUI::ScheduleDraw(AWindow *win) {
-    if(!win)
-      return;
-    std::lock_guard<std::mutex> lock(mPendingDrawMutex);
-// Avoid duplicates
-    if(std::find(mPendingDrawWindows.begin(), mPendingDrawWindows.end(), win) == mPendingDrawWindows.end()) {
-      mPendingDrawWindows.push_back(win);
-    }
-// Wake up the main loop (optional, but good for responsiveness)
-    if(mSelfPipeFds[1] >= 0) {
-      char c = 1;
-      write(mSelfPipeFds[1], &c, 1);
-    }
+      D3("[AUI] ScheduleDraw for win {}", (void*)win);
+      std::lock_guard<std::mutex> lock(mPendingDrawMutex);
+      if(std::find(mPendingDrawWindows.begin(), mPendingDrawWindows.end(), win) == mPendingDrawWindows.end()) {
+          mPendingDrawWindows.push_back(win);
+      }
+      if(mSelfPipeFds[1] >= 0) {
+          char c = 1;
+          write(mSelfPipeFds[1], &c, 1);
+          D3("[AUI] Pipe written");
+      }
   }
 
   void AUI::FlushPendingDraws() {
-    std::vector<AWindow*> windows;
-    {
-      std::lock_guard<std::mutex> lock(mPendingDrawMutex);
-      windows.swap(mPendingDrawWindows);
-    }
-    for(AWindow *win : windows) {
-      if(win && win->HasDrawPending()) {
-        win->ForceDraw();// ForceDraw will clear the flag and redraw
+      D3("[AUI] FlushPendingDraws() called");
+      std::vector<AWindow*> windows;
+      {
+          std::lock_guard<std::mutex> lock(mPendingDrawMutex);
+          windows.swap(mPendingDrawWindows);
       }
-    }
+      for(AWindow *win : windows) {
+          if(win && win->HasDrawPending()) {
+              D3("[AUI] Flushing win {}", (void*)win);
+              win->ForceDraw();   // this enqueues a draw command
+          }
+      }
   }
 
   FT_Glyph AUI::GetCachedGlyph(FT_UInt glyph_index, FT_UInt font_size, FT_Int load_flags) {

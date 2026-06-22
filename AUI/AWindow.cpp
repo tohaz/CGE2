@@ -178,21 +178,22 @@ namespace aui {
   }
 
   void AWindow::Draw() {
-    if(mDrawPending)
-      return;// already scheduled
-    mDrawPending = true;
-// Register this window for a deferred draw with the AUI engine
-    if(mBackend) {
-      AUI *aui = mBackend->GetEnginePtr();
-      if(aui)
-        aui->ScheduleDraw(this);
-    }
+      D3("[WIN] Draw() called, mDrawPending={}", mDrawPending);
+      if(mDrawPending) return;
+      mDrawPending = true;
+      if(mBackend) {
+          AUI *aui = mBackend->GetEnginePtr();
+          if(aui) {
+              D3("[WIN] Scheduling draw");
+              aui->ScheduleDraw(this);
+          }
+      }
   }
 
   void AWindow::ForceDraw() {
-    D3("forcing Draw()")
-    mDrawPending = false;// cancel any pending draw
-    DoDraw();
+      D3("[WIN] ForceDraw() called, mDrawPending={}", mDrawPending);
+      mDrawPending = false;
+      DoDraw();
   }
 
   void AWindow::AddWidget(std::unique_ptr<AWidget> widg) {

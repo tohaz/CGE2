@@ -34,23 +34,22 @@ int32_t main() {
   ta->Resize(1024, 768);
   ta->SetBGColor(0xFFFFFFFF);
   ta->SetAutoWiden(false);
-  uint32_t nr = 10000, nc = 100;
+  uint32_t nr = 1000, nc = 100;
   ta->BeginBatch(nr * nc);
   {
-    ST("table insertion");
+    ST("table insertion of {}", nr * nc);
     for(uint32_t i = 0; i < nr; i++) {
-      for(uint32_t j = 0; j < nc; j++)
+      for(uint32_t j = 0; j < nc; j++) {
 //        ta->SetCellData(i, j, "a");
-        ta->SetCellData(i, j, generate_random_alphanumeric(1));
+        ta->SetCellData(i, j, generate_random_alphanumeric(10));
+      }
+    }
+    ta->EndBatch();
   }
-
-  }
-  ta->EndBatch();
   ta->SetScrollbarsEnabled(true);
-  //1300ms for my setup for 10 random chars and million cells
+  //1150ms for my setup for 10 random chars and million cells
   D1("init {} ms", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count());
   au->ProcessMessages();
   delete au;
   return 0;
 }
-

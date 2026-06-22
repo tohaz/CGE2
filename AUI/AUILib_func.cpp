@@ -203,12 +203,10 @@ namespace aui {
     TextLayout layout;
     int32_t maxAscent = 0, maxDescent = 0;
     const uint8_t *ptr = reinterpret_cast<const uint8_t*>(text.c_str());
-
     while (*ptr) {
       uint32_t codepoint = GetNextCodepoint(ptr);
       if(codepoint == 0)
         continue;
-
       if(codepoint <= 126) {
         FT_UInt glyph_index = FT_Get_Char_Index(face, codepoint);
         FT_Fixed advance = engine->GetCachedAdvance(glyph_index, fontSize);
@@ -267,8 +265,7 @@ namespace aui {
     layout.clipB = std::min(static_cast<int32_t>(parentHeight), absY + drawH);
     return layout;
   }
-
-  // ---- Pixel Blending Utilities ----
+// ---- Pixel Blending Utilities ----
   static inline void BlendPixelRGBA(uint32_t *dest, uint32_t color) {
     uint8_t a = static_cast<uint8_t>((color >> 24) & 0xFF);
     if(a == 0)
@@ -285,7 +282,6 @@ namespace aui {
       *dest = r | g | b;
     }
   }
-
   static inline void BlendPixelGrayscale(uint32_t *dest, uint8_t alpha, uint32_t col_r, uint32_t col_g,
       uint32_t col_b) {
     if(alpha == 0)
@@ -297,7 +293,6 @@ namespace aui {
     uint32_t b = (col_b * alpha + (bg & 0xFF) * inv + 128) >> 8;
     *dest = r | g | b;
   }
-
 // ---- Isolated Render Block 1: Pre-rendered ASCII ----
   static void RenderPreRenderedGlyph(uint32_t *buffer, size_t pW, const TextLayout &layout, int32_t penX,
       const CachedGlyph *pre, uint32_t col_r, uint32_t col_g, uint32_t col_b) {
@@ -305,31 +300,25 @@ namespace aui {
     int32_t glyphRight = glyphLeft + pre->width;
     if(glyphRight <= layout.clipL || glyphLeft >= layout.clipR)
       return;
-
     int32_t glyphTop = layout.baselineY - pre->top;
     int32_t glyphBottom = glyphTop + pre->rows;
     if(glyphBottom <= layout.clipT || glyphTop >= layout.clipB)
       return;
-
     for(int32_t row = 0; row < pre->rows; ++row) {
       int32_t destY = glyphTop + row;
       if(destY < layout.clipT || destY >= layout.clipB)
         continue;
-
       size_t rowOffset = static_cast<size_t>(destY) * pW;
       size_t bmpRow = static_cast<size_t>(row) * static_cast<size_t>(pre->width);
-
       for(int32_t col = 0; col < pre->width; ++col) {
         int32_t destX = glyphLeft + col;
         if(destX < layout.clipL || destX >= layout.clipR)
           continue;
-
         uint8_t alpha = pre->bitmap[bmpRow + static_cast<size_t>(col)];
         BlendPixelGrayscale(&buffer[rowOffset + static_cast<size_t>(destX)], alpha, col_r, col_g, col_b);
       }
     }
   }
-
 // ---- Isolated Render Block 2: Bitmap Blitting (Any Pixel Mode) ----
   static void BlitGlyphBitmap(uint32_t *buffer, size_t pW, const TextLayout &layout, int32_t glyphLeft,
       int32_t glyphTop, const FT_Bitmap *bitmap, uint32_t col_r, uint32_t col_g, uint32_t col_b) {
@@ -337,7 +326,6 @@ namespace aui {
       int32_t destY = glyphTop + row;
       if(destY < layout.clipT || destY >= layout.clipB)
         continue;
-
       const uint8_t *src = bitmap->buffer + row * bitmap->pitch;
       size_t rowOffset = static_cast<size_t>(destY) * pW;
 
@@ -345,7 +333,6 @@ namespace aui {
         int32_t destX = glyphLeft + col;
         if(destX < layout.clipL || destX >= layout.clipR)
           continue;
-
         size_t idx = rowOffset + static_cast<size_t>(destX);
         if(bitmap->pixel_mode == FT_PIXEL_MODE_BGRA) {
           uint32_t color = *reinterpret_cast<const uint32_t*>(src + col * 4);
@@ -514,6 +501,277 @@ namespace aui {
       }
     }
   }
+// ---- Helper: Scale and Rotate BGRA Bitmaps ----
+  static uint8_t* rotate_and_scale_bgra_bitmap(const uint8_t *src, int32_t srcW, int32_t srcH, int32_t dstW,
+      int32_t dstH, int32_t srcPitch, double angle, int32_t &dstPitch) {
+    if(srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0)
+      return nullptr;
+    dstPitch = dstW * 4;
+    uint8_t *dst = new uint8_t[static_cast<size_t>(dstH * dstPitch)];
+    std::memset(dst, 0, static_cast<size_t>(dstH * dstPitch));
+    float cosA = static_cast<float>(std::cos(-angle));
+    float sinA = static_cast<float>(std::sin(-angle));
+    float cxDst = static_cast<float>(dstW) / 2.0f;
+    float cyDst = static_cast<float>(dstH) / 2.0f;
+    float cxSrc = static_cast<float>(srcW) / 2.0f;
+    float cySrc = static_cast<float>(srcH) / 2.0f;
+    float scaleX = static_cast<float>(srcW) / static_cast<float>(dstW);
+    float scaleH = static_cast<float>(srcH) / static_cast<float>(dstH);
+    for(int32_t y = 0; y < dstH; ++y) {
+      float dy = static_cast<float>(y) - cyDst;
+      uint8_t *dstRow = dst + y * dstPitch;
+      for(int32_t x = 0; x < dstW; ++x) {
+        float dx = static_cast<float>(x) - cxDst;
 
-}// namespace aui
+        int32_t srcX = static_cast<int32_t>((dx * cosA - dy * sinA) * scaleX + cxSrc);
+        int32_t srcY = static_cast<int32_t>((dx * sinA + dy * cosA) * scaleH + cySrc);
+
+        if(srcX >= 0 && srcX < srcW && srcY >= 0 && srcY < srcH) {
+          const uint8_t *srcPix = src + srcY * srcPitch + srcX * 4;
+          uint8_t *dstPix = dstRow + x * 4;
+          dstPix[0] = srcPix[0];
+          dstPix[1] = srcPix[1];
+          dstPix[2] = srcPix[2];
+          dstPix[3] = srcPix[3];
+        }
+      }
+    }
+    return dst;
+  }
+
+// ---- Helper: Unified Rotated Rendering Block For Emojis ----
+  static void RenderFreshEmojiRotated(uint32_t *buffer, size_t pW, const TextLayout &layout, double centerX,
+      double centerY, uint32_t fontSize, FT_Bitmap *bitmap, double angle) {
+    int32_t targetSize = static_cast<int32_t>(fontSize);
+    int32_t srcW = static_cast<int32_t>(bitmap->width);
+    int32_t srcH = static_cast<int32_t>(bitmap->rows);
+
+    int32_t dstW = targetSize, dstH = targetSize, dstPitch = 0;
+    uint8_t *rawScaledBuffer = rotate_and_scale_bgra_bitmap(bitmap->buffer, srcW, srcH, dstW, dstH, bitmap->pitch,
+        angle, dstPitch);
+    if(!rawScaledBuffer)
+      return;
+    std::unique_ptr<uint8_t[]> managedScaled(rawScaledBuffer);
+    FT_Bitmap scaledBitmap;
+    scaledBitmap.rows = static_cast<uint32_t>(dstH);
+    scaledBitmap.width = static_cast<uint32_t>(dstW);
+    scaledBitmap.pitch = dstPitch;
+    scaledBitmap.buffer = managedScaled.get();
+    scaledBitmap.pixel_mode = FT_PIXEL_MODE_BGRA;
+// Center the square emoji directly on top of the calculated center coordinate
+    int32_t blitX = static_cast<int32_t>(std::round(centerX - (double) dstW / 2.0));
+    int32_t blitY = static_cast<int32_t>(std::round(centerY - (double) dstH / 2.0));
+
+    BlitGlyphBitmap(buffer, pW, layout, blitX, blitY, &scaledBitmap, 0, 0, 0);
+  }
+// ------------------------------------------------------------------
+// Main Drawing Orchestrator Implementation - STABILIZED TRACKING
+// ------------------------------------------------------------------
+  void DrawTextEx(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, const ARect &bounds,
+      const std::string &text, FT_Face face, const ATextStyle &style) {
+    if(text.empty() || !face || parentWidth == 0 || parentHeight == 0)
+      return;
+    AUI *engine = static_cast<AUI*>(face->generic.data);
+    if(!engine)
+      return;
+
+    FT_Face fallbackFace = engine->GetFallbackFace();
+    FT_Select_Charmap(face, FT_ENCODING_UNICODE);
+    if(fallbackFace) {
+      FT_Select_Charmap(fallbackFace, FT_ENCODING_UNICODE);
+    }
+
+    FT_Set_Pixel_Sizes(face, 0, style.fontSize);
+
+    if(fallbackFace) {
+      if(FT_IS_SCALABLE(fallbackFace)) {
+        FT_Set_Pixel_Sizes(fallbackFace, 0, style.fontSize);
+      }
+      else {
+        int32_t best = 0, bestDiff = INT_MAX;
+        for(int32_t i = 0; i < fallbackFace->num_fixed_sizes; ++i) {
+          int32_t diff = std::abs(
+              static_cast<int32_t>(fallbackFace->available_sizes[i].y_ppem) - static_cast<int32_t>(style.fontSize));
+          if(diff < bestDiff) {
+            bestDiff = diff;
+            best = i;
+          }
+        }
+        FT_Select_Size(fallbackFace, best);
+      }
+    }
+// Reset transform state completely for layout metric tracking pass
+    FT_Set_Transform(face, nullptr, nullptr);
+    if(fallbackFace) {
+      FT_Set_Transform(fallbackFace, nullptr, nullptr);
+    }
+    int32_t totalWidth = 0;
+    int32_t maxAscent = static_cast<int32_t>(face->size->metrics.ascender >> 6);
+    int32_t maxDescent = static_cast<int32_t>(face->size->metrics.descender >> 6);
+    int32_t fontHeight = maxAscent - maxDescent;
+// Vector to hold cache layout steps for Pass 2 to eliminate FreeType matrix rounding drift
+    std::vector<double> glyphAdvances;
+    glyphAdvances.reserve(text.size());
+// =====================================================================
+// PASS 1: Fixed Measurement & Step-Caching Pass
+// =====================================================================
+    {
+      const uint8_t *layoutPtr = reinterpret_cast<const uint8_t*>(text.c_str());
+      while (*layoutPtr != '\0') {
+        uint32_t cp = GetNextCodepoint(layoutPtr);
+        if(cp == 0)
+          continue;
+        if(cp > 127) {
+          double adv = static_cast<double>(style.fontSize);
+          totalWidth += static_cast<int32_t>(adv);
+          glyphAdvances.push_back(adv);
+          continue;
+        }
+        FT_UInt glyph_index = FT_Get_Char_Index(face, cp);
+        if(glyph_index == 0) {
+          double adv = static_cast<double>(style.fontSize);
+          totalWidth += static_cast<int32_t>(adv);
+          glyphAdvances.push_back(adv);
+          continue;
+        }
+        if(FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT | FT_LOAD_NO_HINTING)) {
+          double adv = static_cast<double>(style.fontSize);
+          totalWidth += static_cast<int32_t>(adv);
+          glyphAdvances.push_back(adv);
+          continue;
+        }
+// Cache high-precision unrotated fractional steps directly
+        double adv = static_cast<double>(face->glyph->advance.x) / 64.0;
+        totalWidth += static_cast<int32_t>(face->glyph->advance.x >> 6);
+        glyphAdvances.push_back(adv);
+      }
+    }
+    int32_t penX = bounds.x;
+    int32_t penY = bounds.y + maxAscent;
+// Explicitly cast bounds variables to signed int32_t to satisfy -Wsign-conversion
+    int32_t bWidth = static_cast<int32_t>(bounds.w);
+    int32_t bHeight = static_cast<int32_t>(bounds.h);
+    if(style.hAlign == AUIHAlign::center) {
+      penX += (bWidth - totalWidth) / 2;
+    }
+    else if(style.hAlign == AUIHAlign::right) {
+      penX += (bWidth - totalWidth);
+    }
+    if(style.vAlign == AUIVAlign::center) {
+      penY += (bHeight - fontHeight) / 2;
+    }
+    else if(style.vAlign == AUIVAlign::bottom) {
+      penY += (bHeight - fontHeight);
+    }
+    double boxCenterX = static_cast<double>(bounds.x) + static_cast<double>(bounds.w) / 2.0;
+    double boxCenterY = static_cast<double>(bounds.y) + static_cast<double>(bounds.h) / 2.0;
+    bool isRotated = std::abs(style.angle) > 0.001;
+    double cosRot = std::cos(style.angle);
+    double sinRot = std::sin(style.angle);
+    if(isRotated) {
+      FT_Matrix matrix;
+      double targetAngle = -style.angle;
+      matrix.xx = static_cast<FT_Fixed>(std::cos(targetAngle) * 0x10000L);
+      matrix.xy = static_cast<FT_Fixed>(-std::sin(targetAngle) * 0x10000L);
+      matrix.yx = static_cast<FT_Fixed>(std::sin(targetAngle) * 0x10000L);
+      matrix.yy = static_cast<FT_Fixed>(std::cos(targetAngle) * 0x10000L);
+      FT_Vector delta = { 0, 0 };
+      FT_Set_Transform(face, &matrix, &delta);
+      if(fallbackFace) {
+        FT_Set_Transform(fallbackFace, &matrix, &delta);
+      }
+    }
+    TextLayout lLoc { totalWidth, fontHeight, bounds.x, static_cast<int32_t>(std::round(boxCenterY)), 0,
+        static_cast<int32_t>(parentWidth), 0, static_cast<int32_t>(parentHeight) };
+// =====================================================================
+// PASS 2: Deterministic Render Loop (Zero-Drift Execution)
+// =====================================================================
+    const uint8_t *ptr = reinterpret_cast<const uint8_t*>(text.c_str());
+    double unrotatedPenX = static_cast<double>(penX);
+    double sizeD = static_cast<double>(style.fontSize);
+    size_t advanceIdx = 0;
+    while (*ptr != '\0') {
+      uint32_t cp = GetNextCodepoint(ptr);
+      if(cp == 0)
+        continue;
+// Grab the immutable baseline advance step for this exact character position
+      double baselineAdvance = (advanceIdx < glyphAdvances.size()) ? glyphAdvances[advanceIdx++] : sizeD;
+      FT_Face currentFace = face;
+      FT_UInt glyph_index = 0;
+      if(cp > 127 && fallbackFace) {
+        currentFace = fallbackFace;
+      }
+      glyph_index = FT_Get_Char_Index(currentFace, cp);
+      if(glyph_index == 0 && fallbackFace && cp <= 127) {
+        currentFace = fallbackFace;
+        glyph_index = FT_Get_Char_Index(currentFace, cp);
+      }
+// Map absolute unrotated pen spacing strictly via trigonometry to eradicate rounding artifacts
+      double currentTrackingX, currentTrackingY;
+      if(isRotated) {
+        double dx = unrotatedPenX - boxCenterX;
+        double dy = static_cast<double>(penY) - boxCenterY;
+        currentTrackingX = boxCenterX + (dx * cosRot - dy * sinRot);
+        currentTrackingY = boxCenterY + (dx * sinRot + dy * cosRot);
+      }
+      else {
+        currentTrackingX = unrotatedPenX;
+        currentTrackingY = static_cast<double>(penY);
+      }
+      if(glyph_index == 0) {
+        unrotatedPenX += baselineAdvance;
+        continue;
+      }
+      if(FT_Load_Glyph(currentFace, glyph_index, FT_LOAD_RENDER | FT_LOAD_COLOR | FT_LOAD_NO_HINTING)) {
+        if(FT_Load_Glyph(currentFace, glyph_index, FT_LOAD_RENDER | FT_LOAD_NO_HINTING)) {
+          unrotatedPenX += baselineAdvance;
+          continue;
+        }
+      }
+
+      FT_GlyphSlot slot = currentFace->glyph;
+// Emoji / BGRA Branch
+      if(cp > 127 && slot->bitmap.pixel_mode == FT_PIXEL_MODE_BGRA) {
+        double finalCenterX, finalCenterY;
+        if(isRotated) {
+          double fCos = std::cos(-style.angle);
+          double fSin = std::sin(-style.angle);
+          double halfAdvX = (baselineAdvance / 2.0) * fCos;
+          double halfAdvY = (baselineAdvance / 2.0) * fSin;
+          double upX = (sizeD / 2.0) * fSin;
+          double upY = (sizeD / 2.0) * fCos;
+          finalCenterX = currentTrackingX + halfAdvX - upX;
+          finalCenterY = currentTrackingY - halfAdvY - upY;
+        }
+        else {
+          finalCenterX = currentTrackingX + baselineAdvance / 2.0;
+          finalCenterY = currentTrackingY - (static_cast<double>(maxAscent) / 2.0);
+        }
+        RenderFreshEmojiRotated(buffer, parentWidth, lLoc, finalCenterX, finalCenterY, style.fontSize, &slot->bitmap,
+            style.angle);
+        unrotatedPenX += baselineAdvance;
+      }
+// Regular Text / Monochrome / Grayscale Branch
+      else {
+        if(slot->bitmap.rows == 0 || slot->bitmap.width == 0) {
+          unrotatedPenX += baselineAdvance;
+          continue;
+        }
+        int32_t drawX = static_cast<int32_t>(std::round(currentTrackingX));
+        int32_t drawY = static_cast<int32_t>(std::round(currentTrackingY));
+        uint32_t colorNoAlpha = style.color & 0x00FFFFFFU;
+        uint32_t col_r = (colorNoAlpha >> 16) & 0xFF;
+        uint32_t col_g = (colorNoAlpha >> 8) & 0xFF;
+        uint32_t col_b = colorNoAlpha & 0xFF;
+        BlitGlyphBitmap(buffer, parentWidth, lLoc, drawX + slot->bitmap_left, drawY - slot->bitmap_top, &slot->bitmap,
+            col_r, col_g, col_b);
+        unrotatedPenX += baselineAdvance;
+      }
+    }
+    FT_Set_Transform(face, nullptr, nullptr);
+    if(fallbackFace) {
+      FT_Set_Transform(fallbackFace, nullptr, nullptr);
+    }
+  }
+}
 

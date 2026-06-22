@@ -68,7 +68,7 @@ namespace aui {
       mutable std::vector<int32_t> mItemY;
       mutable std::vector<int32_t> mItemW;
       mutable std::vector<int32_t> mItemH;
-
+      int32_t mActiveSubMenuOwnerIndex = -1;
     protected:
 // Internal helpers
       void RecalcLayout() const;

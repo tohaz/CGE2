@@ -428,45 +428,56 @@ namespace aui {
 // Event handling
 // ------------------------------------------------------------------
   bool AMenu::OnMouseClick(int32_t localX, int32_t localY, bool pressed) {
-    if(!pressed || !mVisible)
-      return false;
-    if(mActiveSubMenu && mActiveSubMenu->IsVisible()) {
-      int32_t subLocalX = localX - (mActiveSubMenu->X() - mX);
-      int32_t subLocalY = localY - (mActiveSubMenu->Y() - mY);
-      if(subLocalX >= 0 && subLocalX < static_cast<int32_t>(mActiveSubMenu->SizeX()) && subLocalY >= 0
-          && subLocalY < static_cast<int32_t>(mActiveSubMenu->SizeY())) {
-        bool consumed = mActiveSubMenu->OnMouseClick(subLocalX, subLocalY, pressed);
-        if(consumed)
+      if (!pressed || !mVisible)
+          return false;
+
+      // If click is inside active sub-menu, forward to it
+      if (mActiveSubMenu && mActiveSubMenu->IsVisible()) {
+          int32_t subLocalX = localX - (mActiveSubMenu->X() - mX);
+          int32_t subLocalY = localY - (mActiveSubMenu->Y() - mY);
+          if (subLocalX >= 0 && subLocalX < static_cast<int32_t>(mActiveSubMenu->SizeX()) &&
+              subLocalY >= 0 && subLocalY < static_cast<int32_t>(mActiveSubMenu->SizeY())) {
+              return mActiveSubMenu->OnMouseClick(subLocalX, subLocalY, pressed);
+          }
+          // Otherwise click is outside sub-menu; we'll handle it below
+      }
+
+      int32_t idx = HitTest(localX, localY);
+      if (idx < 0) {
+          Dismiss();   // dismiss entire menu (closes sub-menu)
           return true;
       }
-      else {
-        CloseSubMenu();// closes and deletes submenu if it's a submenu
+
+      if (idx >= static_cast<int32_t>(mItems.size()))
+          return false;
+
+      const auto &item = mItems[static_cast<size_t>(idx)];
+      if (!item.isEnabled || !item.isVisible)
+          return false;
+
+      // Item with sub-items
+      if (!item.subItems.empty()) {
+          // Toggle off if the same item already has an open sub-menu
+          if (mActiveSubMenu && mActiveSubMenuOwnerIndex == idx) {
+              CloseSubMenu();   // only close, do not reopen
+              return true;
+          } else {
+              CloseSubMenu();              // close any existing sub-menu
+              OpenSubMenu(static_cast<size_t>(idx));   // open new one
+              return true;
+          }
       }
-    }
-    int32_t idx = HitTest(localX, localY);
-    if(idx < 0) {
-      Dismiss();
+
+      // Normal item (no sub-items)
+      bool isCheckable = item.isCheckable;
+      auto actionCopy = item.action;
+      if (isCheckable) {
+          const_cast<AMenuItem&>(item).isChecked = !item.isChecked;
+      }
+      Dismiss();   // closes sub-menu as well
+      if (actionCopy)
+          actionCopy();
       return true;
-    }
-    if(idx >= static_cast<int32_t>(mItems.size()))
-      return false;
-    const auto &item = mItems[static_cast<size_t>(idx)];
-    if(!item.isEnabled || !item.isVisible)
-      return false;
-    if(!item.subItems.empty()) {
-      CloseSubMenu();// always close any existing submenu first
-      OpenSubMenu(static_cast<size_t>(idx));
-      return true;
-    }
-    bool isCheckable = item.isCheckable;
-    auto actionCopy = item.action;
-    if(isCheckable) {
-      const_cast<AMenuItem&>(item).isChecked = !item.isChecked;
-    }
-    Dismiss();
-    if(actionCopy)
-      actionCopy();
-    return true;
   }
 
   void AMenu::OnMouseMove(int32_t localX, int32_t localY) {
@@ -630,6 +641,7 @@ namespace aui {
     }
     sub->Popup(spawnX, spawnY);
     mActiveSubMenu = sub;
+    mActiveSubMenuOwnerIndex = static_cast<int32_t>(index);
     if(mParentWindow)
       mParentWindow->Draw();
   }
@@ -639,6 +651,7 @@ namespace aui {
       mActiveSubMenu->Dismiss();// hide the submenu
 // Do NOT call DetachFromParent() – let the window own and delete it.
       mActiveSubMenu = nullptr;
+      mActiveSubMenuOwnerIndex = -1;
     }
   }
 

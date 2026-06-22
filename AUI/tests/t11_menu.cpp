@@ -294,13 +294,14 @@ int32_t test_menu_submenu_accumulation() {
     menu->OnMouseClick(5, 5, true);
     AMenu* sub1 = menu->GetActiveSubMenu();
     TEST_ASSERT(sub1 != nullptr, 2);
-    // Click the same root again – should close the first submenu and open a new one
+
+    // Click the same root again – should close the submenu (toggle off)
     menu->OnMouseClick(5, 5, true);
     AMenu* sub2 = menu->GetActiveSubMenu();
-    TEST_ASSERT(sub2 != nullptr, 3);
-    TEST_ASSERT(sub1 != sub2, 4); // old submenu deleted, new one created
-    // Dismiss to clean up
-    menu->Dismiss();
+    TEST_ASSERT(sub2 == nullptr, 3);   // <-- changed to expect closed
+
+    // No need for sub1 != sub2 because there is no new submenu
+
     delete au;
     D1("test_menu_submenu_accumulation passed");
     return 0;

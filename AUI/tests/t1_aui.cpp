@@ -10,6 +10,7 @@ using namespace aui;
 //#define TEST_ASSERT(cond, errcode) do { if(!(cond)) { E("Test failed: {}", #cond); return errcode; } } while(0)
 
 int32_t test_aui_lifecycle() {
+	ST("just a scoped timer test");
   D1("test_aui_lifecycle start");
   AUI* au = AUI::Create("TestWindow");
   TEST_ASSERT(au != nullptr, 1);

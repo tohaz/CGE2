@@ -7,6 +7,18 @@ using namespace aui;
 static void WaitForThread(uint32_t ms = 50) {
   std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 }
+
+static void RunEventLoopFor(aui::AUI* au, uint32_t ms) {
+    // Spawn a thread that sleeps and then tells the loop to exit
+    std::thread exit_thread([au, ms]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+        au->ExitAUI();   // clean exit after timeout
+    });
+    au->ProcessMessages();   // runs until ExitAUI() is called
+    exit_thread.join();
+}
+
+
 // ------------------------------------------------------------------
 // Attachment and basic properties
 // ------------------------------------------------------------------
@@ -232,32 +244,38 @@ int32_t test_progressbar_callbacks() {
 // Progress provider (background thread)
 // ------------------------------------------------------------------
 int32_t test_progressbar_provider() {
-  D1("test_progressbar_provider start");
-  AUI *au = AUI::Create("ProgressBarProviderTest");
-  TEST_ASSERT(au != nullptr, 1);
-  AWindow *win = au->MainWnd();
-  AProgressBar *pb = AProgressBar::AttachTo(win);
-  pb->SetUpdateInterval(10);
-  pb->SetProgress(0.0);
-  pb->SetProgressProvider([]() noexcept {
-    static double p = 0.0;
-    p += 0.1;
-    if(p > 1.0)
-      p = 0.0;
-    return p;
-  });
-  WaitForThread(30);
-  double val = pb->GetProgress();
-  TEST_ASSERT(val > 0.0, 2);
-  pb->SetProgressProvider(nullptr);
-  double oldVal = pb->GetProgress();
-  WaitForThread(50);
-  TEST_ASSERT_DOUBLE_EQ(pb->GetProgress(), oldVal, 3);
-  delete au;
-  D1("test_progressbar_provider passed");
-  return 0;
-}
+    D1("test_progressbar_provider start");
+    AUI *au = AUI::Create("ProgressBarProviderTest");
+    TEST_ASSERT(au != nullptr, 1);
+    AWindow *win = au->MainWnd();
+    AProgressBar *pb = AProgressBar::AttachTo(win);
+    pb->SetUpdateInterval(10);      // 10ms update interval
+    pb->SetProgress(0.0);
+    
+    // Provider that increases progress by 0.1 each call
+    pb->SetProgressProvider([]() noexcept {
+        static double p = 0.0;
+        p += 0.1;
+        if (p > 1.0) p = 0.0;
+        return p;
+    });
 
+    // Run the event loop for 30ms – enough for the timer to fire at least once
+    RunEventLoopFor(au, 30);
+
+    double val = pb->GetProgress();
+    TEST_ASSERT(val > 0.0, 2);   // should have advanced
+
+    // Remove provider and run a bit more to ensure no further changes
+    pb->SetProgressProvider(nullptr);
+    double oldVal = pb->GetProgress();
+    RunEventLoopFor(au, 50);
+    TEST_ASSERT_DOUBLE_EQ(pb->GetProgress(), oldVal, 3);
+
+    delete au;
+    D1("test_progressbar_provider passed");
+    return 0;
+}
 // ------------------------------------------------------------------
 // Pause/Resume
 // ------------------------------------------------------------------
@@ -313,7 +331,7 @@ int32_t test_progressbar_resize() {
 // main
 // ------------------------------------------------------------------
 int main() {
-  uint32_t delay_ms = 50;
+  uint32_t delay_ms = 1000;
   int32_t testsfailed = 0;
   AUI *au = AUI::Create("aui progressbar test");
   UNUSED AWindow *w = au->MainWnd();

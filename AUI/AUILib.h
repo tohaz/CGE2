@@ -14,6 +14,7 @@
 #include <xkbcommon/xkbcommon.h>
 #include <xkbcommon/xkbcommon-x11.h>
 #include <xcb/xcb_keysyms.h>
+#include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
@@ -120,6 +121,9 @@ struct DrawCommand {
       int32_t asc;// bitmap_top
       int32_t desc;// bitmap.rows - bitmap_top
   };
+  struct ARect;
+  struct ATextStyle;
+
 
   AUIKeyCode translate_keysym_to_keycode(xcb_keysym_t sym);
   AUIModifier translate_modifiers(uint16_t state);
@@ -136,6 +140,8 @@ struct DrawCommand {
       int32_t drawW, int32_t drawH, const std::string &text, FT_Face face, uint32_t fontSize, AUIHAlign hAlign,
       AUIVAlign vAlign, int32_t xOffset, uint32_t textColor, int32_t maxContentWidth);
 
+  void DrawTextEx(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, const ARect &bounds,
+      const std::string &text, FT_Face face, const ATextStyle &style);
 
 #pragma GCC push_options
 #pragma GCC optimize ("O2")
