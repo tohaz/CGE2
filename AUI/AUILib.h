@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cxxabi.h>
+#include <dlfcn.h>
 #include <execinfo.h>
 #include <flat_map>
 #include <format>
@@ -71,9 +72,7 @@
 #include "IWindowContext.h"
 #include "XcbWindowContext.h"
 #include "WaylandWindowContext.h"
-
 #include FT_CACHE_H
-
 struct wl_display;
 struct wl_compositor;
 struct wl_shm;
@@ -86,7 +85,12 @@ struct zxdg_decoration_manager_v1;
 namespace aui {
 
 class AWindow;
+class AUI;
 
+
+
+struct ARect;
+struct ATextStyle;
 enum class DrawCommandType { Xcb, Wayland };
 
 struct DrawCommandXcb {
@@ -121,16 +125,11 @@ struct DrawCommand {
       int32_t asc;// bitmap_top
       int32_t desc;// bitmap.rows - bitmap_top
   };
-  struct ARect;
-  struct ATextStyle;
-
 
   AUIKeyCode translate_keysym_to_keycode(xcb_keysym_t sym);
   AUIModifier translate_modifiers(uint16_t state);
   AUIKeyCode translate_keysym(xcb_keysym_t sym);
   std::string NumberToBaseString(UINT64 n);
-
-
   int32_t find_closest_strike(FT_Face face, int32_t target_ppem);
   uint8_t* scale_bgra_bitmap(const uint8_t* src, int32_t srcW, int32_t srcH,
                                     int32_t dstW, int32_t dstH, int32_t srcPitch,
@@ -139,9 +138,11 @@ struct DrawCommand {
   void DrawTextEx(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t absX, int32_t absY,
       int32_t drawW, int32_t drawH, const std::string &text, FT_Face face, uint32_t fontSize, AUIHAlign hAlign,
       AUIVAlign vAlign, int32_t xOffset, uint32_t textColor, int32_t maxContentWidth);
-
   void DrawTextEx(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, const ARect &bounds,
       const std::string &text, FT_Face face, const ATextStyle &style);
+  bool DetectWayland();
+  bool DetectXWayland();
+  bool DetectX11();
 
 #pragma GCC push_options
 #pragma GCC optimize ("O2")
@@ -302,12 +303,11 @@ struct DrawCommand {
 #pragma GCC diagnostic pop
 #pragma GCC pop_options
 
-
-
 class AUI {
     friend class AWindow;
     friend class AWidget;
     friend class WaylandWindowContext;
+    friend class XcbWindowContext;
 private:
   AUI();   // private constructor
   AUIWindowType mWindowType = AUIWindowType::unset;
@@ -318,7 +318,7 @@ private:
   AWindow* mMainWnd = nullptr;
   // Draw command queue
   std::vector<DrawCommand> mDrawCommands;
-  std::mutex mCommandMutex;
+  std::recursive_mutex mCommandMutex;
   // FreeType
   FT_Library mFtLibrary = nullptr;
   FT_Face mFtDefaultFace = nullptr;
@@ -354,12 +354,16 @@ private:
   std::unordered_map<uint64_t, FT_Fixed> mAdvanceCache;
   std::unordered_map<uint64_t, std::pair<int32_t, int32_t>> mMetricsCache; // key = (glyph_index<<32)|fontSize
   uint32_t mLastPointerSerial = 0;
-
+  std::unordered_map<uint64_t, std::vector<uint8_t>> mScaledEmojiCache; // key: ((glyph_index << 32) | size)
+  wl_surface* mWaylandCursorSurface = nullptr;
+  bool mProcessingMessages = false;
+  std::recursive_timed_mutex mFontMutex;
+  void FlushConnection(); // should stay here
 protected:
   int32_t GetConnectionFileDescriptor() const;
   uint64_t GenerateUniqueId() { return mNextId++; }
-  std::mutex& GetCommandMutex() { return mCommandMutex; }
-  std::vector<DrawCommand>& GetDrawCommands() { return mDrawCommands; }
+  std::recursive_mutex& GetCommandMutex() { return mCommandMutex; }
+  std::vector<DrawCommand>& GetDrawCommands() {     std::lock_guard<std::recursive_mutex> lock(mCommandMutex); return mDrawCommands; }
   wl_keyboard* mWaylandKeyboard = nullptr;
   xkb_context* mXkbCtx = nullptr;
   xkb_keymap* mXkbKeymap = nullptr;
@@ -367,7 +371,6 @@ protected:
   UINT64 mDrawCounter = 0;
   std::unordered_map<uint64_t, CachedGlyph> mPreRenderedGlyphs;
   void PreRenderAscii(uint32_t fontSize);
-
 public:
   void EnqueueDrawCommand(const DrawCommand& cmd);
   static AUI* Create(const std::string& windowTitle);
@@ -378,7 +381,6 @@ public:
   void Draw();              // executes all queued commands, then flushes
   AWindow* MainWnd() const { return mMainWnd; }
   void* GetNativeDisplay() const;                // returns xcb_connection_t* or wl_display*
-  void FlushConnection();
   // XCB specific (null if not XCB)
   xcb_connection_t* GetXcbConnection() const { return mXcbConnection; }
   xcb_screen_t* GetXcbScreen() const { return mXcbScreen; }
@@ -407,7 +409,7 @@ public:
   int32_t GetLastPointerX() const { return mLastPointerX; }
   int32_t GetLastPointerY() const { return mLastPointerY; }
   void SetLastPointerPos(int32_t x, int32_t y) { mLastPointerX = x; mLastPointerY = y; }
-  size_t GetDrawCommandsSize() {return mDrawCommands.size();}
+  size_t DrawCommands() {return mDrawCommands.size();}
   void ClearDrawCommandsForWindow(uint64_t nativeId);
   void ScheduleDraw(AWindow* win);
   void FlushPendingDraws();
@@ -429,8 +431,65 @@ public:
   uint32_t GetLastPointerSerial() const { return mLastPointerSerial; }
   FT_Face GetFallbackFace() const { return mFallbackFace; }
   const uint8_t* GetScaledEmoji(FT_Face face, FT_UInt glyph_index, uint32_t size, int32_t& outWidth, int32_t& outHeight, int32_t& outPitch);
-  std::unordered_map<uint64_t, std::vector<uint8_t>> mScaledEmojiCache; // key: ((glyph_index << 32) | size)
+  std::unordered_map<uint64_t, std::vector<uint8_t>>* ScaledEmojiCache() {return &mScaledEmojiCache;}
+  void ApplyDefaultCursor(wl_pointer* pointer, uint32_t serial);
+  bool IsProcessingMessages() const { return mProcessingMessages; }
+  void ApplyPendingResizes();
+  std::recursive_timed_mutex& GetFontMutex() { return mFontMutex; }
+
 };
+
+template <typename TFunc>
+int32_t runMTIsolatedTest(const int8_t* testname, TFunc&& testlogic) {
+  int32_t testresult = 0;
+  AUI* au = AUI::Create(reinterpret_cast<const char*>(testname));
+  if (!au) return -1;
+  std::thread worker([au, &testresult, &testlogic]() {
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    testresult = testlogic(au);
+    au->ExitAUI();
+  });
+  au->ProcessMessages();
+  worker.join();
+  delete au;
+  return testresult;
+}
+
+template <typename TFunc>
+int32_t runTimedTest(const char* testname, TFunc&& testlogic, uint32_t rtime) {
+  int32_t testresult = 0;
+  D1("====================================================={}, watchdog {} ms", testname, rtime)
+  ST("{}", testname);
+  AUI* au = AUI::Create(reinterpret_cast<const char*>(testname));
+  if (!au) return -1;
+  std::mutex cv_mtx;
+  std::condition_variable cv;
+  bool test_finished = false;
+  std::thread worker([au, rtime, &cv, &cv_mtx, &test_finished]() {
+    std::unique_lock<std::mutex> lock(cv_mtx);
+    bool timed_out = !cv.wait_for(lock, std::chrono::milliseconds(rtime), [&] { return test_finished; });
+    if (timed_out && au) {
+      D3("ExitAUI() starts")
+      au->ExitAUI();
+      D3("ExitAUI() ends")
+    }
+  });
+  testresult = testlogic(au);
+  D2("test func exited")
+  au->ProcessMessages();
+  D2("ProcessMessages() exited")
+  {
+    std::lock_guard<std::mutex> lock(cv_mtx);
+    test_finished = true;
+  }
+  D2("lock passed")
+  cv.notify_one();
+  worker.join();
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  delete au;
+  return testresult;
+}
+
 
 } // namespace aui
 

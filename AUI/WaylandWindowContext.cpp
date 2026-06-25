@@ -46,11 +46,16 @@ namespace aui {
   static const wl_callback_listener frame_listener = { .done = frame_handle_done };
 
   static void xdg_toplevel_close(void *data, UNUSED xdg_toplevel *top) {
-    D2("xdg_toplevel_close called");
+    D1("xdg_toplevel_close called");
     auto *ctx = static_cast<WaylandWindowContext*>(data);
     if(ctx && ctx->Wnd()) {
       D2("Calling Close on window");
-      ctx->Wnd()->Close();
+      if(ctx->Wnd() == ctx->GetEnginePtr()->MainWnd()) {
+        ctx->GetEnginePtr()->ExitAUI();
+      }
+      else {
+        ctx->Wnd()->Close();
+      }
     }
     else {
       DT("No window to close");
@@ -79,6 +84,11 @@ namespace aui {
       if(!ctx || !ctx->Wnd())
         return;
       xdg_surface_ack_configure(surf, serial);
+      if (!ctx->mFrameSyncEnabled) {
+        ctx->mFrameSyncEnabled = true;
+// Trigger a draw – now the guard in QueueFrameCommit will pass
+        ctx->Wnd()->Draw();
+      }
     } };
     xdg_surface_add_listener(mXdgSurface, &surf_listener, this);
     mToplevel = xdg_surface_get_toplevel(mXdgSurface);
@@ -158,32 +168,45 @@ namespace aui {
     size_t stride = width * 4;
     size_t size = stride * height;
     for(int32_t i = 0; i < 2; ++i) {
+// 1. Create anonymous file descriptor in memory
       int32_t fd = memfd_create("aui-wl-shm", MFD_CLOEXEC);
       if(fd < 0) {
-        D1("memfd_create failed");
-        return;
+        E("Wayland Shm Allocation Fatal: memfd_create failed. System may be out of file descriptors.");
       }
+// 2. Allocate the exact sizing layout
       if(ftruncate(fd, static_cast<off_t>(size)) < 0) {
         close(fd);
-        D1("ftruncate failed");
-        return;
+        E("Wayland Shm Allocation Fatal: ftruncate failed to allocate {} bytes. Out of memory/shm space.", size);
       }
+// 3. Map memory pages to the process space
       void *data = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
       if(data == MAP_FAILED) {
         close(fd);
-        D1("mmap failed");
-        return;
+        E("Wayland Shm Allocation Fatal: mmap failed to expose shared memory buffer to UI process.");
       }
+// 4. Register backing pool tracking structures with Wayland
       wl_shm_pool *pool = wl_shm_create_pool(mAUI->GetWaylandShm(), fd, static_cast<int32_t>(size));
+      if(!pool) {
+        munmap(data, size);
+        close(fd);
+        E("Wayland Protocol Error: wl_shm_create_pool failed. Wayland connection may be corrupted.");
+      }
       targetBuffers[i].buffer = wl_shm_pool_create_buffer(pool, 0, static_cast<int32_t>(width),
           static_cast<int32_t>(height), static_cast<int32_t>(stride), WL_SHM_FORMAT_XRGB8888);
       wl_shm_pool_destroy(pool);
-      close(fd);
+      close(fd);// Safe to close the descriptor now; pool keeps a duplicate internally
+      if(!targetBuffers[i].buffer) {
+        munmap(data, size);
+        E("Wayland Protocol Error: wl_shm_pool_create_buffer failed to generate client pixel buffer handle.");
+      }
+// Populate state attributes safely
       targetBuffers[i].data = static_cast<uint32_t*>(data);
       targetBuffers[i].size = size;
       targetBuffers[i].busy = false;
       targetBuffers[i].pendingDeletion = false;
+// Zero/clear out raw background (Pre-fill layout texture)
       std::fill(targetBuffers[i].data, targetBuffers[i].data + width * height, 0xFFAAAAAA);
+// Establish hardware release sync boundaries
       wl_buffer_add_listener(targetBuffers[i].buffer, &buffer_listener, &targetBuffers[i]);
     }
   }
@@ -215,6 +238,10 @@ namespace aui {
   }
 
   void WaylandWindowContext::QueueFrameCommit() {
+    if (!mFrameSyncEnabled) {
+      D1("Frame sync not enabled (no configure yet), skipping commit");
+      return;
+    }
     int32_t backBufferIdx = mCurrentBufferIndex ^ 1;
     D3("QueueFrameCommit: surface={}, buffer_index={}, w={}, h={}", (void*)mSurface, backBufferIdx, mWindow->SizeX(),
         mWindow->SizeY());
@@ -227,18 +254,14 @@ namespace aui {
       D3("Back buffer busy, skipping commit");
       return;
     }
-// If frame sync is enabled, wait for pending frame callback
-    if(mFrameSyncEnabled && mFramePending) {
-      D3("Frame callback pending, skipping commit");
-      return;
-    }
+
     DrawCommand cmd;
     cmd.type = DrawCommandType::Wayland;
     cmd.wayland.surface = mSurface;
     cmd.wayland.buffer = mBuffers[backBufferIdx].buffer;
     cmd.wayland.width = mWindow->SizeX();
     cmd.wayland.height = mWindow->SizeY();
-    D3("QueueFrameCommit: Enqueueing command. Current mDrawCommands size BEFORE push = {}", mAUI->GetDrawCommandsSize());
+    D3("QueueFrameCommit: Enqueueing command. Current mDrawCommands size BEFORE push = {}", mAUI->DrawCommands());
     mAUI->EnqueueDrawCommand(cmd);
     mBuffers[backBufferIdx].busy = true;
     mCurrentBufferIndex = backBufferIdx;
@@ -298,29 +321,6 @@ namespace aui {
     }
   }
 
-//  void WaylandWindowContext::Resize(uint32_t width, uint32_t height) {
-//    if(width == 0 || height == 0 || mInResize)
-//      return;
-//    mInResize = true;
-//    DestroyShmBuffer(mOldBuffers, true);
-//    if(mAUI)
-//      mAUI->Draw();
-//    uint64_t nativeId = reinterpret_cast<uint64_t>(mSurface);
-//    if(mAUI)
-//      mAUI->ClearDrawCommandsForWindow(nativeId);
-//// Store current buffers as "old" and zero out mBuffers
-//    for(int32_t i = 0; i < 2; ++i) {
-//      mOldBuffers[i] = mBuffers[i];
-//      mBuffers[i] = WaylandBuffer { };
-//    }
-//    mHasOldBuffers = true;// if your code uses this flag
-//// Create new buffers with the new size
-//    CreateShmBuffer(width, height, mBuffers);
-//// Destroy old buffers asynchronously (keeps updates working)
-//    DestroyShmBuffer(mOldBuffers, false);
-//    mInResize = false;
-//  }
-
   void WaylandWindowContext::Resize(uint32_t width, uint32_t height) {
     if(width == 0 || height == 0 || mInResize)
       return;
@@ -337,6 +337,9 @@ namespace aui {
       mAUI->ClearDrawCommandsForWindow(nativeId);
     mPendingWidth = width;
     mPendingHeight = height;
+    if (mWindow) {
+        mWindow->Draw();   // instantly redraw at the new size
+    }
 // Do NOT create/destroy buffers here; DoDraw will call EnsureBuffer.
     mInResize = false;
   }
@@ -404,13 +407,24 @@ namespace aui {
 
   bool WaylandWindowContext::EnsureBuffer(uint32_t width, uint32_t height) {
     if(mBufferWidth == width && mBufferHeight == height && mBuffers[0].buffer && mBuffers[1].buffer) {
-      return true;// already have correct buffers
-    }
-// Move current buffers to old storage
-    for(uint32_t i = 0; i < 2; ++i) {
-      mOldBuffers[i] = mBuffers[i];
-      mBuffers[i] = WaylandBuffer { };
-    }
+        return true;
+      }
+
+      // Guard against overwriting an inflight old buffer setup
+      for(uint32_t i = 0; i < 2; ++i) {
+        if (mOldBuffers[i].buffer && mOldBuffers[i].busy) {
+          // Force immediate cleanup or mark it explicitly so it isn't orphaned
+          wl_buffer_destroy(mOldBuffers[i].buffer);
+          if(mOldBuffers[i].data) munmap(mOldBuffers[i].data, mOldBuffers[i].size);
+          mOldBuffers[i] = WaylandBuffer{};
+        }
+      }
+
+      // Safe to swap now...
+      for(uint32_t i = 0; i < 2; ++i) {
+        mOldBuffers[i] = mBuffers[i];
+        mBuffers[i] = WaylandBuffer { };
+      }
     mHasOldBuffers = true;
 // Create new buffers
     CreateShmBuffer(width, height, mBuffers);

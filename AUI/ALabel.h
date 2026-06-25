@@ -8,7 +8,6 @@ private:
   mutable int32_t mCachedTextWidth = 0;
   mutable int32_t mCachedTextHeight = 0;
   mutable bool mTextMetricsValid = false;
-
 public:
   ALabel();
   ~ALabel() override = default;

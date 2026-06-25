@@ -13,76 +13,44 @@ namespace aui {
       double GetProgress() const;
       void Clear();
       void SetRange(double min, double max);
-      double GetMin() const {
-        return mMin;
-      }
-      double GetMax() const {
-        return mMax;
-      }
+      double GetMin() const {return mMin;}
+      double GetMax() const {return mMax;}
       void SetIndeterminate(bool enable);
       bool IsIndeterminate() const {
         return mIndeterminate.load();
       }
       void SetShowText(bool show);
-      bool IsTextVisible() const {
-        return mShowText;
-      }
+      bool IsTextVisible() const {return mShowText;}
       void SetTextFormat(const std::string &format);
-      std::string GetTextFormat() const {
-        return mTextFormat;
-      }
+      std::string GetTextFormat() const {return mTextFormat;}
       void SetBarColor(uint32_t color);
-      uint32_t GetBarColor() const {
-        return mBarColor;
-      }
+      uint32_t GetBarColor() const {return mBarColor;}
       void SetBarColor2(uint32_t color);
-      uint32_t GetBarColor2() const {
-        return mBarColor2;
-      }
+      uint32_t GetBarColor2() const {return mBarColor2;}
       void SetOrientation(AUIOrientation orient);
-      AUIOrientation GetOrientation() const {
-        return mOrientation;
-      }
+      AUIOrientation GetOrientation() const {return mOrientation;}
       void SetDirection(AUIDirection dir);
-      AUIDirection GetDirection() const {
-        return mDirection;
-      }
+      AUIDirection GetDirection() const {return mDirection;}
       void SetStripe(bool enable);
-      bool IsStripeEnabled() const {
-        return mStripe;
-      }
+      bool IsStripeEnabled() const {return mStripe;}
       void SetStripeColor(uint32_t color);
-      uint32_t GetStripeColor() const {
-        return mStripeColor;
-      }
+      uint32_t GetStripeColor() const {return mStripeColor;}
       void SetStripeWidth(uint32_t pixels);
-      uint32_t GetStripeWidth() const {
-        return mStripeWidth;
-      }
+      uint32_t GetStripeWidth() const {return mStripeWidth;}
       void SetStripeSpeed(int32_t pixelsPerUpdate);
-      int32_t GetStripeSpeed() const {
-        return mStripeSpeed;
-      }
+      int32_t GetStripeSpeed() const {return mStripeSpeed;}
       void SetRoundedCorners(bool enable, uint32_t radius = 8);
-      bool HasRoundedCorners() const {
-        return mRoundedCorners;
-      }
-      uint32_t GetCornerRadius() const {
-        return mCornerRadius;
-      }
+      bool HasRoundedCorners() const {return mRoundedCorners;}
+      uint32_t GetCornerRadius() const {return mCornerRadius;}
       using ProgressCallback = std::function<void(double)>;
       void SetOnProgressChanged(ProgressCallback cb);
       void SetOnStart(ProgressCallback cb);
       void SetOnComplete(ProgressCallback cb);
       void SetUpdateInterval(uint32_t intervalMs);
-      uint32_t GetUpdateInterval() const {
-        return mUpdateIntervalMs;
-      }
+      uint32_t GetUpdateInterval() const {return mUpdateIntervalMs;}
       void SetProgressProvider(std::function<double()> provider);
       void PauseUpdates(bool pause);
-      bool IsPaused() const {
-        return mPaused;
-      }
+      bool IsPaused() const {return mPaused;}
       virtual void Draw(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
           int32_t offsetY) const override;
     private:
@@ -126,7 +94,6 @@ namespace aui {
       void DrawBackground(uint32_t *buffer, uint32_t parentWidth, int32_t x, int32_t y, int32_t w, int32_t h) const;
       void UpdateTextCache();
   };
-
 }// namespace aui
 
 #endif // APROGRESSBAR_H_

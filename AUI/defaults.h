@@ -8,8 +8,6 @@
 
 #define UNUSED [[maybe_unused]]
 
-//static auto gAUI_timer_start = std::chrono::high_resolution_clock::now();
-
 inline void print_stack() {
   void* buffer[64];
   int size = backtrace(buffer, 64);
@@ -446,25 +444,49 @@ namespace detail {
 
 #define TEST_ASSERT(cond, errcode) do { if(!(cond)) { E("Test failed: {}", #cond); return errcode; } } while(0)
 
+
+template <typename T>
+constexpr const void* ToPrintablePtr(const T& val) { // 1. Changed to const T& to avoid copying large objects
+    if constexpr (std::is_null_pointer_v<std::remove_cvref_t<T>>) {
+        return nullptr;
+    } else if constexpr (std::is_pointer_v<std::remove_cvref_t<T>>) {
+        return static_cast<const void*>(val);
+    } else if constexpr (std::integral<std::remove_cvref_t<T>> || std::is_enum_v<std::remove_cvref_t<T>>) {
+        // Safe to cast actual integers or enums to uintptr_t
+        return reinterpret_cast<const void*>(static_cast<uintptr_t>(val));
+    } else {
+        // Fallback for objects (like std::string). Returns the address of the object itself.
+        return static_cast<const void*>(&val);
+    }
+}
+
 #define TEST_ASSERT_EQ(actual, expected, errcode) \
   do { \
     auto act = (actual); \
     auto exp = (expected); \
     if (act != exp) { \
-      E("Test failed: {} == {} (actual: {}, expected: {})", #actual, #expected, act, exp); \
+      E("Test failed: {} == {} (actual: {}, expected: {})", \
+        #actual, #expected, \
+        ToPrintablePtr(act), \
+        ToPrintablePtr(exp)); \
       return errcode; \
     } \
   } while(0)
+
 
 #define TEST_ASSERT_NE(actual, expected, errcode) \
   do { \
     auto act = (actual); \
     auto exp = (expected); \
     if (act == exp) { \
-      E("Test failed: {} != {} (actual: {}, expected: {})", #actual, #expected, act, exp); \
+      E("Test failed: {} != {} (actual: {}, expected: {})", \
+        #actual, #expected, \
+        ToPrintablePtr(act), \
+        ToPrintablePtr(exp)); \
       return errcode; \
     } \
   } while(0)
+
 
 // ------------------------------------------------------------------
 // Floating-point equality test with tolerance (returns on failure)
@@ -536,5 +558,7 @@ const std::unordered_map<std::string,UINT64> string_to_case{
 };
 
 static std::string BaseAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+
 
 #endif // DEFAULTS_H_

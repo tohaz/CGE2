@@ -50,39 +50,49 @@ namespace aui {
     if(!mResizeEnabled) {
       E("window resize is disabled");
     }
+    AUI *au = mBackend ? mBackend->GetEnginePtr() : nullptr;
+    if(!au || !au->IsProcessingMessages()) {
+// Defer the resize until the event loop is active
+      mResizePending = true;
+      mPendingWidth = w;
+      mPendingHeight = h;
+      D3("Resize deferred");
+      return;
+    }
+// Apply immediately (event loop is already running)
     if(mBackend)
       mBackend->Resize(w, h);
-    AUI *au = mBackend->GetEnginePtr();
-    if(!au)
-      E();
+    mSizeX = w;
+    mSizeY = h;
+// Clear stale draw commands (same as before)
     uint64_t nativeId = mBackend->GetNativeWindowId();
-// Clear stale draw commands for this window (XCB only) – lock is released after scope
     {
-      std::lock_guard<std::mutex> lock(au->GetCommandMutex());
+      std::lock_guard<std::recursive_mutex> lock(au->GetCommandMutex());
       auto &commands = au->GetDrawCommands();
       commands.erase(std::remove_if(commands.begin(), commands.end(), [nativeId](const DrawCommand &cmd) {
         return cmd.type == DrawCommandType::Xcb && cmd.xcb.windowId == nativeId;
       }),
       commands.end());
-    }// mutex unlocked here
-    mSizeX = w;
-    mSizeY = h;
-// Notify child widgets – this may call Draw() which will enqueue new commands
+    }
+// Notify child widgets
     for(auto &widget : mWidg) {
       widget->OnParentResize(w, h);
     }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
 
   void AWindow::Close() {
     D2("AWindow::Close entered, nativeId={}", mNativeId);
+    if (mClosed) return;
+    mClosed = true;
     AUI *ep = mBackend ? mBackend->GetEnginePtr() : nullptr;
     bool isMain = (ep && ep->MainWnd() == this);
     if(isMain) {
 // Do NOT unregister/destroy the main window now.
 // Just break the event loop; the window will be destroyed
 // when the AUI is deleted in main() after the worker thread joins.
-      if(ep)
-        ep->ExitAUI();
+//      if(ep)
+//        ep->ExitAUI();
 // Optional: hide the window so it disappears immediately.
 // if (mBackend) mBackend->Hide();
     }
@@ -94,21 +104,31 @@ namespace aui {
   }
 
   void AWindow::SetTitle(const std::string &title) {
+    mWindowTitle = title;
     if(mBackend)
       mBackend->SetTitle(title);
-    mWindowTitle = title;
+    else {
+      E("set title with no backend present")
+    }
   }
 
   void AWindow::EnableResize() {
-    if(mBackend)
-      mBackend->EnableResize();
     mResizeEnabled = true;
+    if(mBackend) {
+      mBackend->EnableResize();
+    }
+    else {
+      E("enabling resize with no backend present")
+    }
   }
 
   void AWindow::DisableResize() {
+    mResizeEnabled = false;
     if(mBackend)
       mBackend->DisableResize();
-    mResizeEnabled = false;
+    else {
+      E("disabling resize with no backend present")
+    }
   }
 
   void AWindow::OnMousePress(int32_t x, int32_t y, uint32_t button) {
@@ -179,6 +199,7 @@ namespace aui {
 
   void AWindow::Draw() {
       D3("[WIN] Draw() called, mDrawPending={}", mDrawPending);
+      if(mClosed) return;
       if(mDrawPending) return;
       mDrawPending = true;
       if(mBackend) {
@@ -192,6 +213,7 @@ namespace aui {
 
   void AWindow::ForceDraw() {
       D3("[WIN] ForceDraw() called, mDrawPending={}", mDrawPending);
+      if(mClosed) return;
       mDrawPending = false;
       DoDraw();
   }
@@ -206,6 +228,7 @@ namespace aui {
   void AWindow::OnMouseMove(int32_t x, int32_t y) {
 // If dragging, bypass hover tracking
     if(mDragWidget) {
+      D1("we are dragging widget")
       int32_t localX = x - mDragWidget->X();
       int32_t localY = y - mDragWidget->Y();
       mDragWidget->OnMouseMove(localX, localY);
@@ -273,6 +296,7 @@ namespace aui {
 
   void AWindow::DoDraw() {
     D3("AWindow::DoDraw: start");
+    if(mClosed) return;
     if(!mBackend->EnsureBuffer(mSizeX, mSizeY)) {
       E("Failed to allocate buffer for window")
     }
@@ -364,6 +388,39 @@ namespace aui {
       mFocusedWidget = nullptr;
     mWidg.erase(it);// widget is destroyed via unique_ptr
     ForceDraw();// redraw immediately
+  }
+
+  void AWindow::ApplyPendingResize() {
+    if(!mResizePending)
+      return;
+    if(!mResizeEnabled) {
+// Optionally handle the case where resize is now disabled.
+// You might want to still apply it, or ignore. We'll apply anyway.
+      D3("Applying pending resize while resize is disabled – proceed anyway");
+    }
+    if(mBackend) {
+      mBackend->Resize(mPendingWidth, mPendingHeight);
+    }
+    mSizeX = mPendingWidth;
+    mSizeY = mPendingHeight;
+// Clear stale draw commands (same as in Resize)
+    AUI *au = mBackend ? mBackend->GetEnginePtr() : nullptr;
+    if(au) {
+      uint64_t nativeId = mBackend->GetNativeWindowId();
+      {
+        std::lock_guard<std::recursive_mutex> lock(au->GetCommandMutex());
+        auto &commands = au->GetDrawCommands();
+        commands.erase(std::remove_if(commands.begin(), commands.end(), [nativeId](const DrawCommand &cmd) {
+          return cmd.type == DrawCommandType::Xcb && cmd.xcb.windowId == nativeId;
+        }),
+        commands.end());
+      }
+    }
+// Notify child widgets
+    for(auto &widget : mWidg) {
+      widget->OnParentResize(mSizeX, mSizeY);
+    }
+    mResizePending = false;
   }
 
   AWindow::~AWindow() {

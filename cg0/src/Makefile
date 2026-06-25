@@ -9,6 +9,8 @@
 AUI_ROOT   := ../../AUI
 BUILD_MODE ?= debug
 TARGET_NAME := cg0
+FREETYPE_OBJ := $(AUI_ROOT)/Custom/obj/freetype_amalgamation.o
+
 
 # Detect number of CPU cores for parallel build
 NPROCS := 1
@@ -52,7 +54,7 @@ BASE_FLAGS := -std=c++26 -MMD -MP -pedantic -pedantic-errors -Wall -Wextra -Werr
               -Wcast-align -Wdisabled-optimization -Wlogical-op -Wmissing-include-dirs \
               -Wfloat-equal -Wconversion -Wsign-conversion \
               -fmax-errors=25 \
-              -Wmissing-declarations -Wredundant-decls -Wshadow \
+              -Wno-missing-declarations -Wredundant-decls -Wshadow \
               -Wsign-promo -Wstrict-null-sentinel -Wswitch-default -Wundef \
               -Wnoexcept -Woverloaded-virtual
 
@@ -80,7 +82,7 @@ CPPFLAGS := -I$(AUI_ROOT) -I$(AUI_ROOT)/freetype2/include
 # -lxcb-image    : XCB image functions
 # -lxcb-keysyms  : XCB keysym helper functions (xcb_key_symbols_*)
 LIBS := -lAUI -lX11 -lX11-xcb -lxcb -lxcb-cursor -lXrender -lwayland-client \
-        -lfreetype -lxkbcommon -lxkbcommon-x11 -lxcb-image -lxcb-keysyms -lpng -lz
+        -lxkbcommon -lxkbcommon-x11 -lxcb-image -lxcb-keysyms -lpng -lz -lwayland-cursor
 
 # Source and Object discovery
 SRCS := $(wildcard $(SRC_DIR)/*.cpp)
@@ -100,7 +102,7 @@ release srelease:
 $(TARGET): $(OBJS) build_aui_lib | $(BUILD_DIR)
 	@echo "Linking binary [$(BUILD_MODE)]: $@"
 	@rm -f $@
-	$(CXX) $(OBJS) -o $@ $(LDFLAGS) $(LIBS) || (rm -f $@ && exit 1)
+	$(CXX) $(OBJS) -o $@ $(LDFLAGS) $(FREETYPE_OBJ) $(LIBS) || (rm -f $@ && exit 1)
 ifneq ($(BUILD_MODE), debug)
 	@$(STRIP) --strip-all $@
 endif

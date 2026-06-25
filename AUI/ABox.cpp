@@ -8,6 +8,7 @@ namespace aui {
     mY = AUI_BOX_Y;
     mSizeX = AUI_BOX_SZX;
     mSizeY = AUI_BOX_SZY;
+    mBorderThick = 1;
   }
 
   ABox* ABox::AttachTo(AWindow *parent) {
@@ -27,10 +28,13 @@ namespace aui {
     return box;
   }
 
-  void ABox::Draw(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
-      int32_t offsetY) const {
+  void ABox::Draw(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX, int32_t offsetY) const {
     int32_t absX = offsetX + mX;
     int32_t absY = offsetY + mY;
+    if(absX < 0 || absY < 0 || static_cast<uint32_t>(absX) >= parentWidth
+        || static_cast<uint32_t>(absY) >= parentHeight) {
+      return;
+    }
     uint32_t drawW = std::min(mSizeX, parentWidth - static_cast<uint32_t>(absX));
     uint32_t drawH = std::min(mSizeY, parentHeight - static_cast<uint32_t>(absY));
     if(drawW == 0 || drawH == 0)
@@ -71,6 +75,7 @@ namespace aui {
   }
 
   void ABox::OnMouseMove(int32_t localX, int32_t localY) {
+    D()
     AWidget::OnMouseMove(localX, localY);
     ForwardMoveToChildren(localX, localY);
   }

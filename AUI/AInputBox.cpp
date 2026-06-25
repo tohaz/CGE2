@@ -10,9 +10,6 @@ namespace aui {
     return str.length();
   }
 
-// ------------------------------------------------------------------
-// Constructor / Destructor
-// ------------------------------------------------------------------
   AInputBox::AInputBox() :
       mBlinkingEnabled(true), mStopBlinkThread(false), mCursorVisible(true), mCursorPos(0), mInsertMode(true), mEditable(
           true), mMaxLength(DEFAULT_MAX_LENGTH) {
@@ -31,7 +28,6 @@ namespace aui {
 // SetFocusable(true);
     mBlinkThread = std::make_unique<std::thread>(&AInputBox::BlinkThreadFunc, this);
   }
-
 // ------------------------------------------------------------------
 // Factory methods
 // ------------------------------------------------------------------
@@ -54,7 +50,6 @@ namespace aui {
     parent->AddWidget(std::unique_ptr<AWidget>(box));
     return box;
   }
-
 // ------------------------------------------------------------------
 // AWidget overrides
 // ------------------------------------------------------------------

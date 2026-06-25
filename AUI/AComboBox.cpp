@@ -22,7 +22,6 @@ namespace aui {
     mInputBox->SetVAlignment(AUIVAlign::center);
     mInputBox->SetFocusable(true);
     mInputBox->SetEditable(mEditable);
-
     mInputBox->SetOnChangeCallback([this](AInputBox*, const std::string &text) {
       OnInputChanged(text);
     });
@@ -128,10 +127,6 @@ namespace aui {
     }
     uint32_t maxHeight = 200;// fallback (safe for 768p screens)
     if(mParentWindow) {
-// Replace with the actual getter if available, e.g.:
-// maxHeight = mParentWindow->GetClientHeight() / 2;
-// maxHeight = mParentWindow->GetSizeY() / 2;
-// For now we keep the fallback to avoid adding dependencies.
     }
     listHeight = std::min(listHeight, static_cast<int32_t>(maxHeight));
     listHeight = std::max(listHeight, static_cast<int32_t>(mSizeY));
@@ -292,7 +287,6 @@ namespace aui {
       }
     }
   }
-
 // ------------------------------------------------------------------
 // Editable
 // ------------------------------------------------------------------
@@ -301,14 +295,12 @@ namespace aui {
     mEditable = editable;
     mInputBox->SetEditable(editable);
   }
-
 // ------------------------------------------------------------------
 // Dropdown open/close
 // ------------------------------------------------------------------
   void AComboBox::OpenDropDown() {
     if(mDropDownOpen || mItems.empty())
       return;
-// CLOSE ANY OTHER OPEN DROPDOWN FIRST
     if(s_activeDropDown && s_activeDropDown != this) {
       s_activeDropDown->CloseDropDown();
     }
@@ -343,7 +335,6 @@ namespace aui {
     else
       OpenDropDown();
   }
-
 // ------------------------------------------------------------------
 // Draw
 // ------------------------------------------------------------------
@@ -439,10 +430,8 @@ namespace aui {
       if(mParentWindow)
         mParentWindow->Draw();
     }
-
     ForwardMoveToChildren(localX, localY);
   }
-
 // ------------------------------------------------------------------
 // Keyboard
 // ------------------------------------------------------------------
@@ -510,7 +499,6 @@ namespace aui {
       mDropList->Disable();
     CloseDropDown();
   }
-
 // ------------------------------------------------------------------
 // Styling forwarders
 // ------------------------------------------------------------------

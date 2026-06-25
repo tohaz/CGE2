@@ -276,7 +276,7 @@ namespace aui {
       void ForwardWheelToChildren(int32_t delta);
       void BringChildToFront(AWidget *child);
       void RemoveWidget(AWidget *widget);
-      void SetAngle(double degrees) { mAngle = degrees * M_PI / 180.0; }
+      void SetAngle(double degrees);
       double GetAngle() const { return mAngle * 180.0 / M_PI; }
   };
 

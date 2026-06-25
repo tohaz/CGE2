@@ -21,7 +21,7 @@ namespace aui {
   }
 
   AList* AList::AttachTo(AWindow *parent) {
-    D1("Attaching AList to window");
+    D3("Attaching AList to window");
     if(!parent)
       E("AList::AttachTo: parent window is null");
     AList *list = new AList();
@@ -55,6 +55,8 @@ namespace aui {
   uint32_t AList::ComputeStringWidth(const std::string &str) const {
     if(!mEnginePtr)
       return 0;
+    std::unique_lock lock(mEnginePtr->GetFontMutex(), std::chrono::milliseconds(50));
+    if (!lock.owns_lock()) { E("locked"); }
     FT_Face face = mEnginePtr->GetDefaultFontFace();
     if(!face)
       return 0;
@@ -78,18 +80,19 @@ namespace aui {
   }
 
   void AList::RemoveItem(size_t index) {
-      if (index >= mData.size())
-          return;
-      bool wasSelected = mTag[index];
-      mData.erase(mData.begin() + static_cast<ptrdiff_t>(index));
-      mTag.erase(mTag.begin() + static_cast<ptrdiff_t>(index));
-      RecalcMaxWidth();
-      if (wasSelected) {
-          NotifySelectionChanged(); // selection set changed
-      }
-      if (mParentWindow)
-          mParentWindow->Draw();
+    if(index >= mData.size())
+      return;
+    bool wasSelected = mTag[index];
+    mData.erase(mData.begin() + static_cast<ptrdiff_t>(index));
+    mTag.erase(mTag.begin() + static_cast<ptrdiff_t>(index));
+    RecalcMaxWidth();
+    if(wasSelected) {
+      NotifySelectionChanged();// selection set changed
+    }
+    if(mParentWindow)
+      mParentWindow->Draw();
   }
+
   void AList::Clear() {
     mData.clear();
     mTag.clear();
@@ -171,23 +174,25 @@ namespace aui {
   }
 
   void AList::ClearSelection() {
-      bool changed = false;
-      for (size_t i = 0; i < mTag.size(); ++i) {
-          if (mTag[i]) {
-              mTag[i] = false;
-              changed = true;
-          }
+    bool changed = false;
+    for(size_t i = 0; i < mTag.size(); ++i) {
+      if(mTag[i]) {
+        mTag[i] = false;
+        changed = true;
       }
-      if (changed) {
-          NotifySelectionChanged();
-          if (mParentWindow)
-              mParentWindow->Draw();
-      }
+    }
+    if(changed) {
+      NotifySelectionChanged();
+      if(mParentWindow)
+        mParentWindow->Draw();
+    }
   }
 
   void AList::RecalcMaxWidth() {
     if(!mEnginePtr)
       return;
+    std::unique_lock lock(mEnginePtr->GetFontMutex(), std::chrono::milliseconds(50));
+    if (!lock.owns_lock()) { E("locked"); }
     FT_Face face = mEnginePtr->GetDefaultFontFace();
     if(!face) {
       E("no face");
@@ -213,6 +218,8 @@ namespace aui {
       mLineHeight = mFontSize + mLineSpacing;
       return;
     }
+    std::unique_lock lock(mEnginePtr->GetFontMutex(), std::chrono::milliseconds(50));
+    if (!lock.owns_lock()) { E("locked"); }
     FT_Face face = mEnginePtr->GetDefaultFontFace();
     if(!face) {
       mLineHeight = mFontSize + mLineSpacing;
@@ -340,6 +347,8 @@ namespace aui {
 // ------------------------------------------------------------------
 // 5. Get FreeType face
 // ------------------------------------------------------------------
+    std::unique_lock lock(mEnginePtr->GetFontMutex(), std::chrono::milliseconds(50));
+    if (!lock.owns_lock()) { E("locked"); }
     FT_Face face = mEnginePtr ? mEnginePtr->GetDefaultFontFace() : nullptr;
 // ------------------------------------------------------------------
 // 6. Draw each visible line
@@ -376,7 +385,7 @@ namespace aui {
       }
 // Draw text
       if(face) {
-        int32_t effectiveWidth = (int32_t)std::max(mMaxWidthPx, static_cast<uint32_t>(clientW));
+        int32_t effectiveWidth = (int32_t) std::max(mMaxWidthPx, static_cast<uint32_t>(clientW));
         DrawTextEx(buffer, parentWidth, parentHeight, clientX, clientY + visibleStartY, clientW, visibleHeight,
             mData[i], face, mFontSize, mHAlign, mLineTextVAlign, mHOffset, mTextColor, effectiveWidth);
       }
@@ -965,15 +974,15 @@ namespace aui {
     ClearSelection();
   }
 
-  void AList::SetOnSelectionChanged(SelectionChangedCallback callback, void* userData) {
-      mOnSelectionChanged = std::move(callback);
-      mSelectionUserData = userData;
+  void AList::SetOnSelectionChanged(SelectionChangedCallback callback, void *userData) {
+    mOnSelectionChanged = std::move(callback);
+    mSelectionUserData = userData;
   }
 
   void AList::NotifySelectionChanged() {
-      if (mOnSelectionChanged) {
-          mOnSelectionChanged(mParentWindow, this, mSelectionUserData);
-      }
+    if(mOnSelectionChanged) {
+      mOnSelectionChanged(mParentWindow, this, mSelectionUserData);
+    }
   }
 
   AList::~AList() {

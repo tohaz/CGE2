@@ -82,10 +82,7 @@ public:
   bool IsVisible() const { return mVisible; }
   uint32_t GetTrackLength() const;      // length along the scrollbar axis (height for vertical, width for horizontal)
   uint32_t GetThumbLength() const;      // clamped to at least 20 pixels
-  void SetShowArrows(bool show) {
-      mShowArrows = show;
-      if (mParentWindow) mParentWindow->Draw();
-  }
+  void SetShowArrows(bool show) {mShowArrows = show;if (mParentWindow) mParentWindow->Draw();}
 
 };
 

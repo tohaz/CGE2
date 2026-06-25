@@ -111,6 +111,7 @@ namespace aui {
   }
 
   void AWidget::SetMouseMoveCallback(MouseMoveCallback callback, void *userData) {
+    D()
     mMoveCallback = std::move(callback);
     mMoveUserData = userData;
   }
@@ -119,6 +120,7 @@ namespace aui {
     if(mMoveCallback) {
       mMoveCallback(mParentWindow, this, mMoveUserData, localX, localY);
     }
+    else D("move callback is not set")
   }
 
   void AWidget::OnMouseMove(int32_t localX, int32_t localY) {
@@ -303,6 +305,9 @@ namespace aui {
       mTextMetricsValid = true;
       return;
     }
+    std::unique_lock lock(mEnginePtr->GetFontMutex(), std::chrono::milliseconds(50));
+    if (!lock.owns_lock()) { E("locked"); }
+
     FT_Face face = mEnginePtr->GetDefaultFontFace();
     if(!face) {
       mCachedTextWidth = 0;
@@ -400,11 +405,9 @@ namespace aui {
       FT_Bitmap *bitmap = &slot->bitmap;
       int32_t glyphLeft = penX + static_cast<int32_t>(slot->bitmap_left);
       int32_t glyphTop = baselineY - static_cast<int32_t>(slot->bitmap_top);
-
       int32_t bitmapRows = static_cast<int32_t>(bitmap->rows);
       int32_t bitmapWidth = static_cast<int32_t>(bitmap->width);
       size_t rowStride = static_cast<size_t>(bitmapWidth);
-
       for(int32_t row = 0; row < bitmapRows; ++row) {
         int32_t destY = glyphTop + row;
         if(destY < absY || destY >= absY + clipH)
@@ -438,6 +441,8 @@ namespace aui {
       return;
     if(!mEnginePtr)
       return;
+    std::unique_lock lock(mEnginePtr->GetFontMutex(), std::chrono::milliseconds(50));
+    if (!lock.owns_lock()) { E("locked"); }
     FT_Face face = mEnginePtr->GetDefaultFontFace();
     D2("DrawTextOffset: mText='{}', mEnginePtr={}, face={}", mText, (void*)mEnginePtr, (void*)face);
     if(!face) {
@@ -537,6 +542,9 @@ namespace aui {
   int32_t AWidget::MeasureTextWidth(const std::string &text) const {
     if(!mEnginePtr)
       return 0;
+    std::unique_lock lock(mEnginePtr->GetFontMutex(), std::chrono::milliseconds(50));
+    if (!lock.owns_lock()) { E("locked"); }
+
     FT_Face face = mEnginePtr->GetDefaultFontFace();
     if(!face)
       return 0;
@@ -583,7 +591,6 @@ namespace aui {
 // Store last mouse position for potential wheel forwarding
     mLastMouseX = localX;
     mLastMouseY = localY;
-
 // Find the topmost child under the cursor
     AWidget *target = nullptr;
     for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
@@ -596,7 +603,6 @@ namespace aui {
         break;
       }
     }
-
 // Notify hover change (optional: call OnMouseLeave on old hover)
 // For simplicity, we just forward the move to the target child
     if(target) {
@@ -731,8 +737,15 @@ namespace aui {
     mWidg.erase(it);// child widget and its descendants are destroyed
 // Request a redraw of the top-level window, if any
     if(mParentWindow) {
-      mParentWindow->ForceDraw();
-    }
+      mParentWindow->Draw();
+    } else E()
+  }
+
+  void AWidget::SetAngle(double degrees) {
+    mAngle = degrees * M_PI / 180.0;
+    if(mParentWindow) {
+      mParentWindow->Draw();
+    } else E()
   }
 
 }// namespace aui

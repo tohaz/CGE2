@@ -34,6 +34,10 @@ namespace aui {
       void DoDraw();
       AWidget* mFocusedWidget = nullptr;
       bool mKeepFocusOnMouseLeave = true;
+      bool mResizePending = false;
+      uint32_t mPendingWidth = 0;
+      uint32_t mPendingHeight = 0;
+      bool mClosed = false;
     protected:
       void AddWidget(std::unique_ptr<AWidget> widg);
     public:
@@ -47,8 +51,8 @@ namespace aui {
       void SetTitle(const std::string &title);
       IWindowContext* GetBackend() const {return mBackend.get();}
 // Accessors for backend to query size/position
-      uint32_t SizeX() const {return mSizeX;}
-      uint32_t SizeY() const {return mSizeY;}
+      uint32_t SizeX() const {if(mPendingWidth) {return mPendingWidth;}return mSizeX;}
+      uint32_t SizeY() const {if(mPendingHeight) {return mPendingHeight;}return mSizeY;}
       int32_t X() const {return mX;}
       int32_t Y() const {return mY;}
       uint32_t BGColor() const {return mBGColor;}
@@ -79,6 +83,8 @@ namespace aui {
       void SetCursor(AUICursorType type);
       void BringChildToFront(AWidget *child);
       void RemoveWidget(AWidget* widget);
+      void ApplyPendingResize();
+      bool HasPendingResize() const { return mResizePending; }
 
 
   };

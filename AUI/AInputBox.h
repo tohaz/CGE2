@@ -10,11 +10,9 @@ namespace aui {
       void BlinkThreadFunc();
       std::string mPlaceholder;
       uint32_t mPlaceholderColor = 0xFF888888;
-
       void InsertChar(char ch);
       void DeleteChar();// Backspace
       void DeleteForwardChar();// Delete
-//// Members
       std::unique_ptr<std::thread> mBlinkThread;
       std::atomic<bool> mBlinkingEnabled;
       std::atomic<bool> mStopBlinkThread;
@@ -31,13 +29,12 @@ namespace aui {
       static constexpr size_t DEFAULT_MAX_LENGTH = 255;
       std::mutex mBlinkMutex;
       std::condition_variable mBlinkCV;
-      int32_t MeasureTextWidth(const std::string& text) const;
+      int32_t MeasureTextWidth(const std::string &text) const;
       int32_t MeasureCharWidth(char ch) const;
       size_t GetIndexFromX(int32_t localX) const;
       bool mPasswordMode = false;
       char mMaskChar = '*';
       std::string GetDisplayText() const;
-
     public:
       AInputBox();
       ~AInputBox() override;
@@ -54,14 +51,10 @@ namespace aui {
       void Disable() override;
 // ----- Editable state (separate from enabled) -----
       void SetEditable(bool editable);
-      bool IsEditable() const {
-        return mEditable;
-      }
+      bool IsEditable() const {return mEditable;}
 // ----- Max length -----
       void SetMaxLength(size_t maxLen);
-      size_t GetMaxLength() const {
-        return mMaxLength;
-      }
+      size_t GetMaxLength() const {return mMaxLength;}
 // ----- Input filtering (regex) -----
       void SetInputFilter(const std::string &regexPattern);
       void ClearInputFilter();
@@ -77,18 +70,16 @@ namespace aui {
       void SetOnSubmitCallback(OnSubmitCallback cb);
 // ----- Text manipulation -----
       virtual void SetText(const std::string &text);// resets cursor and validates max length/filter
-      const std::string& GetText() const {
-        return mText;
-      }
+      const std::string& GetText() const {return mText;}
       int32_t GetCursorX() const;
       bool IsInputAllowed(const std::string &newValue) const;
       bool IsLengthAllowed(const std::string &newValue) const;// max length check
       void SetValueAndNotify(const std::string &newValue);
-      void SetPlaceholder(const std::string& placeholder);
-      const std::string& GetPlaceholder() const { return mPlaceholder; }
+      void SetPlaceholder(const std::string &placeholder);
+      const std::string& GetPlaceholder() const {return mPlaceholder;}
       void SetPlaceholderColor(uint32_t color);
       void SetPasswordMode(bool enable, char maskChar = '*');
-      bool IsPasswordMode() const { return mPasswordMode; }
+      bool IsPasswordMode() const {return mPasswordMode;}
 
   };
 

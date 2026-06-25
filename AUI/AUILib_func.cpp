@@ -2,6 +2,95 @@
 
 namespace aui {
 
+  /// @brief Checks if the current environment is running natively on Wayland.
+  bool DetectWayland() {
+    const char *xdg = std::getenv("XDG_SESSION_TYPE");
+    if(xdg && std::string(xdg) == "wayland") {
+      return true;
+    }
+    if(!std::getenv("WAYLAND_DISPLAY")) {
+      return false;
+    }
+    void *handle = dlopen("libwayland-client.so.0", RTLD_LAZY);
+    if(!handle)
+      return false;
+    typedef void* (*wl_display_connect_t)(const char*);
+    typedef void (*wl_display_disconnect_t)(void*);
+    auto wl_display_connect = reinterpret_cast<wl_display_connect_t>(dlsym(handle, "wl_display_connect"));
+    auto wl_display_disconnect = reinterpret_cast<wl_display_disconnect_t>(dlsym(handle, "wl_display_disconnect"));
+    bool connected = false;
+    if(wl_display_connect && wl_display_disconnect) {
+      void *display = wl_display_connect(nullptr);
+      if(display) {
+        connected = true;
+        wl_display_disconnect(display);
+      }
+    }
+    dlclose(handle);
+    return connected;
+  }
+
+/// @brief Checks if the application is an X11 client running inside a Wayland session via XWayland.
+  bool DetectXWayland() {
+// If there is no Wayland environment present, it can't be XWayland
+    if(!DetectWayland()) {
+      return false;
+    }
+// If Wayland is active, check if an X11 display connection is also open/available
+    if(!std::getenv("DISPLAY")) {
+      return false;
+    }
+    void *handle = dlopen("libX11.so.6", RTLD_LAZY);
+    if(!handle)
+      return false;
+    typedef void* (*XOpenDisplay_t)(const char*);
+    typedef int32_t (*XCloseDisplay_t)(void*);
+    auto XOpenDisplay = reinterpret_cast<XOpenDisplay_t>(dlsym(handle, "XOpenDisplay"));
+    auto XCloseDisplay = reinterpret_cast<XCloseDisplay_t>(dlsym(handle, "XCloseDisplay"));
+    bool has_x11_display = false;
+    if(XOpenDisplay && XCloseDisplay) {
+      void *display = XOpenDisplay(nullptr);
+      if(display) {
+        has_x11_display = true;
+        XCloseDisplay(display);
+      }
+    }
+    dlclose(handle);
+    return has_x11_display;
+  }
+
+/// @brief Checks if the current environment is running on pure, native X11.
+  bool DetectX11() {
+// If XWayland is active, it's not a native X11 session.
+//    if(DetectWayland()) {
+//      return false;
+//    }
+//    const char *xdg = std::getenv("XDG_SESSION_TYPE");
+//    if(xdg && std::string(xdg) == "x11") {
+//      return true;
+//    }
+    if(!std::getenv("DISPLAY")) {
+      return false;
+    }
+    void *handle = dlopen("libX11.so.6", RTLD_LAZY);
+    if(!handle)
+      return false;
+    typedef void* (*XOpenDisplay_t)(const char*);
+    typedef int32_t (*XCloseDisplay_t)(void*);
+    auto XOpenDisplay = reinterpret_cast<XOpenDisplay_t>(dlsym(handle, "XOpenDisplay"));
+    auto XCloseDisplay = reinterpret_cast<XCloseDisplay_t>(dlsym(handle, "XCloseDisplay"));
+    bool connected = false;
+    if(XOpenDisplay && XCloseDisplay) {
+      void *display = XOpenDisplay(nullptr);
+      if(display) {
+        connected = true;
+        XCloseDisplay(display);
+      }
+    }
+    dlclose(handle);
+    return connected;
+  }
+
   void ClipRect(int32_t &x, int32_t &y, int32_t &w, int32_t &h, int32_t parentW, int32_t parentH) {
     if(x < 0) {
       w += x;
@@ -18,13 +107,6 @@ namespace aui {
     if(w <= 0 || h <= 0) {
       w = h = 0;
     }
-  }
-
-  UNUSED static FT_Error ftc_face_requester(UNUSED FTC_FaceID face_id,
-  UNUSED FT_Library library, FT_Pointer request_data, FT_Face *aface) {
-    AUI *au = static_cast<AUI*>(request_data);
-    *aface = au->GetDefaultFontFace();
-    return 0;
   }
 
   std::string NumberToBaseString(UINT64 n) {
@@ -161,7 +243,6 @@ namespace aui {
     }
     return dst;
   }
-
   struct TextLayout {
       int32_t totalWidth = 0;
       int32_t textHeight = 0;
@@ -172,7 +253,6 @@ namespace aui {
       int32_t clipT = 0;
       int32_t clipB = 0;
   };
-
 // ---- Helper: Safe UTF-8 Parsing ----
   static uint32_t GetNextCodepoint(const uint8_t *&ptr) {
     if((*ptr & 0x80) == 0)
@@ -195,7 +275,6 @@ namespace aui {
     ptr++;
     return 0;
   }
-
 // ---- Helper: Unified Layout Metric Engine ----
   static TextLayout CalculateTextLayout(const std::string &text, FT_Face face, uint32_t fontSize, AUI *engine,
       int32_t absX, int32_t absY, int32_t drawW, int32_t drawH, AUIHAlign hAlign, AUIVAlign vAlign, int32_t xOffset,
@@ -328,7 +407,6 @@ namespace aui {
         continue;
       const uint8_t *src = bitmap->buffer + row * bitmap->pitch;
       size_t rowOffset = static_cast<size_t>(destY) * pW;
-
       for(int32_t col = 0; col < static_cast<int32_t>(bitmap->width); ++col) {
         int32_t destX = glyphLeft + col;
         if(destX < layout.clipL || destX >= layout.clipR)
@@ -351,32 +429,28 @@ namespace aui {
     int32_t targetSize = static_cast<int32_t>(fontSize);
     int32_t srcW = static_cast<int32_t>(bitmap->width);
     int32_t srcH = static_cast<int32_t>(bitmap->rows);
-
     if(srcW != targetSize || srcH != targetSize) {
       int32_t dstW = targetSize, dstH = targetSize, dstPitch = 0;
       uint8_t *rawScaledBuffer = scale_bgra_bitmap(bitmap->buffer, srcW, srcH, dstW, dstH, bitmap->pitch, dstPitch);
       if(!rawScaledBuffer)
         return;
-
       std::unique_ptr<uint8_t[]> managedScaled(rawScaledBuffer);
       uint64_t cacheKey = (static_cast<uint64_t>(glyph_index) << 32) | fontSize;
-      auto &cache = engine->mScaledEmojiCache;
-      if(cache.find(cacheKey) == cache.end()) {
+      auto cache = engine->ScaledEmojiCache();
+      if(cache->find(cacheKey) == cache->end()) {
         std::vector<uint8_t> data(12 + static_cast<size_t>(dstH * dstPitch));
         std::memcpy(data.data(), &dstW, 4);
         std::memcpy(data.data() + 4, &dstH, 4);
         std::memcpy(data.data() + 8, &dstPitch, 4);
         std::memcpy(data.data() + 12, managedScaled.get(), static_cast<size_t>(dstH * dstPitch));
-        cache[cacheKey] = std::move(data);
+        (*cache)[cacheKey] = std::move(data);
       }
-
       FT_Bitmap scaledBitmap;
       scaledBitmap.rows = static_cast<uint32_t>(dstH);
       scaledBitmap.width = static_cast<uint32_t>(dstW);
       scaledBitmap.pitch = dstPitch;
       scaledBitmap.buffer = managedScaled.get();
       scaledBitmap.pixel_mode = FT_PIXEL_MODE_BGRA;
-
       BlitGlyphBitmap(buffer, pW, layout, penX, layout.baselineY - dstH, &scaledBitmap, 0, 0, 0);
     }
     else {
@@ -459,9 +533,9 @@ namespace aui {
       bool haveCached = false;
       if(codepoint > 127) {
         uint64_t cacheKey = (static_cast<uint64_t>(glyph_index) << 32) | fontSize;
-        auto &cache = engine->mScaledEmojiCache;
-        auto it = cache.find(cacheKey);
-        if(it != cache.end() && it->second.size() >= 12) {
+        auto cache = engine->ScaledEmojiCache();
+        auto it = cache->find(cacheKey);
+        if(it != cache->end() && it->second.size() >= 12) {
           int32_t cachedW = *reinterpret_cast<const int32_t*>(it->second.data());
           int32_t cachedH = *reinterpret_cast<const int32_t*>(it->second.data() + 4);
           int32_t cachedPitch = *reinterpret_cast<const int32_t*>(it->second.data() + 8);
@@ -522,10 +596,8 @@ namespace aui {
       uint8_t *dstRow = dst + y * dstPitch;
       for(int32_t x = 0; x < dstW; ++x) {
         float dx = static_cast<float>(x) - cxDst;
-
         int32_t srcX = static_cast<int32_t>((dx * cosA - dy * sinA) * scaleX + cxSrc);
         int32_t srcY = static_cast<int32_t>((dx * sinA + dy * cosA) * scaleH + cySrc);
-
         if(srcX >= 0 && srcX < srcW && srcY >= 0 && srcY < srcH) {
           const uint8_t *srcPix = src + srcY * srcPitch + srcX * 4;
           uint8_t *dstPix = dstRow + x * 4;
@@ -728,7 +800,6 @@ namespace aui {
           continue;
         }
       }
-
       FT_GlyphSlot slot = currentFace->glyph;
 // Emoji / BGRA Branch
       if(cp > 127 && slot->bitmap.pixel_mode == FT_PIXEL_MODE_BGRA) {

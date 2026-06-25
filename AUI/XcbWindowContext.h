@@ -9,7 +9,7 @@ namespace aui {
   class XcbWindowContext: public IWindowContext {
     private:
       uint32_t mWindowId = 0;
-      std::vector<uint32_t> mSoftwareBuffer;
+      std::shared_ptr<std::vector<uint32_t>> mSoftwareBuffer;
       xcb_gcontext_t mGC = 0;
       xcb_atom_t mWmDeleteWindowAtom = 0;
       xcb_atom_t mWmProtocolsAtom = 0;
@@ -21,6 +21,8 @@ namespace aui {
       struct xkb_keymap* mXkbKeymap = nullptr;
       struct xkb_state* mXkbState = nullptr;
       xcb_cursor_context_t* mCursorContext = nullptr;
+      xcb_cursor_t mCurrentCursor = 0;
+      bool mMapped = false;
     public:
       XcbWindowContext(AUI *aui, AWindow *window);
       ~XcbWindowContext() override;
@@ -39,6 +41,7 @@ namespace aui {
       uint64_t GetNativeWindowId() const {return mWindowId;}
       virtual void SetCursor(AUICursorType type) override;
       bool EnsureBuffer(uint32_t width, uint32_t height) override;
+      bool IsMapped() {return mMapped;}
   };
 
 }// namespace aui

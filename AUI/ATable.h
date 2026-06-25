@@ -32,17 +32,17 @@ namespace aui {
       int64_t mCursorCol = -1;
       int64_t mSelectedRow = -1;// used in row‑select mode
       bool mRowSelectMode = false;// if true, clicking selects whole row
-      enum class ResizeMode {
+      enum class ATableResizeMode {
         None, Column, Row, Header
       };
-      ResizeMode mResizeMode = ResizeMode::None;
+      ATableResizeMode mResizeMode = ATableResizeMode::None;
       int64_t mResizeId = -1;
       int32_t mResizeBasePos = 0;
       int64_t mResizeBaseSize = 0;
-      enum class ScrollMode {
+      enum class ATableScrollMode {
         None, Vertical, Horizontal
       };
-      ScrollMode mScrollMode = ScrollMode::None;
+      ATableScrollMode mScrollMode = ATableScrollMode::None;
       int64_t mScrollGrabOffset = 0;
       uint32_t mGridColor = 0xFFDDDDDD;
       uint32_t mHeaderBgColor = 0xFFCCCCCC;
@@ -87,7 +87,6 @@ namespace aui {
       mutable bool mColPrefixDirty = true;
       void RebuildRowPrefix() const;
       void RebuildColPrefix() const;
-/////////////////
       int32_t mBatchDepth = 0;
       std::unordered_map<int64_t, int32_t> mBatchRowToIdx;
       std::unordered_map<int64_t, int32_t> mBatchColToIdx;
@@ -106,7 +105,6 @@ namespace aui {
       bool mResizeHoverColumn = false;// orientation
 /////////////////
       bool HitTestSeparator(int32_t localX, int32_t localY, bool &isColumn, int64_t &id) const;
-
     public:
       ~ATable() override = default;
       static ATable* AttachTo(AWindow *parent);

@@ -1,18 +1,11 @@
 #include "AUILib.h"
 
 namespace aui {
-
-// ------------------------------------------------------------------
-// Static pointers
-// ------------------------------------------------------------------
   AMenu *AMenu::sActiveTopMenu = nullptr;
   AMenu *AMenu::sPermanentMenu = nullptr;
 
-// ------------------------------------------------------------------
-// Constructor / Destructor
-// ------------------------------------------------------------------
   AMenu::AMenu() {
-    D1("AMenu::AMenu() this={}", (void*)this);
+    D3("AMenu::AMenu() this={}", (void*)this);
     mWidgetType = AUIWidgetType::defaultMenu;
     mBGColor = 0xFFEEEEEE;
     mBorderThick = 1;
@@ -25,17 +18,13 @@ namespace aui {
     mMinSizeY = 10;
     mLayoutDirty = true;
   }
+
   AMenu::AMenu(const std::vector<AMenuItem> &items, AUIOrientation orient) :
       AMenu() {
-    D1("AMenu::AMenu(items, orient={}) this={}", static_cast<int32_t>(orient), (void*)this);
+    D3("AMenu::AMenu(items, orient={}) this={}", static_cast<int32_t>(orient), (void*)this);
     SetItems(items);
     SetOrientation(orient);
   }
-  AMenu::~AMenu() {
-    D1("AMenu::~AMenu() this={}", (void*)this);
-    CloseSubMenu();
-  }
-
 // ------------------------------------------------------------------
 // Static active‑menu management
 // ------------------------------------------------------------------
@@ -45,19 +34,23 @@ namespace aui {
       sActiveTopMenu = nullptr;
     }
   }
+
   bool AMenu::IsActiveMenuVisible() {
     return sActiveTopMenu != nullptr && sActiveTopMenu->IsVisible();
   }
+
   bool AMenu::IsPointInsideActiveMenu(int32_t x, int32_t y) {
     if(!sActiveTopMenu)
       return false;
     return sActiveTopMenu->IsPointInsideHierarchy(x, y);
   }
+
   bool AMenu::IsPointInsideMenuHierarchy(const AMenu *menu, int32_t x, int32_t y) {
     if(!menu)
       return false;
     return menu->IsPointInsideHierarchy(x, y);
   }
+
   bool AMenu::IsPointInsideHierarchy(int32_t x, int32_t y) const {
     if(x >= mX && x < mX + static_cast<int32_t>(mSizeX) && y >= mY && y < mY + static_cast<int32_t>(mSizeY)) {
       return true;
@@ -67,7 +60,6 @@ namespace aui {
     }
     return false;
   }
-
 // ------------------------------------------------------------------
 // Permanent menu support
 // ------------------------------------------------------------------
@@ -82,7 +74,6 @@ namespace aui {
       sPermanentMenu = nullptr;
     }
   }
-
 // ------------------------------------------------------------------
 // AttachTo
 // ------------------------------------------------------------------
@@ -91,6 +82,7 @@ namespace aui {
       E("AMenu::AttachTo: parent window is null");
       return nullptr;
     }
+
     AMenu *menu = new AMenu(items);
     if(menu->GetItemCount() == 0)
       menu->AddItem(AMenuItem("Menu"));
@@ -99,6 +91,7 @@ namespace aui {
     D1("AMenu::AttachTo window: menu={}, items={}", (void*)menu, menu->GetItemCount());
     return menu;
   }
+
   AMenu* AMenu::AttachTo(AWidget *parent, const std::vector<AMenuItem> &items) {
     if(!parent) {
       E("AMenu::AttachTo: parent widget is null");
@@ -113,7 +106,6 @@ namespace aui {
     D1("AMenu::AttachTo widget: menu={}, items={}", (void*)menu, menu->GetItemCount());
     return menu;
   }
-
 // ------------------------------------------------------------------
 // Content management
 // ------------------------------------------------------------------
@@ -124,6 +116,7 @@ namespace aui {
     if(mParentWindow)
       mParentWindow->Draw();
   }
+
   void AMenu::AddItem(const AMenuItem &item) {
     D1("AMenu::AddItem: text='{}'", item.text);
     mItems.push_back(item);
@@ -131,6 +124,7 @@ namespace aui {
     if(mParentWindow)
       mParentWindow->Draw();
   }
+
   void AMenu::InsertItem(size_t index, const AMenuItem &item) {
     if(index > mItems.size())
       index = mItems.size();
@@ -139,6 +133,7 @@ namespace aui {
     if(mParentWindow)
       mParentWindow->Draw();
   }
+
   void AMenu::RemoveItem(size_t index) {
     if(index >= mItems.size())
       return;
@@ -147,13 +142,13 @@ namespace aui {
     if(mParentWindow)
       mParentWindow->Draw();
   }
+
   void AMenu::ClearItems() {
     mItems.clear();
     mLayoutDirty = true;
     if(mParentWindow)
       mParentWindow->Draw();
   }
-
 // ------------------------------------------------------------------
 // Appearance
 // ------------------------------------------------------------------
@@ -166,6 +161,7 @@ namespace aui {
     if(mParentWindow)
       mParentWindow->Draw();
   }
+
   void AMenu::SetItemHeight(int32_t height) {
     if(mItemHeight == height)
       return;
@@ -175,6 +171,7 @@ namespace aui {
     if(mParentWindow)
       mParentWindow->Draw();
   }
+
   void AMenu::SetColors(uint32_t bg, uint32_t hoverBg, uint32_t text, uint32_t disabled, uint32_t separator) {
     D1("AMenu::SetColors");
     mBGColor = bg;
@@ -185,7 +182,6 @@ namespace aui {
     if(mParentWindow)
       mParentWindow->Draw();
   }
-
 // ------------------------------------------------------------------
 // Popup / Dismiss
 // ------------------------------------------------------------------
@@ -247,6 +243,8 @@ namespace aui {
       D1("AMenu::ComputeTextWidth: mEnginePtr is null");
       return 0;
     }
+    std::unique_lock lock(mEnginePtr->GetFontMutex(), std::chrono::milliseconds(50));
+    if (!lock.owns_lock()) { E("locked"); }
     FT_Face face = mEnginePtr->GetDefaultFontFace();
     if(!face) {
       D1("AMenu::ComputeTextWidth: face is null");
@@ -347,7 +345,6 @@ namespace aui {
     }
     return -1;
   }
-
 // ------------------------------------------------------------------
 // Drawing
 // ------------------------------------------------------------------
@@ -378,6 +375,7 @@ namespace aui {
       mActiveSubMenu->Draw(buffer, parentWidth, parentHeight, 0, 0);
     }
   }
+
   void AMenu::DrawItem(uint32_t *buffer, int32_t idx, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t parentWidth,
       uint32_t parentHeight) const {
     if(idx < 0 || idx >= static_cast<int32_t>(mItems.size()))
@@ -405,6 +403,8 @@ namespace aui {
     int32_t textY = y;
     int32_t textW = w - 2 * mPadding - (item.subItems.empty() ? 0 : mSubmenuArrowWidth);
     int32_t textH = h;
+    std::unique_lock lock(mEnginePtr->GetFontMutex(), std::chrono::milliseconds(50));
+    if (!lock.owns_lock()) { E("locked"); }
     FT_Face face = mEnginePtr ? mEnginePtr->GetDefaultFontFace() : nullptr;
     if(face) {
       DrawTextEx(buffer, parentWidth, parentHeight, textX, textY, textW, textH, item.text, face, mFontSize,
@@ -423,61 +423,55 @@ namespace aui {
           AUIHAlign::left, AUIVAlign::center, 0, textColor, mSubmenuArrowWidth);
     }
   }
-
 // ------------------------------------------------------------------
 // Event handling
 // ------------------------------------------------------------------
   bool AMenu::OnMouseClick(int32_t localX, int32_t localY, bool pressed) {
-      if (!pressed || !mVisible)
-          return false;
-
-      // If click is inside active sub-menu, forward to it
-      if (mActiveSubMenu && mActiveSubMenu->IsVisible()) {
-          int32_t subLocalX = localX - (mActiveSubMenu->X() - mX);
-          int32_t subLocalY = localY - (mActiveSubMenu->Y() - mY);
-          if (subLocalX >= 0 && subLocalX < static_cast<int32_t>(mActiveSubMenu->SizeX()) &&
-              subLocalY >= 0 && subLocalY < static_cast<int32_t>(mActiveSubMenu->SizeY())) {
-              return mActiveSubMenu->OnMouseClick(subLocalX, subLocalY, pressed);
-          }
-          // Otherwise click is outside sub-menu; we'll handle it below
+    if(!pressed || !mVisible)
+      return false;
+// If click is inside active sub-menu, forward to it
+    if(mActiveSubMenu && mActiveSubMenu->IsVisible()) {
+      int32_t subLocalX = localX - (mActiveSubMenu->X() - mX);
+      int32_t subLocalY = localY - (mActiveSubMenu->Y() - mY);
+      if(subLocalX >= 0 && subLocalX < static_cast<int32_t>(mActiveSubMenu->SizeX()) && subLocalY >= 0
+          && subLocalY < static_cast<int32_t>(mActiveSubMenu->SizeY())) {
+        return mActiveSubMenu->OnMouseClick(subLocalX, subLocalY, pressed);
       }
-
-      int32_t idx = HitTest(localX, localY);
-      if (idx < 0) {
-          Dismiss();   // dismiss entire menu (closes sub-menu)
-          return true;
-      }
-
-      if (idx >= static_cast<int32_t>(mItems.size()))
-          return false;
-
-      const auto &item = mItems[static_cast<size_t>(idx)];
-      if (!item.isEnabled || !item.isVisible)
-          return false;
-
-      // Item with sub-items
-      if (!item.subItems.empty()) {
-          // Toggle off if the same item already has an open sub-menu
-          if (mActiveSubMenu && mActiveSubMenuOwnerIndex == idx) {
-              CloseSubMenu();   // only close, do not reopen
-              return true;
-          } else {
-              CloseSubMenu();              // close any existing sub-menu
-              OpenSubMenu(static_cast<size_t>(idx));   // open new one
-              return true;
-          }
-      }
-
-      // Normal item (no sub-items)
-      bool isCheckable = item.isCheckable;
-      auto actionCopy = item.action;
-      if (isCheckable) {
-          const_cast<AMenuItem&>(item).isChecked = !item.isChecked;
-      }
-      Dismiss();   // closes sub-menu as well
-      if (actionCopy)
-          actionCopy();
+// Otherwise click is outside sub-menu; we'll handle it below
+    }
+    int32_t idx = HitTest(localX, localY);
+    if(idx < 0) {
+      Dismiss();// dismiss entire menu (closes sub-menu)
       return true;
+    }
+    if(idx >= static_cast<int32_t>(mItems.size()))
+      return false;
+    const auto &item = mItems[static_cast<size_t>(idx)];
+    if(!item.isEnabled || !item.isVisible)
+      return false;
+// Item with sub-items
+    if(!item.subItems.empty()) {
+// Toggle off if the same item already has an open sub-menu
+      if(mActiveSubMenu && mActiveSubMenuOwnerIndex == idx) {
+        CloseSubMenu();// only close, do not reopen
+        return true;
+      }
+      else {
+        CloseSubMenu();// close any existing sub-menu
+        OpenSubMenu(static_cast<size_t>(idx));// open new one
+        return true;
+      }
+    }
+// Normal item (no sub-items)
+    bool isCheckable = item.isCheckable;
+    auto actionCopy = item.action;
+    if(isCheckable) {
+      const_cast<AMenuItem&>(item).isChecked = !item.isChecked;
+    }
+    Dismiss();// closes sub-menu as well
+    if(actionCopy)
+      actionCopy();
+    return true;
   }
 
   void AMenu::OnMouseMove(int32_t localX, int32_t localY) {
@@ -514,11 +508,13 @@ namespace aui {
       }
     }
   }
+
   void AMenu::OnMouseLeave() {
     mHoveredIndex = -1;
     if(mParentWindow)
       mParentWindow->Draw();
   }
+
   void AMenu::OnKeyEvent(const AUIKeyEvent &event) {
     if(!mVisible || !event.pressed)
       return;
@@ -669,4 +665,8 @@ namespace aui {
     return mItems[index];
   }
 
+  AMenu::~AMenu() {
+    D1("AMenu::~AMenu() this={}", (void*)this);
+    CloseSubMenu();
+  }
 }// namespace aui

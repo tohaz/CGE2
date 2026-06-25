@@ -549,7 +549,6 @@ namespace aui {
     int32_t clientH = static_cast<int32_t>(mSizeY) - 2 * static_cast<int32_t>(mBorderThick);
     if(clientW <= 0 || clientH <= 0)
       return;
-
 // Always draw bar (geometry is cheap, and we must redraw every frame)
     double progress = mProgress.load();
     bool indeterminate = mIndeterminate.load();
@@ -592,6 +591,8 @@ namespace aui {
         text = mCachedText;
       }
       if(!text.empty()) {
+        std::unique_lock lock(mEnginePtr->GetFontMutex(), std::chrono::milliseconds(50));
+        if (!lock.owns_lock()) { E("locked"); }
         FT_Face face = mEnginePtr ? mEnginePtr->GetDefaultFontFace() : nullptr;
         if(face) {
           DrawTextEx(buffer, parentWidth, parentHeight, clientX, clientY, clientW, clientH, text, face, mFontSize,
@@ -600,5 +601,4 @@ namespace aui {
       }
     }
   }
-
 }// namespace aui
