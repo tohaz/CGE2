@@ -1,7 +1,7 @@
 #ifndef DEFAULTS_H_
 #define DEFAULTS_H_
 
-#define DEBUG_LEVEL 1
+#define DEBUG_LEVEL 3
 
 // try {deference 0}
 // catch(SegmentationFault:) {}

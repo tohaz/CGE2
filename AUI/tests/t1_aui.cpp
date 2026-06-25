@@ -241,20 +241,20 @@ int main() {
   //UNUSED char *qqq = new char[1]; // generate error
   int32_t testsfailed = 0;
 
-  testsfailed += runTimedTest("test_aui_lifecycle", test_aui_lifecycle, 2);
-  testsfailed += runTimedTest("test_aui_lifecycle2", test_aui_lifecycle2, 2);
-  testsfailed += runTimedTest("test_aui_lifecycle3", test_aui_lifecycle3, 2);
-  testsfailed += runTimedTest("test_aui_lifecycle4", test_aui_lifecycle4, 2);
-  testsfailed += runTimedTest("test_aui_lifecycle5", test_aui_lifecycle5, 2);
-  testsfailed += runTimedTest("test_aui_lifecycle6", test_aui_lifecycle6, 2);
-  testsfailed += runTimedTest("test_aui_lifecycle7", test_aui_lifecycle7, 2);
-  testsfailed += runTimedTest("test_aui_lifecycle8", test_aui_lifecycle8, 2);
-  testsfailed += runTimedTest("test_aui_lifecycle9", test_aui_lifecycle9, 2);
-  testsfailed += runTimedTest("test_window_properties", test_window_properties, 2);
-  testsfailed += runTimedTest("test_backend_detection", test_backend_detection, 2);
-  testsfailed += runTimedTest("test_multiple_windows", test_multiple_windows, 2);
-  testsfailed += runTimedTest("test_multiple_windows2", test_multiple_windows2, 2);
-  testsfailed += runTimedTest("test_draw_command_queue", test_draw_command_queue, 2);
+  testsfailed += runTimedTest("test_aui_lifecycle", test_aui_lifecycle, 1);
+  testsfailed += runTimedTest("test_aui_lifecycle2", test_aui_lifecycle2, 1);
+  testsfailed += runTimedTest("test_aui_lifecycle3", test_aui_lifecycle3, 1);
+  testsfailed += runTimedTest("test_aui_lifecycle4", test_aui_lifecycle4, 1);
+  testsfailed += runTimedTest("test_aui_lifecycle5", test_aui_lifecycle5, 1);
+  testsfailed += runTimedTest("test_aui_lifecycle6", test_aui_lifecycle6, 1);
+  testsfailed += runTimedTest("test_aui_lifecycle7", test_aui_lifecycle7, 1);
+  testsfailed += runTimedTest("test_aui_lifecycle8", test_aui_lifecycle8, 1);
+  testsfailed += runTimedTest("test_aui_lifecycle9", test_aui_lifecycle9, 1);
+  testsfailed += runTimedTest("test_window_properties", test_window_properties, 1);
+  testsfailed += runTimedTest("test_backend_detection", test_backend_detection, 1);
+  testsfailed += runTimedTest("test_multiple_windows", test_multiple_windows, 1);
+  testsfailed += runTimedTest("test_multiple_windows2", test_multiple_windows2, 1);
+  testsfailed += runTimedTest("test_draw_command_queue", test_draw_command_queue, 1);
   testsfailed += runTimedTest("test_window_operations", test_window_operations, 2);
 
   testsfailed += runTimedTest("2test_aui_lifecycle", test_aui_lifecycle, 200);

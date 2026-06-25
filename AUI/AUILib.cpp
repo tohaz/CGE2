@@ -158,7 +158,7 @@ namespace aui {
     if(!mWaylandCursorSurface)
       return;
 // 2. Load default theme (24px is standard, handles fallback smoothly)
-    wl_cursor_theme* theme = wl_cursor_theme_load(nullptr, 24, mWaylandShm);
+    wl_cursor_theme* theme = wl_cursor_theme_load(nullptr, 32, mWaylandShm);
     if(!theme)
       return;
     wl_cursor* cursor = wl_cursor_theme_get_cursor(theme, "left_ptr");
@@ -461,6 +461,7 @@ namespace aui {
           xdg_toplevel_set_max_size(ctx->mToplevel, static_cast<int32_t>(w), static_cast<int32_t>(h));
         }
         if(mMainWnd) {
+          ApplyPendingResizes();
           mMainWnd->Draw();
         }
         wl_display_roundtrip(mWaylandDisplay);
@@ -690,6 +691,7 @@ namespace aui {
         D1("XCB POLLIN detected");
         processXcbEvents();
         D1("before xcb error check")
+        ApplyPendingResizes();
 // ---- Check XCB connection error after processing events ----
         int32_t xcberrcode2 = xcb_connection_has_error(mXcbConnection);
         if(xcberrcode2 > 0) {
@@ -714,6 +716,7 @@ namespace aui {
         D1("Self-pipe wakeup read trigger");
         char buf[8];
         if(read(mSelfPipeFds[0], buf, sizeof(buf)) > 0) {
+          ApplyPendingResizes();
           FlushPendingDraws();// renders into buffer and enqueues command
           if(!mDrawCommands.empty()) {
             this->Draw();
@@ -776,7 +779,15 @@ namespace aui {
           auto* ctx = static_cast<XcbWindowContext*>(awin->GetBackend());
           if(!ctx || !ctx->IsMapped()) {
             D1("Window not mapped, deferring draw");
-            awin->Draw();// schedule later
+            //awin->Draw();// schedule later
+            continue;
+          }
+          D1("Window is mapped, proceeding with draw (ID={})", xcb.windowId);
+          size_t current_allocated_bytes = ctx->GetSoftwareBufferPtr()->size() * sizeof(uint32_t);
+          size_t incoming_command_bytes = static_cast<size_t>(xcb.width) * xcb.height * 4;
+          if(current_allocated_bytes < incoming_command_bytes) {
+            E("Safety Bypass: Command demands {} bytes, but active window frame only contains {} bytes. Dropping stale frame command.",
+                incoming_command_bytes, current_allocated_bytes);
             continue;
           }
         }
@@ -814,6 +825,8 @@ namespace aui {
           xcb_free_gc(conn, temp_gc);
           continue;
         }
+        size_t expected_bytes = static_cast<size_t>(xcb.width) * xcb.height * 4;
+        D1("Draw validation: Image demands {} bytes. Buffer pointer is {}", expected_bytes, (void*)xcb.buffer);
         xcb_image_t* img = xcb_image_create_native(conn, static_cast<uint16_t>(xcb.width),
             static_cast<uint16_t>(xcb.height), XCB_IMAGE_FORMAT_Z_PIXMAP, 24, nullptr, 0,
             reinterpret_cast<uint8_t*>(xcb.buffer));
@@ -822,8 +835,10 @@ namespace aui {
           xcb_free_gc(conn, temp_gc);
           continue;
         }
+        D1("Connection status before put: {}", xcb_connection_has_error(conn));
         xcb_void_cookie_t put_cookie = xcb_image_put(conn, win, temp_gc, img, 0, 0, 0);
         err = xcb_request_check(conn, put_cookie);
+        D1("Connection status after put/flush: {}", xcb_connection_has_error(conn));
         if(err) {
           E("XCB error: code=%d, major=%d, minor=%d", err->error_code, err->major_code, err->minor_code);
           free(err);
@@ -1237,11 +1252,15 @@ namespace aui {
     if(mWindowType == AUIWindowType::XCB) {
       for(auto& pair : mXcbWindowMap) {
         pair.second->ApplyPendingResize();
+        uint64_t nativeId = pair.first;
+        ClearDrawCommandsForWindow(nativeId);
       }
     }
     else {
       for(auto& pair : mWaylandSurfaceMap) {
+        uint64_t nativeId = pair.first;
         pair.second->ApplyPendingResize();
+        ClearDrawCommandsForWindow(nativeId);
       }
     }
   }

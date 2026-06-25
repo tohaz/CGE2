@@ -32,6 +32,7 @@ namespace aui {
       void Resize(uint32_t width, uint32_t height) override;
       void SetTitle(const std::string &title) override;
       uint32_t* GetSoftwareBuffer() override;
+      std::shared_ptr<std::vector<uint32_t>> GetSoftwareBufferPtr() {return mSoftwareBuffer;}
       void QueueFrameCommit() override;
       void EnableResize() override;
       void DisableResize() override;

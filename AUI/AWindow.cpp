@@ -91,10 +91,7 @@ namespace aui {
 // Do NOT unregister/destroy the main window now.
 // Just break the event loop; the window will be destroyed
 // when the AUI is deleted in main() after the worker thread joins.
-//      if(ep)
-//        ep->ExitAUI();
-// Optional: hide the window so it disappears immediately.
-// if (mBackend) mBackend->Hide();
+
     }
     else {
 // For non‑main windows, immediate destruction is acceptable.
@@ -393,6 +390,10 @@ namespace aui {
   void AWindow::ApplyPendingResize() {
     if(!mResizePending)
       return;
+    if(mPendingWidth == mSizeX && mPendingHeight == mSizeY) {
+      mResizePending = false;
+      return;
+    }
     if(!mResizeEnabled) {
 // Optionally handle the case where resize is now disabled.
 // You might want to still apply it, or ignore. We'll apply anyway.

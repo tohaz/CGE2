@@ -39,7 +39,6 @@ namespace aui {
     SetTitle(title);
     mGC = xcb_generate_id(conn);
     uint32_t gc_value = 0;
-
     xcb_void_cookie_t gc_cookie = xcb_create_gc_checked(conn, mGC, mWindowId, XCB_GC_FOREGROUND,
         &gc_value);
     err = xcb_request_check(conn, gc_cookie);
@@ -58,8 +57,6 @@ namespace aui {
       mWmDeleteWindowAtom = delete_reply->atom;
       D2("WM_PROTOCOLS atom set to: {}", mWmProtocolsAtom);
       D2("WM_DELETE_WINDOW atom set to: {}", mWmDeleteWindowAtom);
-
-
       xcb_void_cookie_t prop_cookie = xcb_change_property_checked(conn, XCB_PROP_MODE_REPLACE, mWindowId, mWmProtocolsAtom, XCB_ATOM_ATOM, 32, 1,
           &mWmDeleteWindowAtom);
       err = xcb_request_check(conn, prop_cookie);
