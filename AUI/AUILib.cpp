@@ -485,19 +485,19 @@ namespace aui {
           free(sync_reply);
         }
       }
-// Now it's 100% safe to draw: the server window is already 800x600
+      ApplyPendingResizes();
       Draw();
     }
     auto processXcbEvents = [this]() {
       uint64_t numEventsDiscarded = 0;
-      D1("processXcbEvents: enter");
+      D2("processXcbEvents: enter");
       if(!mXcbConnection) {
         E("no connection before processing events")
       }
       xcb_generic_event_t* ev;
-      D1("before retrieving evemt")
+      D2("before retrieving evemt")
       while ((ev = xcb_poll_for_event(mXcbConnection))) {
-        D1("processing next event")
+        D2("processing next event")
         if(ev->response_type == 0) {
           xcb_generic_error_t* xcberror = (xcb_generic_error_t*) ev;
           E("X11 Error! Major opcode: %d, Error code: %d\n", xcberror->major_code, xcberror->error_code);
@@ -590,6 +590,7 @@ namespace aui {
     };
     int32_t xcb_fd = mXcbConnection ? xcb_get_file_descriptor(mXcbConnection) : -1;
     int32_t wl_fd = mWaylandDisplay ? wl_display_get_fd(mWaylandDisplay) : -1;
+    ApplyPendingResizes();
     while (!mShouldExit) {
       if(mShouldExit)
         break;
@@ -621,7 +622,7 @@ namespace aui {
       int32_t nfds = 0;
       int32_t xcb_idx = -1, wl_idx = -1, pipe_idx = -1;
       if(xcb_fd >= 0) {
-        D("xcb fd check")
+        D2("xcb fd check")
         fds[nfds].fd = xcb_fd;
         fds[nfds].events = POLLIN;
         xcb_idx = nfds++;
@@ -644,7 +645,7 @@ namespace aui {
       FlushPendingDraws();
       D3("poll before blocking...");
       int32_t ret = poll(fds, static_cast<nfds_t>(nfds), -1);
-      D1("poll after...");
+      D2("poll after...");
       if(mShouldExit) {
         D3("breaking from the cycle after poll()")
         break;
@@ -663,7 +664,7 @@ namespace aui {
       }
       if(mWaylandDisplay && wl_idx >= 0) {
         if(fds[wl_idx].revents & POLLIN) {
-          D1("Wayland POLLIN detected");
+          D2("Wayland POLLIN detected");
           wl_display_read_events(mWaylandDisplay);
           wl_display_dispatch_pending(mWaylandDisplay);
 // ---- Check Wayland display error after dispatch ----
@@ -680,17 +681,17 @@ namespace aui {
           this->Draw();
         }
         else {
-          D1("flushing pongs")
+          D2("flushing pongs")
           wl_display_flush(mWaylandDisplay);
         }
       }
       else {
-        D1("not a wayland display")
+        D2("not a wayland display")
       }
       if(mXcbConnection && xcb_idx >= 0 && (fds[xcb_idx].revents & POLLIN)) {
-        D1("XCB POLLIN detected");
+        D2("XCB POLLIN detected");
         processXcbEvents();
-        D1("before xcb error check")
+        D2("before xcb error check")
         ApplyPendingResizes();
 // ---- Check XCB connection error after processing events ----
         int32_t xcberrcode2 = xcb_connection_has_error(mXcbConnection);
@@ -711,9 +712,9 @@ namespace aui {
           }
         }
       }
-      D1("pipe_idx {}, fd {}", pipe_idx, (fds[pipe_idx].revents & POLLIN))
+      D2("pipe_idx {}, fd {}", pipe_idx, (fds[pipe_idx].revents & POLLIN))
       if(pipe_idx >= 0 && (fds[pipe_idx].revents & POLLIN)) {
-        D1("Self-pipe wakeup read trigger");
+        D2("Self-pipe wakeup read trigger");
         char buf[8];
         if(read(mSelfPipeFds[0], buf, sizeof(buf)) > 0) {
           ApplyPendingResizes();
@@ -724,13 +725,13 @@ namespace aui {
         }
       }
       else
-        D1("no xcb events")
+        D2("no xcb events")
 // Do NOT call Draw() here – it would cause unnecessary redraws.
 // Widget property changes already trigger Draw() when needed.
 ///FlushConnection();
     }
     mProcessingMessages = false;
-    D1("AUI::ProcessMessages() -> Clean exit.");
+    D2("AUI::ProcessMessages() -> Clean exit.");
   }
 
   void AUI::Draw() {
@@ -786,8 +787,11 @@ namespace aui {
           size_t current_allocated_bytes = ctx->GetSoftwareBufferPtr()->size() * sizeof(uint32_t);
           size_t incoming_command_bytes = static_cast<size_t>(xcb.width) * xcb.height * 4;
           if(current_allocated_bytes < incoming_command_bytes) {
-            E("Safety Bypass: Command demands {} bytes, but active window frame only contains {} bytes. Dropping stale frame command.",
+            D("Safety Bypass: Command demands {} bytes, but active window frame only contains {} bytes. Dropping stale frame command.",
                 incoming_command_bytes, current_allocated_bytes);
+            if (awin && ctx && ctx->IsMapped()) {
+                awin->Draw();
+            }
             continue;
           }
         }
@@ -825,8 +829,8 @@ namespace aui {
           xcb_free_gc(conn, temp_gc);
           continue;
         }
-        size_t expected_bytes = static_cast<size_t>(xcb.width) * xcb.height * 4;
-        D1("Draw validation: Image demands {} bytes. Buffer pointer is {}", expected_bytes, (void*)xcb.buffer);
+        UNUSED size_t expected_bytes = static_cast<size_t>(xcb.width) * xcb.height * 4;
+        D2("Draw validation: Image demands {} bytes. Buffer pointer is {}", expected_bytes, (void*)xcb.buffer);
         xcb_image_t* img = xcb_image_create_native(conn, static_cast<uint16_t>(xcb.width),
             static_cast<uint16_t>(xcb.height), XCB_IMAGE_FORMAT_Z_PIXMAP, 24, nullptr, 0,
             reinterpret_cast<uint8_t*>(xcb.buffer));
@@ -835,10 +839,10 @@ namespace aui {
           xcb_free_gc(conn, temp_gc);
           continue;
         }
-        D1("Connection status before put: {}", xcb_connection_has_error(conn));
+        D2("Connection status before put: {}", xcb_connection_has_error(conn));
         xcb_void_cookie_t put_cookie = xcb_image_put(conn, win, temp_gc, img, 0, 0, 0);
         err = xcb_request_check(conn, put_cookie);
-        D1("Connection status after put/flush: {}", xcb_connection_has_error(conn));
+        D2("Connection status after put/flush: {}", xcb_connection_has_error(conn));
         if(err) {
           E("XCB error: code=%d, major=%d, minor=%d", err->error_code, err->major_code, err->minor_code);
           free(err);
@@ -929,7 +933,7 @@ namespace aui {
       D1("exit additional call")
       return;
     }
-    D1("AUI::ExitAUI() starts")
+    D2("AUI::ExitAUI() starts")
     mShouldExit = true;
     if(mSelfPipeFds[1] >= 0) {
       UNUSED char token = 1;
@@ -942,7 +946,7 @@ namespace aui {
       wl_display_flush(mWaylandDisplay);
     }
     else {
-      D1("not a wayland display on exit")
+      D2("not a wayland display on exit")
     }
   }
 
@@ -1252,8 +1256,8 @@ namespace aui {
     if(mWindowType == AUIWindowType::XCB) {
       for(auto& pair : mXcbWindowMap) {
         pair.second->ApplyPendingResize();
-        uint64_t nativeId = pair.first;
-        ClearDrawCommandsForWindow(nativeId);
+        //uint64_t nativeId = pair.first;
+        //ClearDrawCommandsForWindow(nativeId);
       }
     }
     else {

@@ -80,10 +80,8 @@ namespace aui {
     if(!mKeySymbols) {
       D1("XCB: Failed to allocate key symbols – key translation limited");
     }
-    D()
 // Initialize XKB for Unicode conversion
     mXkbCtx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-    D()
     if(mXkbCtx) {
       uint16_t req_major = 1, req_minor = 0;
       uint16_t got_major = 0, got_minor = 0;
@@ -107,7 +105,6 @@ namespace aui {
     if(!mXkbState) {
       D1("XCB: XKB state unavailable – only keysyms will work");
     }
-    D()
     xcb_void_cookie_t map_cookie = xcb_map_window_checked(conn, mWindowId);
     err = xcb_request_check(conn, map_cookie);
     if (err) {
@@ -115,7 +112,7 @@ namespace aui {
       free(err);
       return false;
     }
-    D("before xcb_flush")
+    D2("before xcb_flush")
     if (xcb_connection_has_error(conn)) {
         E("XCB connection has error before flush");
     } else {
@@ -188,15 +185,16 @@ namespace aui {
   }
 
   void XcbWindowContext::QueueFrameCommit() {
-    if(!mAUI || mWindowId == 0)
-      return;
-    DrawCommand cmd;
-    cmd.type = DrawCommandType::Xcb;
-    cmd.xcb.windowId = mWindowId;
-    cmd.xcb.buffer = mSoftwareBuffer->data();
-    cmd.xcb.width = mWindow->SizeX();
-    cmd.xcb.height = mWindow->SizeY();
-    mAUI->EnqueueDrawCommand(cmd);
+      if (!mAUI) return;
+      // Remove any stale command for this window (ensures only one command exists)
+      mAUI->ClearDrawCommandsForWindow(mWindowId);   // <-- ADD THIS LINE
+      DrawCommand cmd;
+      cmd.type = DrawCommandType::Xcb;
+      cmd.xcb.windowId = mWindowId;
+      cmd.xcb.width = mSizeX;
+      cmd.xcb.height = mSizeY;
+      cmd.xcb.buffer = mSoftwareBuffer->data();
+      mAUI->EnqueueDrawCommand(cmd);
   }
 
   void XcbWindowContext::ProcessEvent(void *ev) {
@@ -313,18 +311,21 @@ namespace aui {
         break;
       }
       case XCB_MAP_NOTIFY:
-          mMapped = true;
-          break;
+        mMapped = true;
+        if(mWindow) {
+          mWindow->OnMap();// resets pending and schedules a fresh draw
+        }
+        break;
       case XCB_UNMAP_NOTIFY:
-          mMapped = false;
-          break;
+        mMapped = false;
+        break;
       case XCB_CONFIGURE_NOTIFY: {
-        auto *cfg = reinterpret_cast<xcb_configure_notify_event_t*>(event);
+        auto* cfg = reinterpret_cast<xcb_configure_notify_event_t*>(event);
         mSizeX = cfg->width;
         mSizeY = cfg->height;
         uint32_t new_size = static_cast<uint32_t>(cfg->width) * static_cast<uint32_t>(cfg->height);
         if(mSoftwareBuffer->size() != new_size) {
-          if (mAUI) {
+          if(mAUI) {
                 std::lock_guard<std::recursive_mutex> lock(mAUI->GetCommandMutex());
                 auto &commands = mAUI->GetDrawCommands();
                 uint64_t nativeId = mWindowId;

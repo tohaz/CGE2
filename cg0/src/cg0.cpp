@@ -83,19 +83,48 @@
 
 
 
+//#include "AUILib.h"
+//
+//using namespace aui;
+//
+//int main() {
+//  AUI* au = AUI::Create("aaa");
+//  AWindow* w = au->MainWnd();
+//  w->EnableResize();
+//  w->Resize(400, 400);
+//  ABox* b = ABox::AttachTo(w);
+//  b->Move(10, 10);
+//  b->Resize(100, 100);
+//  ALabel* l = ALabel::AttachTo(w, "qwe");
+//  l->Move(100, 100);
+//  l->Resize(100, 30);
+//  au->ProcessMessages();
+//  delete au;
+//  return 0;
+//}
+//
+//
+
 #include "AUILib.h"
 
 using namespace aui;
 
-int main() {
-  AUI* au = AUI::Create("aaa");
-  AWindow* w = au->MainWnd();
-  ABox* b = ABox::AttachTo(w);
-  b->Move(10,10);
-  b->Resize(100,100);
-
-
-  au->ProcessMessages();
-  delete au;
-  return 0;
+int32_t main() {
+    AUI* au = AUI::Create("Emoji example");
+    if (!au) return -1;
+    AWindow* win = au->MainWnd();
+    win->EnableResize();
+    win->Resize(400, 200);
+    ALabel* label = ALabel::AttachTo(win);
+    label->Move(50, 50);
+    label->Resize(300, 60);
+    label->SetText("Hello 😀 World! 🎉");
+    label->SetFontSize(24);
+    label->SetBGColor(0xFFEEEEEE);
+    label->SetBorderThickness(1);
+    au->ProcessMessages();
+    delete au;
+    return 0;
 }
+
+

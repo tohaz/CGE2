@@ -85,6 +85,9 @@ namespace aui {
       void RemoveWidget(AWidget* widget);
       void ApplyPendingResize();
       bool HasPendingResize() const { return mResizePending; }
+      void ClearDrawCommands();
+      void OnMap() { mDrawPending = false; Draw(); }
+
 
 
   };

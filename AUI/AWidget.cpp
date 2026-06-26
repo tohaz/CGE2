@@ -50,6 +50,7 @@ namespace aui {
     mX = x;
     mY = y;
     ClampPositionToParent();// keep inside parent
+    mParentWindow->Draw();
   }
 
   void AWidget::Resize(uint32_t szx, uint32_t szy) {
@@ -66,6 +67,7 @@ namespace aui {
     if(oldW != mSizeX || oldH != mSizeY) {
       mTextMetricsValid = false;
     }
+    mParentWindow->Draw();
   }
 
   void AWidget::SetBGColor(uint32_t color) {

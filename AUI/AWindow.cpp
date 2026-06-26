@@ -301,6 +301,7 @@ namespace aui {
       DT("no backend");
       return;
     }
+
     uint32_t *buffer = mBackend->GetSoftwareBuffer();
     if(!buffer) {
       D2("no software buffer");
@@ -422,6 +423,9 @@ namespace aui {
       widget->OnParentResize(mSizeX, mSizeY);
     }
     mResizePending = false;
+    if (au && !mClosed) {
+        au->ScheduleDraw(this);   // <-- ADD THIS LINE
+    }
   }
 
   AWindow::~AWindow() {
