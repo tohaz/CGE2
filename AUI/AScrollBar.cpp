@@ -417,35 +417,34 @@ namespace aui {
   }
 
   AScrollBar* AScrollBar::AttachTo(AWindow *parent, AUIOrientation orientation) {
-    D1("Attaching AScrollBar to window");
     if(!parent)
       E("AScrollBar::AttachTo: parent window is null");
-    AScrollBar *sb = new AScrollBar();
+    AScrollBar* sb = new AScrollBar();
     sb->SetOrientation(orientation);
-// Set default size based on orientation
+// ADD the widget to the parent FIRST
+    parent->AddWidget(std::unique_ptr<AWidget>(sb));
+// Then set its size
     if(orientation == AUIOrientation::vertical) {
       sb->Resize(16, 200);
     }
     else {
-      sb->Resize(200, 16);
+      sb->Resize(200, 16);// uncomment this block
     }
-    parent->AddWidget(std::unique_ptr<AWidget>(sb));
     return sb;
   }
 
   AScrollBar* AScrollBar::AttachTo(AWidget *parent, AUIOrientation orientation) {
-    D1("Attaching AScrollBar to widget");
     if(!parent)
       E("AScrollBar::AttachTo: parent widget is null");
-    AScrollBar *sb = new AScrollBar();
+    AScrollBar* sb = new AScrollBar();
     sb->SetOrientation(orientation);
-    if(orientation == AUIOrientation::vertical) {
-      sb->Resize(16, 200);
-    }
-    else {
-      sb->Resize(200, 16);
-    }
+// 1. Attach to parent widget (sets mParentWidget and mParentWindow via hierarchy)
     parent->AddWidget(std::unique_ptr<AWidget>(sb));
+// 2. Resize – now parent chain is valid
+    if(orientation == AUIOrientation::vertical)
+      sb->Resize(16, 200);
+    else
+      sb->Resize(200, 16);
     return sb;
   }
 

@@ -460,11 +460,18 @@ constexpr const void* ToPrintablePtr(const T& val) { // 1. Changed to const T& t
     }
 }
 
+template<typename T, typename U>
+constexpr bool safe_equal(T t, U u) {
+    using Common = std::common_type_t<T, U>;
+    return static_cast<Common>(t) == static_cast<Common>(u);
+}
+
+
 #define TEST_ASSERT_EQ(actual, expected, errcode) \
   do { \
     auto act = (actual); \
     auto exp = (expected); \
-    if (act != exp) { \
+    if (!safe_equal(act, exp)) { \
       E("Test failed: {} == {} (actual: {}, expected: {})", \
         #actual, #expected, \
         ToPrintablePtr(act), \
@@ -473,12 +480,11 @@ constexpr const void* ToPrintablePtr(const T& val) { // 1. Changed to const T& t
     } \
   } while(0)
 
-
 #define TEST_ASSERT_NE(actual, expected, errcode) \
   do { \
     auto act = (actual); \
     auto exp = (expected); \
-    if (act == exp) { \
+    if (safe_equal(act, exp)) { \
       E("Test failed: {} != {} (actual: {}, expected: {})", \
         #actual, #expected, \
         ToPrintablePtr(act), \
@@ -486,8 +492,6 @@ constexpr const void* ToPrintablePtr(const T& val) { // 1. Changed to const T& t
       return errcode; \
     } \
   } while(0)
-
-
 // ------------------------------------------------------------------
 // Floating-point equality test with tolerance (returns on failure)
 // ------------------------------------------------------------------

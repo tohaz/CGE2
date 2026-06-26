@@ -38,7 +38,7 @@ namespace aui {
 
   AProgressBar::AProgressBar() :
       mMin(0.0), mMax(1.0), mProgress(0.0), mIndeterminate(false), mIndeterminatePhase(0.0), mIndeterminateSpeed(0.02), mStopThread(
-          false), mPaused(false), mUpdateIntervalMs(100), mShowText(true), mTextFormat("%d%%"), mBarColor(0xFF00AA00), mBarColor2(
+          false), mPaused(false), mUpdateIntervalMs(100), mShowText(true), mTextFormat("%.0f%%"), mBarColor(0xFF00AA00), mBarColor2(
           0), mOrientation(AUIOrientation::horizontal), mDirection(AUIDirection::right), mStripe(false), mStripeColor(
           0x40FFFFFF), mStripeWidth(5), mStripeSpeed(2), mStripeOffset(0), mRoundedCorners(false), mCornerRadius(0), mStarted(
           false) {

@@ -6,9 +6,10 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 NC='\033[0m'
 
-#     "t7_inputbox" "t8_table" "t9_combobox" "t10_progressbar" "t11_menu"   "t4_scrollbar" "t5_button" "t6_list"
+#  
+
 tests=(
-   "t1_aui" "t2_box" "t3_label"
+ "t1_aui" "t2_box" "t3_label" "t4_scrollbar" "t5_button" "t6_list" "t7_inputbox" "t8_table" "t9_combobox" "t10_progressbar" "t11_menu" 
 )
 
 # Global accumulator for all output (will be written to a file on success)

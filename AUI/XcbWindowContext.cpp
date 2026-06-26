@@ -138,7 +138,8 @@ namespace aui {
       E("xcb_configure_window (Move) failed: code=%d", err->error_code);
       free(err);
     }
-    mWindow->Draw();
+    if (mWindow) mWindow->Draw();
+    else E()
   }
 
   void XcbWindowContext::Resize(uint32_t width, uint32_t height) {
@@ -153,6 +154,7 @@ namespace aui {
     mSizeY = height;
     mSoftwareBuffer->resize(width * height, 0);
     uint32_t values[2] = { width, height };
+    if (xcb_connection_has_error(conn)) E();
     xcb_void_cookie_t cookie = xcb_configure_window_checked(conn, mWindowId, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
     xcb_generic_error_t *err = xcb_request_check(conn, cookie);
     if (err) {
@@ -193,6 +195,7 @@ namespace aui {
       cmd.xcb.windowId = mWindowId;
       cmd.xcb.width = mSizeX;
       cmd.xcb.height = mSizeY;
+      if (mSoftwareBuffer->empty()) E();
       cmd.xcb.buffer = mSoftwareBuffer->data();
       mAUI->EnqueueDrawCommand(cmd);
   }
@@ -349,15 +352,9 @@ namespace aui {
 
   void XcbWindowContext::ApplySizeHints(uint32_t min_w, uint32_t min_h, uint32_t max_w, uint32_t max_h) {
     D2("minw {} minh {}", min_w, min_h);
-    if(!mAUI || !mWindowId) {
-      E()
-      return;
-    }
+    if(!mAUI || !mWindowId) E()
     xcb_connection_t *conn = mAUI->GetXcbConnection();
-    if(!conn) {
-      E()
-      return;
-    }
+    if(!conn) E()
     xcb_intern_atom_cookie_t hints_cookie = xcb_intern_atom(conn, 0, 15, "WM_NORMAL_HINTS");
     xcb_intern_atom_reply_t *hints_reply = xcb_intern_atom_reply(conn, hints_cookie, nullptr);
     if(!hints_reply) {
@@ -394,26 +391,42 @@ namespace aui {
   }
 
   void XcbWindowContext::DisableResize() {
+    if (!mWindow) E();
     uint32_t w = mWindow->SizeX();
     uint32_t h = mWindow->SizeY();
     ApplySizeHints(w, h, w, h);
   }
 
   void XcbWindowContext::SetCursor(AUICursorType type) {
+// 1. Validate the overall state
+    if(!mAUI) {
+      D1("XcbWindowContext::SetCursor: mAUI is null");
+      return;
+    }
+    xcb_connection_t* conn = mAUI->GetXcbConnection();
+    if(!conn || xcb_connection_has_error(conn)) {
+      D1("XcbWindowContext::SetCursor: invalid or errored connection");
+      return;
+    }
+    if(!mWindowId) {
+      D1("XcbWindowContext::SetCursor: window already destroyed");
+      return;
+    }
+// 2. Create cursor context if needed (still uses the validated connection)
     if(!mCursorContext) {
-      xcb_connection_t *conn = mAUI->GetXcbConnection();
-      xcb_screen_t *screen = mAUI->GetXcbScreen();
-      if(!conn || !screen) {
-        D1("XCB: No connection or screen");
+      xcb_screen_t* screen = mAUI->GetXcbScreen();
+      if(!screen) {
+        D1("XcbWindowContext::SetCursor: no screen");
         return;
       }
       if(xcb_cursor_context_new(conn, screen, &mCursorContext) != 0) {
-        D1("XCB: Failed to create cursor context");
+        D1("XcbWindowContext::SetCursor: failed to create cursor context");
         mCursorContext = nullptr;
         return;
       }
     }
-    const char *name = "left_ptr";
+// 3. Load the requested cursor
+    const char* name = "left_ptr";
     switch (type) {
       case AUICursorType::HResize:
         name = "ew-resize";
@@ -423,42 +436,43 @@ namespace aui {
         break;
       default:
         name = "left_ptr";
+        break;
     }
     xcb_cursor_t new_cursor = xcb_cursor_load_cursor(mCursorContext, name);
     if(!new_cursor) {
-      D1("XCB: Failed to load cursor '{}'", name);
+      D1("XcbWindowContext::SetCursor: failed to load cursor '%s'", name);
       return;
     }
-    xcb_connection_t *conn = mAUI->GetXcbConnection();
-    if(!conn) {
-// Prevent server resource leak if connection drops unexpectedly
-      xcb_free_cursor(conn, new_cursor);
-      return;
-    }
-// Apply the fresh cursor handle to our native window context
+// 4. Apply the new cursor to the window
     xcb_void_cookie_t cookie = xcb_change_window_attributes_checked(conn, mWindowId, XCB_CW_CURSOR, &new_cursor);
-    xcb_generic_error_t *err = xcb_request_check(conn, cookie);
-    if (err) {
+    xcb_generic_error_t* err = xcb_request_check(conn, cookie);
+    if(err) {
       E("xcb_change_window_attributes (cursor) failed: code=%d", err->error_code);
       free(err);
-      // if failed, free new_cursor to avoid leak
-      xcb_free_cursor(conn, new_cursor);
+      xcb_free_cursor(conn, new_cursor);// free new cursor on failure
       return;
     }
-// Free the old server-side cursor resource if one was previously allocated
-    if(mCurrentCursor != 0) {
-      xcb_free_cursor(conn, mCurrentCursor);
-      E()
+// 5. Free the old cursor (only if still valid and not the same as new_cursor)
+    if(mCurrentCursor != 0 && mCurrentCursor != new_cursor) {
+// Double-check connection before freeing
+      if(!xcb_connection_has_error(conn)) {
+        xcb_free_cursor(conn, mCurrentCursor);
+      }
+      else {
+        D1("XcbWindowContext::SetCursor: connection error, cannot free old cursor");
+      }
     }
-// Retain tracking ownership of the new allocation
+// 6. Store the new cursor
     mCurrentCursor = new_cursor;
-    mWindow->Draw();
+// 7. Redraw (only if the window still exists)
+    if(mWindow) {
+      mWindow->Draw();
+    }
   }
 
   void XcbWindowContext::DestroyFrame() {
     D2("DestroyFrame called, mWindowId={}", mWindowId);
-    if(!mAUI)
-      return;
+    if(!mAUI) E()
     xcb_connection_t *conn = mAUI->GetXcbConnection();
     if(!conn)
       return;
