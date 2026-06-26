@@ -238,7 +238,11 @@ namespace aui {
   }
 
   void WaylandWindowContext::QueueFrameCommit() {
-    if (!mFrameSyncEnabled) {
+    if(mFramePending) {
+      D3("Frame callback still pending, skipping commit");
+      return;
+    }
+    if(!mFrameSyncEnabled) {
       D1("Frame sync not enabled (no configure yet), skipping commit");
       return;
     }
@@ -249,12 +253,12 @@ namespace aui {
       E("Missing surface or buffer");
       return;
     }
-// Skip if the back buffer is still busy
+// Skip if the back buffer is still busy (being held by the compositor)
     if(mBuffers[backBufferIdx].busy) {
       D3("Back buffer busy, skipping commit");
       return;
     }
-
+// Enqueue the draw command (this will be processed by AUI::Draw)
     DrawCommand cmd;
     cmd.type = DrawCommandType::Wayland;
     cmd.wayland.surface = mSurface;
@@ -263,10 +267,10 @@ namespace aui {
     cmd.wayland.height = mWindow->SizeY();
     D3("QueueFrameCommit: Enqueueing command. Current mDrawCommands size BEFORE push = {}", mAUI->DrawCommands());
     mAUI->EnqueueDrawCommand(cmd);
+// Mark buffer as busy (will be released by the buffer_release listener)
     mBuffers[backBufferIdx].busy = true;
     mCurrentBufferIndex = backBufferIdx;
-// Request a frame callback only if frame sync is enabled
-    if(mFrameSyncEnabled && !mFramePending) {
+    if(mFrameSyncEnabled) {
       mFrameCallback = wl_surface_frame(mSurface);
       wl_callback_add_listener(mFrameCallback, &frame_listener, this);
       mFramePending = true;

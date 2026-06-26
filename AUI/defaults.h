@@ -20,7 +20,6 @@ inline void print_stack() {
     if (first != std::string::npos && last != std::string::npos && first < last) {
       std::string mangled = entry.substr(first + 1, last - first - 1);
       int status = 0;
-      // Используем char*, как требует стандарт abi::__cxa_demangle
       char* demangled = abi::__cxa_demangle(mangled.c_str(), nullptr, nullptr, &status);
       if (status == 0 && demangled) {
         std::printf("  #%d %s\n", i, demangled);
