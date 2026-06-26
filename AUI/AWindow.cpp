@@ -195,24 +195,30 @@ namespace aui {
   }
 
   void AWindow::Draw() {
-      D3("[WIN] Draw() called, mDrawPending={}", mDrawPending);
-      if(mClosed) return;
-      if(mDrawPending) return;
-      mDrawPending = true;
-      if(mBackend) {
-          AUI *aui = mBackend->GetEnginePtr();
-          if(aui) {
-              D3("[WIN] Scheduling draw");
-              aui->ScheduleDraw(this);
-          }
+    D3("[WIN] Draw() called, mDrawPending={}", mDrawPending);
+    if(mClosed)
+      return;
+    if(mDrawPending)
+      return;// already pending, no need
+    if(mIsDrawing)
+      return;// currently inside DoDraw → don't schedule recursively
+    mDrawPending = true;
+    if(mBackend) {
+      AUI* aui = mBackend->GetEnginePtr();
+      if(aui) {
+        D3("[WIN] Scheduling draw");
+        aui->ScheduleDraw(this);
       }
+    }
   }
 
   void AWindow::ForceDraw() {
       D3("[WIN] ForceDraw() called, mDrawPending={}", mDrawPending);
-      if(mClosed) return;
-      mDrawPending = false;
-      DoDraw();
+      if (mClosed) return;
+      mIsDrawing = true;          // mark that we are inside the drawing phase
+      mDrawPending = false;       // clear the pending flag before drawing
+      DoDraw();                   // performs the actual rendering and commits
+      mIsDrawing = false;         // release the guard
   }
 
   void AWindow::AddWidget(std::unique_ptr<AWidget> widg) {
@@ -301,7 +307,6 @@ namespace aui {
       DT("no backend");
       return;
     }
-
     uint32_t *buffer = mBackend->GetSoftwareBuffer();
     if(!buffer) {
       D2("no software buffer");

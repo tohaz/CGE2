@@ -38,6 +38,7 @@ namespace aui {
       uint32_t mPendingWidth = 0;
       uint32_t mPendingHeight = 0;
       bool mClosed = false;
+      bool mIsDrawing = false;
     protected:
       void AddWidget(std::unique_ptr<AWidget> widg);
     public:

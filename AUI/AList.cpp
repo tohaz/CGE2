@@ -766,18 +766,15 @@ namespace aui {
     if(enable) {
       if(!mVScrollBar) {
         mVScrollBar = std::make_unique<AScrollBar>();
-        D2("SetVerticalScrollbarEnabled: enable={}, mVScrollBar={}", enable, (void*)mVScrollBar.get());
-        if(mVScrollBar) {
-          D2("  sb size: {}x{}, pos: ({},{})", mVScrollBar->SizeX(), mVScrollBar->SizeY(), mVScrollBar->X(),
-              mVScrollBar->Y());
-        }
+        mVScrollBar->mParentWindow = mParentWindow;
+        mVScrollBar->mEnginePtr = mEnginePtr;
         mVScrollBar->SetOrientation(AUIOrientation::vertical);
         mVScrollBar->ShowArrows(true);
         mVScrollBar->SetArrowSize(16);
         mVScrollBar->SetTrackThickness(8);
         mVScrollBar->SetThumbThickness(16);
         mVScrollBar->SetScrollCallback([](AWindow*, AWidget*, void *data, int32_t val) {
-          AList *list = static_cast<AList*>(data);
+          AList* list = static_cast<AList*>(data);
           list->ScrollToOffset(list->mHOffset, val);
         }, this);
       }
@@ -798,13 +795,15 @@ namespace aui {
     if(enable) {
       if(!mHScrollBar) {
         mHScrollBar = std::make_unique<AScrollBar>();
+        mHScrollBar->mParentWindow = mParentWindow;
+        mHScrollBar->mEnginePtr = mEnginePtr;
         mHScrollBar->SetOrientation(AUIOrientation::horizontal);
         mHScrollBar->ShowArrows(true);
         mHScrollBar->SetArrowSize(16);
         mHScrollBar->SetTrackThickness(8);
         mHScrollBar->SetThumbThickness(16);
         mHScrollBar->SetScrollCallback([](AWindow*, AWidget*, void *data, int32_t val) {
-          AList *list = static_cast<AList*>(data);
+          AList* list = static_cast<AList*>(data);
           list->ScrollToOffset(val, list->mVOffset);
         }, this);
       }

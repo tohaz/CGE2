@@ -342,7 +342,6 @@ namespace aui {
       }
       return;
     }
-
 // ---- Hover feedback (cursor change) ----
     bool isCol = false;
     int64_t id = -1;
