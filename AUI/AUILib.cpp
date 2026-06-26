@@ -779,11 +779,11 @@ namespace aui {
         if(awin) {
           auto* ctx = static_cast<XcbWindowContext*>(awin->GetBackend());
           if(!ctx || !ctx->IsMapped()) {
-            D1("Window not mapped, deferring draw");
+            D2("Window not mapped, deferring draw");
             //awin->Draw();// schedule later
             continue;
           }
-          D1("Window is mapped, proceeding with draw (ID={})", xcb.windowId);
+          D2("Window is mapped, proceeding with draw (ID={})", xcb.windowId);
           size_t current_allocated_bytes = ctx->GetSoftwareBufferPtr()->size() * sizeof(uint32_t);
           size_t incoming_command_bytes = static_cast<size_t>(xcb.width) * xcb.height * 4;
           if(current_allocated_bytes < incoming_command_bytes) {

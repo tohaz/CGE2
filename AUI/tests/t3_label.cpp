@@ -140,13 +140,13 @@ int32_t test_label_metrics_update(AUI* au) {
 // ------------------------------------------------------------------
 int main() {
   int32_t testsfailed = 0;
-//  testsfailed += runTimedTest("test_label_attachment", test_label_attachment, 1);
-//  testsfailed += runTimedTest("test_label_properties", test_label_properties, 1);
-//  testsfailed += runTimedTest("test_label_border", test_label_border, 1);
-//  testsfailed += runTimedTest("test_label_click_transparent", test_label_click_transparent, 1);
-//  testsfailed += runTimedTest("test_label_draw", test_label_draw, 1);
-//  testsfailed += runTimedTest("test_label_child_widget", test_label_child_widget, 1);
-//  testsfailed += runTimedTest("test_label_metrics_update", test_label_metrics_update, 1);
+  testsfailed += runTimedTest("test_label_attachment", test_label_attachment, 1);
+  testsfailed += runTimedTest("test_label_properties", test_label_properties, 1);
+  testsfailed += runTimedTest("test_label_border", test_label_border, 1);
+  testsfailed += runTimedTest("test_label_click_transparent", test_label_click_transparent, 1);
+  testsfailed += runTimedTest("test_label_draw", test_label_draw, 1);
+  testsfailed += runTimedTest("test_label_child_widget", test_label_child_widget, 1);
+  testsfailed += runTimedTest("test_label_metrics_update", test_label_metrics_update, 1);
 
   testsfailed += runTimedTest("test_label_attachment", test_label_attachment, 200);
   testsfailed += runTimedTest("test_label_properties", test_label_properties, 200);
