@@ -88,7 +88,7 @@ namespace aui {
       menu->AddItem(AMenuItem("Menu"));
     menu->mParentWindow = parent;
     parent->AddWidget(std::unique_ptr<AWidget>(menu));
-    D1("AMenu::AttachTo window: menu={}, items={}", (void*)menu, menu->GetItemCount());
+    D2("AMenu::AttachTo window: menu={}, items={}", (void*)menu, menu->GetItemCount());
     return menu;
   }
 
@@ -110,7 +110,7 @@ namespace aui {
 // Content management
 // ------------------------------------------------------------------
   void AMenu::SetItems(const std::vector<AMenuItem> &items) {
-    D1("AMenu::SetItems: count={}", items.size());
+    D2("AMenu::SetItems: count={}", items.size());
     mItems = items;
     mLayoutDirty = true;
     if(mParentWindow)
@@ -118,7 +118,7 @@ namespace aui {
   }
 
   void AMenu::AddItem(const AMenuItem &item) {
-    D1("AMenu::AddItem: text='{}'", item.text);
+    D2("AMenu::AddItem: text='{}'", item.text);
     mItems.push_back(item);
     mLayoutDirty = true;
     if(mParentWindow)
@@ -155,7 +155,7 @@ namespace aui {
   void AMenu::SetOrientation(AUIOrientation orient) {
     if(mOrientation == orient)
       return;
-    D1("AMenu::SetOrientation: {} -> {}", static_cast<int32_t>(mOrientation), static_cast<int32_t>(orient));
+    D2("AMenu::SetOrientation: {} -> {}", static_cast<int32_t>(mOrientation), static_cast<int32_t>(orient));
     mOrientation = orient;
     mLayoutDirty = true;
     if(mParentWindow)
@@ -165,7 +165,7 @@ namespace aui {
   void AMenu::SetItemHeight(int32_t height) {
     if(mItemHeight == height)
       return;
-    D1("AMenu::SetItemHeight: {}", height);
+    D2("AMenu::SetItemHeight: {}", height);
     mItemHeight = height;
     mLayoutDirty = true;
     if(mParentWindow)
@@ -173,7 +173,7 @@ namespace aui {
   }
 
   void AMenu::SetColors(uint32_t bg, uint32_t hoverBg, uint32_t text, uint32_t disabled, uint32_t separator) {
-    D1("AMenu::SetColors");
+    D2("AMenu::SetColors");
     mBGColor = bg;
     mHoverBgColor = hoverBg;
     mTextColor = text;
@@ -186,7 +186,7 @@ namespace aui {
 // Popup / Dismiss
 // ------------------------------------------------------------------
   void AMenu::Popup(int32_t x, int32_t y) {
-    D1("AMenu::Popup: pos=({},{}), visible={}", x, y, mVisible);
+    D2("AMenu::Popup: pos=({},{}), visible={}", x, y, mVisible);
     RecalcLayout();
     int32_t w = mCachedWidth;
     int32_t h = mCachedHeight;
@@ -213,7 +213,7 @@ namespace aui {
     CloseSubMenu();
     if(mParentWindow)
       mParentWindow->Draw();
-    D1("AMenu::Popup: size=({},{}), pos=({},{})", w, h, mX, mY);
+    D2("AMenu::Popup: size=({},{}), pos=({},{})", w, h, mX, mY);
   }
 
   void AMenu::Dismiss() {
@@ -257,7 +257,7 @@ namespace aui {
         width += static_cast<int32_t>(face->glyph->advance.x >> 6);
       }
     }
-    D1("AMenu::ComputeTextWidth: '{}' -> {}", text, width);
+    D2("AMenu::ComputeTextWidth: '{}' -> {}", text, width);
     return width;
   }
 
@@ -270,14 +270,14 @@ namespace aui {
       if(w > maxW)
         maxW = w;
     }
-    D1("AMenu::GetMaxTextWidth: {}", maxW);
+    D2("AMenu::GetMaxTextWidth: {}", maxW);
     return maxW;
   }
 
   void AMenu::RecalcLayout() const {
     if(!mLayoutDirty)
       return;
-    D1("AMenu::RecalcLayout: this={}, items={}, orient={}", (void*)this, mItems.size(),
+    D2("AMenu::RecalcLayout: this={}, items={}, orient={}", (void*)this, mItems.size(),
         static_cast<int32_t>(mOrientation));
     const size_t n = mItems.size();
     mItemX.resize(n);
@@ -289,7 +289,7 @@ namespace aui {
     int32_t itemW = maxTextW + mPadding * 2 + mSubmenuArrowWidth;
     if(mMinWidth > 0 && itemW < mMinWidth)
       itemW = mMinWidth;
-    D1("  maxTextW={}, itemW={}, mMinWidth={}", maxTextW, itemW, mMinWidth);
+    D2("  maxTextW={}, itemW={}, mMinWidth={}", maxTextW, itemW, mMinWidth);
     if(mOrientation == AUIOrientation::vertical) {
       int32_t y = 0;
       for(size_t i = 0; i < n; ++i) {
@@ -330,7 +330,7 @@ namespace aui {
     mCachedWidth = totalW;
     mCachedHeight = totalH;
     mLayoutDirty = false;
-    D1("AMenu::RecalcLayout: totalW={}, totalH={}", totalW, totalH);
+    D2("AMenu::RecalcLayout: totalW={}, totalH={}", totalW, totalH);
   }
 
   int32_t AMenu::HitTest(int32_t localX, int32_t localY) const {
@@ -351,16 +351,16 @@ namespace aui {
   void AMenu::Draw(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
       int32_t offsetY) const {
     if(!mVisible || mItems.empty()) {
-      D1("AMenu::Draw: not visible or empty (visible={}, items={})", mVisible, mItems.size());
+      D2("AMenu::Draw: not visible or empty (visible={}, items={})", mVisible, mItems.size());
       return;
     }
-    D1("AMenu::Draw: this={}, mItems={}", (void*)this, mItems.size());
+    D2("AMenu::Draw: this={}, mItems={}", (void*)this, mItems.size());
     RecalcLayout();
     int32_t absX = offsetX + mX;
     int32_t absY = offsetY + mY;
     int32_t w = mCachedWidth;
     int32_t h = mCachedHeight;
-    D1("  draw at ({},{}), size=({},{})", absX, absY, w, h);
+    D2("  draw at ({},{}), size=({},{})", absX, absY, w, h);
     FillRect(buffer, parentWidth, absX, absY, w, h, mBGColor);
     DrawRectBorder(buffer, parentWidth, absX, absY, w, h, mBorderColor);
     for(size_t i = 0; i < mItems.size(); ++i) {
@@ -488,7 +488,7 @@ namespace aui {
     }
     int32_t newHover = HitTest(localX, localY);
     if(newHover != mHoveredIndex) {
-      D1("  hover changed: {} -> {}", mHoveredIndex, newHover);
+      D2("  hover changed: {} -> {}", mHoveredIndex, newHover);
       if(mHoveredIndex >= 0 && !mItems[static_cast<size_t>(mHoveredIndex)].subItems.empty()) {
         CloseSubMenu();
       }
@@ -666,7 +666,7 @@ namespace aui {
   }
 
   AMenu::~AMenu() {
-    D1("AMenu::~AMenu() this={}", (void*)this);
+    D2("AMenu::~AMenu() this={}", (void*)this);
     CloseSubMenu();
   }
 }// namespace aui

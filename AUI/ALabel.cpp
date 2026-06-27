@@ -21,7 +21,7 @@ namespace aui {
   }
 
   ALabel* ALabel::AttachTo(AWidget *parent) {
-    D1("Attaching ALabel to widget");
+    D2("Attaching ALabel to widget");
     if(!parent)
       E("ALabel::AttachTo: parent widget is null");
     ALabel *label = new ALabel();

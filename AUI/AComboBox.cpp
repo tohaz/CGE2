@@ -32,7 +32,7 @@ namespace aui {
       E("AComboBox::AttachTo: parent window is null");
       return nullptr;
     }
-    D1("Attaching AComboBox to window");
+    D2("Attaching AComboBox to window");
     auto *box = new AComboBox();
     parent->AddWidget(std::unique_ptr<AWidget>(box));
     box->mParentWindow = parent;

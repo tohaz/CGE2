@@ -158,7 +158,7 @@ namespace aui {
   }
 
   void AInputBox::Disable() {
-    D("inputbox disabled")
+    D2("inputbox disabled")
     AWidget::Disable();
     SetEditable(false);
     mCursorVisible = false;
@@ -431,7 +431,7 @@ namespace aui {
     if(!mEnabled || !pressed)
       return false;
     size_t newPos = GetIndexFromX(localX);
-    D1("OnMouseClick: localX={}, newPos={}, oldPos={}", localX, newPos, mCursorPos);
+    D2("OnMouseClick: localX={}, newPos={}, oldPos={}", localX, newPos, mCursorPos);
     if(newPos != mCursorPos) {
       mCursorPos = newPos;
       mCursorVisible = true;
