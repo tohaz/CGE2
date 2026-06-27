@@ -250,8 +250,7 @@ namespace aui {
     D3("QueueFrameCommit: surface={}, buffer_index={}, w={}, h={}", (void*)mSurface, backBufferIdx, mWindow->SizeX(),
         mWindow->SizeY());
     if(!mSurface || !mBuffers[backBufferIdx].buffer) {
-      E("Missing surface or buffer");
-      return;
+      E("Missing surface {} or buffer {}", (void*)mSurface, (void*) mBuffers[backBufferIdx].buffer);
     }
 // Skip if the back buffer is still busy (being held by the compositor)
     if(mBuffers[backBufferIdx].busy) {
@@ -267,6 +266,9 @@ namespace aui {
     cmd.wayland.height = mWindow->SizeY();
     D3("QueueFrameCommit: Enqueueing command. Current mDrawCommands size BEFORE push = {}", mAUI->DrawCommands());
     mAUI->EnqueueDrawCommand(cmd);
+#ifdef AUI_UNIT_TEST
+    ++mEnqueueCount;
+#endif
 // Mark buffer as busy (will be released by the buffer_release listener)
     mBuffers[backBufferIdx].busy = true;
     mCurrentBufferIndex = backBufferIdx;

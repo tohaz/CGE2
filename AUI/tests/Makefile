@@ -8,6 +8,7 @@
 # This version builds EACH .cpp file into its OWN separate binary.
 AUI_ROOT   := ..
 BUILD_MODE ?= debug
+UNIT_TEST ?= 1          # default to 1 for instrumentation
 
 # Detect number of CPU cores for parallel build
 NPROCS := 1
@@ -69,6 +70,11 @@ CPPFLAGS := -I$(AUI_ROOT) \
             -I$(AUI_ROOT)/freetype2/include \
             -I$(AUI_ROOT)/freetype2/include/freetype/config
 
+# Add instrumentation flag if UNIT_TEST is set
+ifdef UNIT_TEST
+  CPPFLAGS += -DAUI_UNIT_TEST
+endif
+
 LIBS     := -lAUI -lX11 -lX11-xcb -lxcb -lxcb-cursor -lxcb-image -lXrender -lwayland-client -lxkbcommon -lxcb-keysyms -lxkbcommon-x11 -lwayland-cursor -lxcb-cursor -lpng -lz
 
 # Source and Target discovery
@@ -95,7 +101,7 @@ $(AUI_LIB): build_aui_lib
 .PHONY: build_aui_lib
 build_aui_lib:
 	@echo "--- Checking AUI Library [Mode: $(BUILD_MODE)] ---"
-	@$(MAKE) -C $(AUI_ROOT) BUILD_MODE=$(BUILD_MODE) all
+	@$(MAKE) -C $(AUI_ROOT) BUILD_MODE=$(BUILD_MODE) UNIT_TEST=$(UNIT_TEST) all
 
 # Executables now link against $(AUI_LIB) and the separate $(FREETYPE_OBJ) file
 $(BUILD_DIR)/%: $(SRC_DIR)/%.cpp $(AUI_LIB) | $(BUILD_DIR) $(DEP_DIR)
@@ -120,4 +126,3 @@ clean:
 	@$(MAKE) -C $(AUI_ROOT) BUILD_MODE=$(BUILD_MODE) clean
 
 .PHONY: all clean release srelease
-

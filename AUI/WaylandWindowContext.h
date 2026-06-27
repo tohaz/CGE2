@@ -57,6 +57,16 @@ namespace aui {
       bool mFrameSyncEnabled = false;
       virtual void SetCursor(AUICursorType type) override;
       bool EnsureBuffer(uint32_t width, uint32_t height) override;
+#ifdef AUI_UNIT_TEST
+    private:
+      int32_t mEnqueueCount = 0;
+public:
+    void SetFrameSyncEnabledForTest(bool enabled) { mFrameSyncEnabled = enabled; }
+    bool IsFramePending() const { return mFramePending; }
+    int32_t GetEnqueueCount() const { return mEnqueueCount; }
+    void ResetEnqueueCount() { mEnqueueCount = 0; }
+    void SetFramePendingForTest(bool pending) { mFramePending = pending; }
+#endif
 
   };
 

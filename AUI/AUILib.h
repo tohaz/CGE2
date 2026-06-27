@@ -87,8 +87,6 @@ namespace aui {
 class AWindow;
 class AUI;
 
-
-
 struct ARect;
 struct ATextStyle;
 enum class DrawCommandType { Xcb, Wayland };
@@ -116,7 +114,7 @@ struct DrawCommand {
 };
 
   struct CachedGlyph {
-      uint8_t *bitmap;// null if only metrics are stored
+      uint8_t* bitmap;// null if only metrics are stored
       int32_t width;
       int32_t rows;
       int32_t left;
@@ -436,7 +434,13 @@ public:
   bool IsProcessingMessages() const { return mProcessingMessages; }
   void ApplyPendingResizes();
   std::recursive_timed_mutex& GetFontMutex() { return mFontMutex; }
-
+#ifdef AUI_UNIT_TEST
+private:
+    int32_t mScheduleDrawCount = 0;
+public:
+    int32_t GetScheduleDrawCount() const { return mScheduleDrawCount; }
+    void ResetScheduleDrawCount() { mScheduleDrawCount = 0; }
+#endif
 };
 
 template <typename TFunc>
@@ -489,7 +493,6 @@ int32_t runTimedTest(const char* testname, TFunc&& testlogic, uint32_t rtime) {
   delete au;
   return testresult;
 }
-
 
 } // namespace aui
 

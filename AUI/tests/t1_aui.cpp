@@ -1,3 +1,7 @@
+#ifndef AUI_UNIT_TEST
+#define AUI_UNIT_TEST
+#endif
+
 #include "AUILib.h"
 
 using namespace aui;
@@ -237,6 +241,33 @@ int32_t test_window_operations(AUI *au) {
   return 0;
 }
 
+int32_t test_draw_loop_guard(AUI *au) {
+  D1("test_draw_loop_guard start");
+  AWindow* win = au->MainWnd();
+  if(!win)
+    return 1;
+  au->ResetScheduleDrawCount();
+// Clear any pending draw from window creation
+  win->ForceDraw();// sets mDrawPending = false, draws, and does NOT schedule
+// 1. First draw request → schedules one draw
+  win->Draw();
+  TEST_ASSERT(win->IsDrawPending() == true, 2);
+  TEST_ASSERT_EQ(au->GetScheduleDrawCount(), 1, 3);
+// 2. Second draw request while pending → should do nothing
+  win->Draw();
+  TEST_ASSERT(win->IsDrawPending() == true, 4);
+  TEST_ASSERT_EQ(au->GetScheduleDrawCount(), 1, 5);
+// 3. ForceDraw clears pending and draws
+  win->ForceDraw();
+  TEST_ASSERT(win->IsDrawPending() == false, 6);
+// 4. After ForceDraw, a new Draw should schedule again
+  win->Draw();
+  TEST_ASSERT(win->IsDrawPending() == true, 7);
+  TEST_ASSERT_EQ(au->GetScheduleDrawCount(), 2, 8);
+  D1("test_draw_loop_guard passed");
+  return 0;
+}
+
 int main() {
   //UNUSED char *qqq = new char[1]; // generate error
   int32_t testsfailed = 0;
@@ -256,6 +287,7 @@ int main() {
   testsfailed += runTimedTest("test_multiple_windows2", test_multiple_windows2, 1);
   testsfailed += runTimedTest("test_draw_command_queue", test_draw_command_queue, 1);
   testsfailed += runTimedTest("test_window_operations", test_window_operations, 2);
+  testsfailed += runTimedTest("test_draw_loop_guard", test_draw_loop_guard, 1);
 
   testsfailed += runTimedTest("2test_aui_lifecycle", test_aui_lifecycle, 200);
   testsfailed += runTimedTest("2test_aui_lifecycle2", test_aui_lifecycle2, 200);
@@ -272,8 +304,7 @@ int main() {
   testsfailed += runTimedTest("2test_multiple_windows2", test_multiple_windows2, 200);
   testsfailed += runTimedTest("2test_draw_command_queue", test_draw_command_queue, 200);
   testsfailed += runTimedTest("2test_window_operations", test_window_operations, 200);
-
-
+  testsfailed += runTimedTest("test_draw_loop_guard", test_draw_loop_guard, 200);
 
   D("test suite complete")
 

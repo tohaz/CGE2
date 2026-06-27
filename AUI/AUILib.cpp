@@ -1084,6 +1084,9 @@ namespace aui {
 
   void AUI::ScheduleDraw(AWindow *win) {
     D3("[AUI] ScheduleDraw for win {}", (void*)win);
+#ifdef AUI_UNIT_TEST
+    ++mScheduleDrawCount;
+#endif
     std::lock_guard<std::mutex> lock(mPendingDrawMutex);
     if(std::find(mPendingDrawWindows.begin(), mPendingDrawWindows.end(), win) == mPendingDrawWindows.end()) {
       mPendingDrawWindows.push_back(win);

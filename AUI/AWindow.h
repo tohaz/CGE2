@@ -88,7 +88,10 @@ namespace aui {
       bool HasPendingResize() const { return mResizePending; }
       void ClearDrawCommands();
       void OnMap() { mDrawPending = false; Draw(); }
-
+      bool IsDrawPending() const { return mDrawPending; }
+      bool IsDrawing() const { return mIsDrawing; }
+#ifdef AUI_UNIT_TEST
+#endif
 
 
   };

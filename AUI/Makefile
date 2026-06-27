@@ -1,6 +1,7 @@
 # --- AUI Library Makefile (Root) ---
 SRC_DIR := .
 BUILD_MODE ?= debug
+UNIT_TEST ?=          # empty by default; set to 1 for instrumentation
 
 # Detect number of CPU cores
 NPROCS := 1
@@ -73,6 +74,12 @@ else ifeq ($(BUILD_MODE), srelease)
 else
   CXXFLAGS := $(BASE_FLAGS) -O0 -g3 -DBUILDING_MY_STATIC_LIB -DFT2_BUILD_LIBRARY
 endif
+
+# Add instrumentation flag if UNIT_TEST is set to 1
+ifeq ($(UNIT_TEST),1)
+  CXXFLAGS += -DAUI_UNIT_TEST
+endif
+
 CXXFLAGS += -I$(SRC_DIR)/freetype2/include -I$(SRC_DIR)/freetype2/include/freetype/config
 
 # Source files and objects
@@ -103,9 +110,9 @@ FREETYPE_MK  := AUIFreeType.mk
 .PHONY: all build_aui
 all:
 	@echo "--- Building FreeType (mode: $(BUILD_MODE)) ---"
-	$(MAKE) -C $(FREETYPE_DIR) -f $(FREETYPE_MK) BUILD_MODE=$(BUILD_MODE)
+	$(MAKE) -C $(FREETYPE_DIR) -f $(FREETYPE_MK) BUILD_MODE=$(BUILD_MODE) UNIT_TEST=$(UNIT_TEST)
 	@echo "--- Building AUI Library (mode: $(BUILD_MODE)) ---"
-	$(MAKE) build_aui BUILD_MODE=$(BUILD_MODE)
+	$(MAKE) build_aui BUILD_MODE=$(BUILD_MODE) UNIT_TEST=$(UNIT_TEST)
 
 # Target that actually builds the library
 build_aui: $(STATIC_LIB)
