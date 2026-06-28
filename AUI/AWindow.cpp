@@ -48,7 +48,7 @@ namespace aui {
   void AWindow::Resize(uint32_t w, uint32_t h) {
     D3("AWindow::Resize: called with {}x{}, resizeEnabled={}", w, h, mResizeEnabled);
     if(!mResizeEnabled) {
-      E("window resize is disabled");
+      E("window resize is disabled. call window->EnableResize() before resize on windows");
     }
     AUI *au = mBackend ? mBackend->GetEnginePtr() : nullptr;
     if(!au || !au->IsProcessingMessages()) {
@@ -129,69 +129,74 @@ namespace aui {
   }
 
   void AWindow::OnMousePress(int32_t x, int32_t y, uint32_t button) {
-    if(AMenu::IsActiveMenuVisible() && !AMenu::IsPointInsideActiveMenu(x, y))
-      AMenu::DismissActiveMenu();
-    AMenu *perm = AMenu::GetPermanentMenu();
-    if(perm) {
-      AMenu *sub = perm->GetActiveSubMenu();
-      if(sub && sub->IsVisible() && !AMenu::IsPointInsideMenuHierarchy(sub, x, y))
-        perm->CloseSubMenu();
-    }
-    uint32_t normalized = button;
-    if(button == 272)
-      normalized = 1;
-    else if(button == 273)
-      normalized = 3;
-    else if(button == 274)
-      normalized = 2;
-    if(normalized != 1)
-      return;
-    if(mDragWidget) {
-      int32_t localX = x - mDragWidget->X();
-      int32_t localY = y - mDragWidget->Y();
-      if(localX >= 0 && localX < static_cast<int32_t>(mDragWidget->SizeX()) && localY >= 0
-          && localY < static_cast<int32_t>(mDragWidget->SizeY()))
-        mDragWidget->OnMouseClick(localX, localY, true);
-      ForceDraw();
-      return;
-    }
-    for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
-      AWidget *widget = it->get();
-      if(!widget->IsVisible())
-        continue;
-      bool isMenu = dynamic_cast<AMenu*>(widget) != nullptr;
-      bool consumed = widget->DispatchClick(x, y, true);
-      if(consumed) {
-        if(!mDragWidget && !isMenu)
-          SetDragWidget(widget);
-        break;
+      // --- Menu handling (unchanged) ---
+      if (AMenu::IsActiveMenuVisible() && !AMenu::IsPointInsideActiveMenu(x, y))
+          AMenu::DismissActiveMenu();
+      AMenu *perm = AMenu::GetPermanentMenu();
+      if (perm) {
+          AMenu *sub = perm->GetActiveSubMenu();
+          if (sub && sub->IsVisible() && !AMenu::IsPointInsideMenuHierarchy(sub, x, y))
+              perm->CloseSubMenu();
       }
-    }
-    if(mDragWidget && mDragWidget->IsFocusable())
-      SetFocus(mDragWidget);
-    else if(!mDragWidget)
-      ClearFocus();
+      uint32_t normalized = button;
+      if (button == 272) normalized = 1;
+      else if (button == 273) normalized = 3;
+      else if (button == 274) normalized = 2;
+      if (normalized != 1) return;  // only left button for now
+      // --- If we are already dragging a widget, forward directly ---
+      if (mDragWidget) {
+          int32_t localX = x - mDragWidget->X();
+          int32_t localY = y - mDragWidget->Y();
+          if (localX >= 0 && localX < (int32_t)mDragWidget->SizeX() &&
+              localY >= 0 && localY < (int32_t)mDragWidget->SizeY()) {
+              mDragWidget->OnMouseClick(localX, localY, true);
+          }
+          ForceDraw();
+          return;
+      }
+      // --- Forward to children (topmost first) ---
+      for (auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+          AWidget *widget = it->get();
+          if (!widget->IsVisible()) continue;
+          // DispatchClick will convert coordinates and propagate to grandchildren
+          bool consumed = widget->DispatchClick(x, y, true);
+          if (consumed) {
+              // If the widget is not a menu and we don't have a drag widget yet,
+              // set it as the drag target (so subsequent moves are sent directly)
+              bool isMenu = dynamic_cast<AMenu*>(widget) != nullptr;
+              if (!mDragWidget && !isMenu)
+                  SetDragWidget(widget);
+              break;  // stop processing further widgets
+          }
+      }
+
+      // --- Focus management ---
+      if (mDragWidget && mDragWidget->IsFocusable())
+          SetFocus(mDragWidget);
+      else if (!mDragWidget)
+          ClearFocus();
   }
 
   void AWindow::OnMouseRelease(int32_t x, int32_t y, uint32_t button) {
-    if(mDragWidget) {
-      int32_t localX = x - mDragWidget->X();
-      int32_t localY = y - mDragWidget->Y();
-      mDragWidget->OnMouseClick(localX, localY, false);
-      SetDragWidget(nullptr);
-    }
-    else {
-      uint32_t normalized = (button == 272) ? 1 : (button == 273) ? 3 : (button == 274) ? 2 : button;
-      if(normalized == 1) {
-        for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
-          AWidget *widget = it->get();
-          if(!widget->IsVisible())
-            continue;
-          if(widget->DispatchClick(x, y, false))
-            break;
-        }
+      // --- If dragging, forward the release to the drag widget ---
+      if (mDragWidget) {
+          int32_t localX = x - mDragWidget->X();
+          int32_t localY = y - mDragWidget->Y();
+          mDragWidget->OnMouseClick(localX, localY, false);
+          SetDragWidget(nullptr);  // release the drag
+          return;
       }
-    }
+      // --- Otherwise, let children handle the release ---
+      uint32_t normalized = (button == 272) ? 1 : (button == 273) ? 3 : (button == 274) ? 2 : button;
+      if (normalized == 1) {  // only left button for now
+          for (auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+              AWidget *widget = it->get();
+              if (!widget->IsVisible()) continue;
+              bool consumed = widget->DispatchClick(x, y, false);
+              if (consumed)
+                  break;  // stop at first consumer
+          }
+      }
   }
 
   void AWindow::Draw() {
@@ -229,6 +234,8 @@ namespace aui {
   }
 
   void AWindow::OnMouseMove(int32_t x, int32_t y) {
+    m_lastMouseX = x;
+    m_lastMouseY = y;
 // If dragging, bypass hover tracking
     if(mDragWidget) {
       D1("we are dragging widget")
@@ -285,16 +292,35 @@ namespace aui {
   }
 
   void AWindow::OnMouseWheel(int32_t delta) {
-// If dragging, send wheel to the drag widget
+// If dragging, forward directly to the drag widget
     if(mDragWidget) {
       mDragWidget->OnMouseWheel(delta);
       return;
     }
-// Otherwise send to the widget under cursor
-    if(mHoverWidget) {
-      mHoverWidget->OnMouseWheel(delta);
+// Otherwise, forward to children using the last known mouse position
+    for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+      AWidget* widget = it->get();
+      if(!widget->IsVisible())
+        continue;
+      if(widget->DispatchMouseWheel(m_lastMouseX, m_lastMouseY, delta))
+        return;// stop at first consumer
     }
-    Draw();
+  }
+
+  void AWindow::OnMouseWheel(int32_t x, int32_t y, int32_t delta) {
+// If dragging, forward directly to the drag widget
+    if(mDragWidget) {
+      mDragWidget->OnMouseWheel(delta);
+      return;
+    }
+// Otherwise, forward to children (topmost first)
+    for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+      AWidget* widget = it->get();
+      if(!widget->IsVisible())
+        continue;
+      if(widget->DispatchMouseWheel(x, y, delta))
+        return;// stop at first consumer
+    }
   }
 
   void AWindow::DoDraw() {

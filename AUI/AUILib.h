@@ -7,6 +7,7 @@
 #include <X11/keysym.h>
 #include <freetype/config/ftheader.h>
 #include <freetype/freetype.h>
+#include <freetype/ftmm.h>
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <xcb/xcb_image.h>

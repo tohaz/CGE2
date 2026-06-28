@@ -309,29 +309,20 @@ namespace aui {
   }
 
   void AScrollBar::OnMouseMove(int32_t localX, int32_t localY) {
-    D3("AScrollBar::OnMouseMove: x={}, y={}, dragging={}", localX, localY, mDragging);
-    if(!mDragging)
-      return;
-    if(mParentWindow && mParentWindow->GetDragWidget() != this) {
-      D2("AScrollBar::OnMouseMove: drag widget changed, resetting drag");
-      mDragging = false;
-      return;
-    }
-    int32_t coord = (mOrientation == AUIOrientation::vertical) ? localY : localX;
-    uint32_t trackStart = mShowArrows ? mArrowSize : 0;
-    uint32_t trackLen = GetTrackLength();
-    uint32_t thumbLen = GetThumbLength();
-    int32_t thumbAbsPos = coord - mDragOffset;
-    int32_t minAbs = static_cast<int32_t>(trackStart);
-    int32_t maxAbs = static_cast<int32_t>(trackStart + trackLen - thumbLen);
-    if(thumbAbsPos < minAbs)
-      thumbAbsPos = minAbs;
-    if(thumbAbsPos > maxAbs)
-      thumbAbsPos = maxAbs;
-    int32_t thumbPos = thumbAbsPos - minAbs;
-    int32_t newValue = ValueFromCoord(thumbPos);
-    D3("AScrollBar::OnMouseMove: thumbAbsPos={}, newValue={}", thumbAbsPos, newValue);
-    SetValue(newValue);
+      if (!mDragging)
+          return;
+      int32_t coord = (mOrientation == AUIOrientation::vertical) ? localY : localX;
+      uint32_t trackStart = mShowArrows ? mArrowSize : 0;
+      uint32_t trackLen = GetTrackLength();
+      uint32_t thumbLen = GetThumbLength();
+      int32_t thumbAbsPos = coord - mDragOffset;
+      int32_t minAbs = static_cast<int32_t>(trackStart);
+      int32_t maxAbs = static_cast<int32_t>(trackStart + trackLen - thumbLen);
+      if (thumbAbsPos < minAbs) thumbAbsPos = minAbs;
+      if (thumbAbsPos > maxAbs) thumbAbsPos = maxAbs;
+      int32_t thumbPos = thumbAbsPos - minAbs;
+      int32_t newValue = ValueFromCoord(thumbPos);
+      SetValue(newValue);
   }
 
   void AScrollBar::SetOrientation(AUIOrientation orient) {

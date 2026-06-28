@@ -1,11 +1,4 @@
-
 #include "AUILib.h"
-#include "AWindow.h"
-#include "AList.h"
-#include "AButton.h"
-#include <vector>
-#include <string>
-#include <random>
 
 using namespace aui;
 

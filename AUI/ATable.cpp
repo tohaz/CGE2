@@ -25,6 +25,34 @@ namespace aui {
     mResizeHoverId = -1;
     mResizeHoverColumn = false;
     SetFocusable(true);
+    // --- Add these initialisations ---
+    mColumnHeaderHeight = 24;          // typical header height
+    mRowHeaderWidth = 40;              // typical row header width
+    mAutoHideScrollbars = true;        // sensible default
+    mFontSize = 12;
+    mTextColor = 0xFF000000;
+    mHeaderBgColor = 0xFFE0E0E0;
+    mHeaderTextColor = 0xFF000000;
+    mGridColor = 0xFFCCCCCC;
+    mSelectionColor = 0xCCE5FF;
+    mCursorBorderColor = 0xFF3399FF;
+    mRowSelectMode = false;
+    mCursorRow = -1;
+    mCursorCol = -1;
+    mSelectedRow = -1;
+    mHOffset = 0;
+    mVOffset = 0;
+    mTotalContentWidth = 0;
+    mTotalContentHeight = 0;
+    mResizing = false;
+    mResizeColumn = false;
+    mResizeTargetId = -1;
+    mResizeStartMouse = 0;
+    mResizeStartSize = 0;
+    mResizeMinSize = 20;
+    mDragScrollbar = nullptr;
+    mBatchDepth = 0;
+    mResizeMinSize = 10;
   }
 
   ATable* ATable::AttachTo(AWindow *parent) {
@@ -342,6 +370,19 @@ namespace aui {
       }
       return;
     }
+// ---- Drag scrollbar ----
+    if(mDragScrollbar) {
+      auto [absX, absY] = GetAbsolutePosition();
+      int32_t mouseX = localX + absX;
+      int32_t mouseY = localY + absY;
+      int32_t lx = mouseX - mDragScrollbar->X();
+      int32_t ly = mouseY - mDragScrollbar->Y();
+      D1("ATable::OnMouseMove: forwarding to scrollbar lx=%d ly=%d", lx, ly);
+      mDragScrollbar->OnMouseMove(lx, ly);
+      if(mParentWindow)
+        mParentWindow->Draw();
+      return;
+    }
 // ---- Hover feedback (cursor change) ----
     bool isCol = false;
     int64_t id = -1;
@@ -359,29 +400,16 @@ namespace aui {
         }
       }
     }
-
-// ---- Forward to scrollbar drag if active ----
-    if(mDragScrollbar) {
-      int32_t lx = localX + mX - mDragScrollbar->X();
-      int32_t ly = localY + mY - mDragScrollbar->Y();
-      mDragScrollbar->OnMouseMove(lx, ly);
-      if(mParentWindow) {
-        mParentWindow->Draw();
-      }
-      return;
-    }
   }
 
   void ATable::OnMouseWheel(int32_t delta) {
-    int32_t step = 30;// pixels per wheel step
+    int32_t step = 30;
     int32_t newVOffset = static_cast<int32_t>(mVOffset) - (delta * step);
     int32_t maxV = std::max(0,
         static_cast<int32_t>(mTotalContentHeight
             - (static_cast<int32_t>(mSizeY) - static_cast<int32_t>(mColumnHeaderHeight))));
     newVOffset = std::clamp(newVOffset, 0, maxV);
-    if(newVOffset != static_cast<int32_t>(mVOffset)) {
-      ScrollTo(static_cast<int32_t>(mHOffset), newVOffset);
-    }
+    ScrollTo(static_cast<int32_t>(mHOffset), newVOffset);
   }
 
   void ATable::OnParentResize(UNUSED uint32_t newWidth, UNUSED uint32_t newHeight) {
@@ -943,7 +971,7 @@ namespace aui {
   }
 
   bool ATable::OnMouseClick(int32_t localX, int32_t localY, bool pressed) {
-// ---- Start resizing on press if over a separator ----
+// ---- Resize handling ----
     if(pressed) {
       bool isCol;
       int64_t id;
@@ -959,12 +987,9 @@ namespace aui {
           mResizeStartMouse = localY;
           mResizeStartSize = static_cast<int32_t>(mRowH[id].first);
         }
-// Optional: capture mouse to receive events even outside widget
-// if (mParentWindow) mParentWindow->SetCapture(this);
         return true;
       }
     }
-// ---- End resizing on release ----
     if(!pressed && mResizing) {
       mResizing = false;
       mResizeTargetId = -1;
@@ -972,18 +997,26 @@ namespace aui {
         mParentWindow->Draw();
       return true;
     }
-// ---- Otherwise, handle scrollbars or cell selection (existing logic) ----
-// (Keep your original implementation here; only the above parts are new)
-// Forward to scrollbars...
+
+// ---- Scrollbar forwarding with correct absolute coordinates ----
+    auto [absX, absY] = GetAbsolutePosition();
+    int32_t mouseX = localX + absX;
+    int32_t mouseY = localY + absY;
+    D2("ATable::OnMouseClick: local=(%d,%d) abs=(%d,%d)", localX, localY, mouseX, mouseY);
     auto forwardToScrollbar = [&](AScrollBar *sb) -> bool {
-      if(!sb || !sb->IsVisible())
+      if(!sb || !sb->IsVisible()) {
+        D2("Scrollbar is null or invisible");
         return false;
+      }
       int32_t sbX = sb->X();
       int32_t sbY = sb->Y();
-      if(localX + mX >= sbX && localX + mX < sbX + static_cast<int32_t>(sb->SizeX()) && localY + mY >= sbY
-          && localY + mY < sbY + static_cast<int32_t>(sb->SizeY())) {
-        int32_t lx = localX + mX - sbX;
-        int32_t ly = localY + mY - sbY;
+      int32_t sbW = static_cast<int32_t>(sb->SizeX());
+      int32_t sbH = static_cast<int32_t>(sb->SizeY());
+      D2("Scrollbar: pos=(%d,%d) size=(%d,%d)", sbX, sbY, sbW, sbH);
+      if(mouseX >= sbX && mouseX < sbX + sbW && mouseY >= sbY && mouseY < sbY + sbH) {
+        D2("Hit scrollbar!");
+        int32_t lx = mouseX - sbX;
+        int32_t ly = mouseY - sbY;
         bool ret = sb->OnMouseClick(lx, ly, pressed);
         if(pressed && ret)
           mDragScrollbar = sb;
@@ -991,22 +1024,14 @@ namespace aui {
           mDragScrollbar = nullptr;
         return ret;
       }
+      D2("Missed scrollbar (mouse not inside)");
       return false;
     };
     if(forwardToScrollbar(mVScrollBar.get()))
       return true;
     if(forwardToScrollbar(mHScrollBar.get()))
       return true;
-    if(!pressed && mDragScrollbar) {
-      int32_t sbX = mDragScrollbar->X();
-      int32_t sbY = mDragScrollbar->Y();
-      int32_t lx = localX + mX - sbX;
-      int32_t ly = localY + mY - sbY;
-      mDragScrollbar->OnMouseClick(lx, ly, false);
-      mDragScrollbar = nullptr;
-      return true;
-    }
-// Cell selection (only on press)
+// ---- Cell selection (only on press) ----
     if(pressed) {
       std::pair<int64_t, int64_t> cell = ScreenToCell(localX, localY, 0, 0);
       if(cell.first != -1 && cell.second != -1) {
@@ -1016,12 +1041,16 @@ namespace aui {
           mCursorRow = cell.first;
           mCursorCol = cell.second;
         }
-        AWidget::OnMouseClick(localX, localY, pressed);
+// Use int64_t and %lld – NEVER use long or long long
+        D1("Cell selected: row=%lld col=%lld", static_cast<int64_t>(cell.first), static_cast<int64_t>(cell.second));
+        bool ret = AWidget::OnMouseClick(localX, localY, pressed);
         if(mParentWindow)
           mParentWindow->Draw();
-        return true;
+        return ret;
       }
     }
+// ---- Click inside table but not on a cell – still call base callback ----
+    D2("Click on table but not on a cell – forwarding to base callback");
     return AWidget::OnMouseClick(localX, localY, pressed);
   }
 

@@ -1,8 +1,4 @@
 #include "AUILib.h"
-#include "AWindow.h"
-#include "ALabel.h"
-#include "AScrollBar.h"
-#include "AButton.h"
 
 using namespace aui;
 

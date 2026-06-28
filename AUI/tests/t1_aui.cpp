@@ -268,6 +268,85 @@ int32_t test_draw_loop_guard(AUI *au) {
   return 0;
 }
 
+int32_t testNestedClick(AUI *au) {
+  AWindow* w = au->MainWnd();
+  TEST_ASSERT_NE(w, nullptr, 1);
+  w->EnableResize();
+  w->Resize(400, 200);
+  D1("test_nested_boxes start");
+  TEST_ASSERT_NE(w, nullptr, 1);
+  ABox* outer = ABox::AttachTo(w);
+  outer->Move(10, 10);
+  outer->Resize(300, 300);
+  outer->SetBGColor(0xFFFF0000);
+  ABox* middle = ABox::AttachTo(outer);
+  middle->Move(50, 50);
+  middle->Resize(200, 200);
+  middle->SetBGColor(0xFF00FF00);
+  ABox* inner = ABox::AttachTo(middle);
+  inner->Move(80, 80);
+  inner->Resize(100, 100);
+  inner->SetBGColor(0xFF0000FF);
+  bool innerFired = false;
+  bool middleFired = false;
+  bool outerFired = false;
+  outer->SetClickCallback([&](AWindow*, AWidget*, void*, int32_t, int32_t, bool pressed) noexcept {
+    D1("!!!")
+    if(pressed)
+      outerFired = true;
+    return true;
+  }, nullptr);
+  middle->SetClickCallback([&](AWindow*, AWidget*, void*, int32_t, int32_t, bool pressed) noexcept {
+    D1("!!!")
+    if(pressed)
+      middleFired = true;
+    return true;
+  }, nullptr);
+  inner->SetClickCallback([&](AWindow*, AWidget*, void*, int32_t, int32_t, bool pressed) noexcept {
+    D1("!!!")
+    if(pressed)
+      innerFired = true;
+    return true;
+  }, nullptr);
+// Click inside inner box: absolute coords = 10+50+80 = 140
+  w->OnMousePress(140, 140, 1);
+  w->OnMouseRelease(140, 140, 1);
+  TEST_ASSERT_EQ(innerFired, true, 2);
+  TEST_ASSERT_EQ(middleFired, false, 3);
+  TEST_ASSERT_EQ(outerFired, false, 4);
+  D1("test_nested_boxes passed");
+  return 0;
+}
+
+int32_t test_mouse_wheel_propagation(AUI *au) {
+  D1("test_mouse_wheel_propagation start");
+  AWindow* win = au->MainWnd();
+  win->EnableResize();
+  win->Resize(400, 300);
+  ABox* box = ABox::AttachTo(win);
+  box->Move(10, 10);
+  box->Resize(380, 280);
+  ATable* table = ATable::AttachTo(box);
+  table->Move(0, 0);
+  table->Resize(380, 280);
+  table->AddRows(50);
+  table->AddColumns(10);
+  table->SetScrollbarsEnabled(true);
+  table->UpdateLayout();// ensure scrollbars appear
+  int64_t initialV = table->GetVOffset();
+// Simulate mouse wheel over the table (coordinates relative to window)
+// The table is at (10,10) inside box at (10,10) -> absolute (20,20)
+  win->OnMouseMove(20, 20);// set cursor position (so wheel knows where)
+  win->OnMouseWheel(-3);// scroll down 3 steps
+  int64_t newV = table->GetVOffset();
+  TEST_ASSERT(newV > initialV, 2);
+// Scroll up
+  win->OnMouseWheel(1);
+  TEST_ASSERT(table->GetVOffset() < newV, 3);
+  D1("test_mouse_wheel_propagation passed");
+  return 0;
+}
+
 int main() {
   //UNUSED char *qqq = new char[1]; // generate error
   int32_t testsfailed = 0;
@@ -288,6 +367,9 @@ int main() {
   testsfailed += runTimedTest("test_draw_command_queue", test_draw_command_queue, 1);
   testsfailed += runTimedTest("test_window_operations", test_window_operations, 2);
   testsfailed += runTimedTest("test_draw_loop_guard", test_draw_loop_guard, 1);
+  testsfailed += runTimedTest("testNestedClick", testNestedClick, 1);
+  testsfailed += runTimedTest("test_mouse_wheel_propagation", test_mouse_wheel_propagation, 1);
+  
 
   testsfailed += runTimedTest("2test_aui_lifecycle", test_aui_lifecycle, 200);
   testsfailed += runTimedTest("2test_aui_lifecycle2", test_aui_lifecycle2, 200);
@@ -305,6 +387,8 @@ int main() {
   testsfailed += runTimedTest("2test_draw_command_queue", test_draw_command_queue, 200);
   testsfailed += runTimedTest("2test_window_operations", test_window_operations, 200);
   testsfailed += runTimedTest("test_draw_loop_guard", test_draw_loop_guard, 200);
+  testsfailed += runTimedTest("testNestedClick", testNestedClick, 200);
+  testsfailed += runTimedTest("test_mouse_wheel_propagation", test_mouse_wheel_propagation, 200);
 
   D("test suite complete")
 

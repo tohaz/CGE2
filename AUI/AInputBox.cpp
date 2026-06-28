@@ -217,7 +217,7 @@ namespace aui {
 
   void AInputBox::SetCursorPos(size_t pos) {
     if(!mEnabled) {
-      D1("widget is disabled")
+      D2("widget is disabled")
       return;// block programmatic changes too
     }
     mCursorPos = std::min(pos, mText.length());

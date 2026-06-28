@@ -77,25 +77,34 @@ namespace aui {
   }
 
   bool AWidget::DispatchClick(int32_t parentX, int32_t parentY, bool pressed) {
-    if(!mVisible || !mEnabled)
-      return false;
-    if(parentX >= mX && parentX < mX + (int32_t) mSizeX && parentY >= mY && parentY < mY + (int32_t) mSizeY) {
+      // Convert to local coordinates
       int32_t localX = parentX - mX;
       int32_t localY = parentY - mY;
-// Check children first
-      for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
-        if((*it)->DispatchClick(localX, localY, pressed))
-          return false;// ← child handled it, so this container does NOT claim it
+
+      // 1. Give children the first chance (topmost first)
+      // (Assuming mChildren is a container of unique_ptr<AWidget>)
+      for (auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+          AWidget* child = it->get();
+          if (!child->IsVisible()) continue;
+          // Forward using the same parent-relative coordinates that this widget received
+          // (the child will subtract its own offset)
+          if (child->DispatchClick(parentX, parentY, pressed))
+              return true;  // child consumed the event – stop
       }
-// No child handled – try this widget
-      return OnMouseClick(localX, localY, pressed);
-    }
-    return false;
+
+      // 2. No child consumed – does the click fall inside this widget?
+      if (localX >= 0 && localX < (int32_t)mSizeX &&
+          localY >= 0 && localY < (int32_t)mSizeY) {
+          // This widget is hit – call its OnMouseClick with local coordinates
+          return OnMouseClick(localX, localY, pressed);
+      }
+      return false;
   }
 
   void AWidget::SetClickCallback(ClickCallback callback, void *userData = nullptr) {
     mClickCallback = std::move(callback);
-    mCallbackUserData = userData;
+    mClickUserData = userData;
+    D1("AWidget::SetClickCallback: userData=%p", userData);
   }
 
   void AWidget::InvokeClickCallback(int32_t localX, int32_t localY, bool pressed) {
@@ -105,11 +114,30 @@ namespace aui {
   }
 
   bool AWidget::OnMouseClick(int32_t localX, int32_t localY, bool pressed) {
-    D2("AWidget::OnMouseClick default at ({},{}) pressed={}", localX, localY, pressed);
-    bool consumed = (mClickCallback != nullptr);
-    InvokeClickCallback(localX, localY, pressed);
-//mParentWindow->ForceDraw();
-    return consumed;
+    D1("OnMouseClick: this=%p, mClickUserData=%p", (void*)this, mClickUserData);
+// 1. First, check if any child wants the event (children are drawn on top)
+// Iterate in reverse order (topmost first)
+    for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+      AWidget* child = it->get();
+      if(!child->IsVisible())
+        continue;
+// Convert to child's local coordinates
+      int32_t childX = localX - child->mX;
+      int32_t childY = localY - child->mY;
+      if(child->OnMouseClick(childX, childY, pressed))
+        return true;// child consumed, stop
+    }
+// 2. No child consumed – does the click hit this widget?
+    if(localX >= 0 && localX < (int32_t) mSizeX && localY >= 0 && localY < (int32_t) mSizeY) {
+// Call the user callback (if any)
+      if(mClickCallback) {
+        mClickCallback(mParentWindow, this, mClickUserData, localX, localY, pressed);
+        return true;// we handled it
+      }
+      return false;// no callback but we might want to allow other logic
+    }
+
+    return false;// not inside
   }
 
   void AWidget::SetMouseMoveCallback(MouseMoveCallback callback, void *userData) {
@@ -122,7 +150,7 @@ namespace aui {
     if(mMoveCallback) {
       mMoveCallback(mParentWindow, this, mMoveUserData, localX, localY);
     }
-    else D("move callback is not set")
+    else D4("move callback is not set")
   }
 
   void AWidget::OnMouseMove(int32_t localX, int32_t localY) {
@@ -728,6 +756,45 @@ namespace aui {
 // In that case, mX/mY already represent the screen position.
   }
 
+  void AWidget::SetAngle(double degrees) {
+    mAngle = degrees * M_PI / 180.0;
+    if(mParentWindow) {
+      mParentWindow->Draw();
+    } else E()
+  }
+
+  bool AWidget::DispatchMouseWheel(int32_t parentX, int32_t parentY, int32_t delta) {
+// Convert to local coordinates (relative to this widget)
+    int32_t localX = parentX - mX;
+    int32_t localY = parentY - mY;
+// 1. Forward to children (topmost first)
+    for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+      AWidget* child = it->get();
+      if(!child->IsVisible())
+        continue;
+// Pass the original parent-relative coordinates – the child will subtract its own offset
+      if(child->DispatchMouseWheel(parentX, parentY, delta))
+        return true;// child consumed the event
+    }
+// 2. No child consumed – does the wheel fall inside this widget?
+    if(localX >= 0 && localX < static_cast<int32_t>(mSizeX) && localY >= 0 && localY < static_cast<int32_t>(mSizeY)) {
+      OnMouseWheel(delta);// this widget handles it
+      return true;
+    }
+    return false;// not inside and no child consumed
+  }
+
+  std::pair<int32_t, int32_t> AWidget::GetAbsolutePosition() const {
+    int32_t x = mX, y = mY;
+    const AWidget* parent = mParentWidget;
+    while(parent) {
+      x += parent->mX;
+      y += parent->mY;
+      parent = parent->mParentWidget;
+    }
+    return {x, y};
+  }
+
   void AWidget::RemoveWidget(AWidget *widget) {
     if(!widget)
       return;
@@ -743,11 +810,8 @@ namespace aui {
     } else E()
   }
 
-  void AWidget::SetAngle(double degrees) {
-    mAngle = degrees * M_PI / 180.0;
-    if(mParentWindow) {
-      mParentWindow->Draw();
-    } else E()
+  void AWidget::OnMouseWheel(int32_t) {
+    E("default is void")
   }
 
 }// namespace aui

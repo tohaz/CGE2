@@ -53,6 +53,7 @@ namespace aui {
       bool IsPaused() const {return mPaused;}
       virtual void Draw(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
           int32_t offsetY) const override;
+      std::atomic<bool> mProviderPending{false};
     private:
       double mMin, mMax;
       std::atomic<double> mProgress;

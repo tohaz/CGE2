@@ -46,7 +46,7 @@ namespace aui {
   static const wl_callback_listener frame_listener = { .done = frame_handle_done };
 
   static void xdg_toplevel_close(void *data, UNUSED xdg_toplevel *top) {
-    D1("xdg_toplevel_close called");
+    D3("xdg_toplevel_close called");
     auto *ctx = static_cast<WaylandWindowContext*>(data);
     if(ctx && ctx->Wnd()) {
       D2("Calling Close on window");
@@ -295,7 +295,7 @@ namespace aui {
   }
 
   void WaylandWindowContext::ProcessEvent(void*) {
-    D1("unmplemented")
+    E("unmplemented")
   }
 
   void WaylandWindowContext::CreateShmBuffer(uint32_t width, uint32_t height) {

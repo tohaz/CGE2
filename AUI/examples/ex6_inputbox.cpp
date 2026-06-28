@@ -1,9 +1,4 @@
-#include <chrono>
-#include <thread>
-#include <future>
 #include "AUILib.h"
-#include "AInputBox.h"
-#include "AButton.h"
 
 using namespace aui;
 

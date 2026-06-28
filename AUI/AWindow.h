@@ -51,6 +51,8 @@ namespace aui {
       void Resize(uint32_t w, uint32_t h);
       void SetTitle(const std::string &title);
       IWindowContext* GetBackend() const {return mBackend.get();}
+      int32_t m_lastMouseX = 0;
+      int32_t m_lastMouseY = 0;
 // Accessors for backend to query size/position
       uint32_t SizeX() const {if(mPendingWidth) {return mPendingWidth;}return mSizeX;}
       uint32_t SizeY() const {if(mPendingHeight) {return mPendingHeight;}return mSizeY;}
@@ -66,6 +68,8 @@ namespace aui {
       void OnMousePress(int32_t x, int32_t y, uint32_t button);
       void OnMouseMove(int32_t x, int32_t y);
       void OnMouseRelease(int32_t x, int32_t y, uint32_t button);
+      void OnMouseWheel(int32_t x, int32_t y, int32_t delta);
+      void OnMouseWheel(int32_t delta);
       AWidget* FindWidgetAt(int32_t x, int32_t y) const;
       void OnKeyEvent(const AUIKeyEvent& event);
       void ClearHover();
@@ -73,7 +77,6 @@ namespace aui {
         return mDragWidget;
       }
       void SetDragWidget(AWidget *widget);
-      void OnMouseWheel(int32_t delta);
       void ForceDraw();                    // draws immediately (for resize, input, etc.)
       bool HasDrawPending() const { return mDrawPending; }
       void SetFocus(AWidget* widget);

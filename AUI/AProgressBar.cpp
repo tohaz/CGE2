@@ -233,6 +233,7 @@ namespace aui {
   void AProgressBar::SetUpdateInterval(uint32_t intervalMs) {
     std::lock_guard<std::mutex> lock(mThreadMutex);
     mUpdateIntervalMs = intervalMs;
+    D2("SetUpdateInterval: interval=%u ms", intervalMs);
     mThreadCv.notify_all();
   }
 
@@ -240,8 +241,11 @@ namespace aui {
     {
       std::lock_guard<std::mutex> lock(mThreadMutex);
       mProgressProvider = provider;
+      mProviderPending = true;// signal that a new provider is available
+      D2("SetProgressProvider: provider set, pending flag true");
     }
     mThreadCv.notify_all();
+    D2("SetProgressProvider: notified condition variable");
   }
 
   void AProgressBar::PauseUpdates(bool pause) {
@@ -251,22 +255,42 @@ namespace aui {
   }
 
   void AProgressBar::ThreadFunction() {
-    while (true) {
+    D2("ThreadFunction: thread started");
+    while(true) {
       bool needRedraw = false;
       std::function<double()> provider;
       uint32_t interval;
       {
         std::unique_lock<std::mutex> lock(mThreadMutex);
         interval = mUpdateIntervalMs;
+        D2("ThreadFunction: waiting for condition (timeout=%u ms, stop=%d, pending=%d)", interval, mStopThread.load(),
+            mProviderPending.load());
+// Wake on stop OR new provider
         if(mThreadCv.wait_for(lock, std::chrono::milliseconds(interval), [this] {
-          return mStopThread.load();
-        })
-          )
-          break;
-        if(mStopThread.load() || mPaused.load())
+          return mStopThread.load() || mProviderPending.load();
+        }))
+        {
+          D1("ThreadFunction: condition met (stop=%d, pending=%d)", mStopThread.load(), mProviderPending.load());
+          if(mStopThread.load()) {
+            D2("ThreadFunction: stop requested, exiting");
+            break;
+          }
+// New provider pending – clear the flag
+          mProviderPending = false;
+          D2("ThreadFunction: cleared provider pending flag");
+        }
+        else {
+          D2("ThreadFunction: timeout, no pending provider or stop");
+        }
+        if(mStopThread.load() || mPaused.load()) {
+          D2("ThreadFunction: paused or stopped, continuing loop");
           continue;
+        }
+// Copy the provider (if any) while holding the lock
         provider = mProgressProvider;
+        D2("ThreadFunction: provider %s", provider ? "valid" : "null");
       }
+// ---- Indeterminate mode ----
       if(mIndeterminate.load()) {
         double phase = mIndeterminatePhase.load();
         phase += mIndeterminateSpeed;
@@ -277,13 +301,17 @@ namespace aui {
           mStripeOffset = mStripeOffset.load() + mStripeSpeed;
         }
         needRedraw = true;
+        D2("ThreadFunction: indeterminate phase=%.2f", phase);
       }
+// ---- Normal mode with provider ----
       else if(provider) {
         double raw;
         try {
           raw = provider();
+          D2("ThreadFunction: provider returned raw=%.3f", raw);
         } catch (...) {
           raw = mMin;
+          D2("ThreadFunction: provider threw exception, using min");
         }
         if(raw < mMin)
           raw = mMin;
@@ -297,15 +325,26 @@ namespace aui {
           UpdateTextCache();
           FireCallbacks(old, norm);
           needRedraw = true;
+          D1("ThreadFunction: progress updated from %.3f to %.3f", old, norm);
+        }
+        else {
+          D2("ThreadFunction: progress unchanged (%.3f)", norm);
         }
         if(mStripe) {
           mStripeOffset = mStripeOffset.load() + mStripeSpeed;
           needRedraw = true;
         }
       }
-      if(needRedraw && mParentWindow)
+      else {
+        D2("ThreadFunction: no provider and not indeterminate, skipping update");
+      }
+// ---- Trigger redraw ----
+      if(needRedraw && mParentWindow) {
+        D2("ThreadFunction: requesting redraw");
         mParentWindow->Draw();
+      }
     }
+    D2("ThreadFunction: thread exiting");
   }
 
   void AProgressBar::GetFillRect(int32_t clientX, int32_t clientY, int32_t clientW, int32_t clientH, double progress,

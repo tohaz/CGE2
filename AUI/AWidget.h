@@ -83,9 +83,9 @@ namespace aui {
       bool mIsPressed = false;
       AWidget(const AWidget&) = delete;
       AWidget& operator=(const AWidget&) = delete;
-      ClickCallback mClickCallback;
-      MouseMoveCallback mMoveCallback;
-      ScrollCallback mScrollCallback;
+      ClickCallback mClickCallback = nullptr;
+      MouseMoveCallback mMoveCallback = nullptr;
+      ScrollCallback mScrollCallback = nullptr;
       void *mCallbackUserData = nullptr;
       void *mClickUserData = nullptr;
       void *mMoveUserData = nullptr;
@@ -153,7 +153,7 @@ namespace aui {
       virtual void Draw(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
           int32_t offsetY) const;
       virtual bool OnMouseClick(int32_t localX, int32_t localY, bool pressed);
-      virtual void OnMouseMove(int32_t localX, int32_t localY);virtual void OnMouseWheel(UNUSED int32_t delta) {}
+      virtual void OnMouseMove(int32_t localX, int32_t localY);
       virtual void OnFocusGained() {
       }
       virtual void OnFocusLost() {
@@ -272,12 +272,16 @@ namespace aui {
       bool ForwardClickToChildren(int32_t localX, int32_t localY, bool pressed);
 // Forward a mouse move to the child under the cursor (updates hover state)
       void ForwardMoveToChildren(int32_t localX, int32_t localY);
-// Forward a mouse wheel event to the child under the last known mouse position
       void ForwardWheelToChildren(int32_t delta);
       void BringChildToFront(AWidget *child);
       void RemoveWidget(AWidget *widget);
       void SetAngle(double degrees);
       double GetAngle() const { return mAngle * 180.0 / M_PI; }
+      virtual bool DispatchMouseWheel(int32_t parentX, int32_t parentY, int32_t delta);
+      virtual void OnMouseWheel(int32_t delta); // existing, but note we pass coordinates to Dispatch
+      std::pair<int32_t, int32_t> GetAbsolutePosition() const;
+      void *ClickUserData() {return mClickUserData;}
+
   };
 
 }

@@ -75,7 +75,7 @@ namespace aui {
   }
 
   void ABox::OnMouseMove(int32_t localX, int32_t localY) {
-    D()
+    D2()
     AWidget::OnMouseMove(localX, localY);
     ForwardMoveToChildren(localX, localY);
   }

@@ -6,11 +6,19 @@
 
 # --- Universal Makefile for Examples/Tests (Sub-directory) ---
 # This Makefile compiles all .cpp files in the directory into a single binary.
-AUI_ROOT   := ../../AUI
+AUI_ROOT    := ../../AUI
 BUILD_MODE ?= debug
 TARGET_NAME := cg0
 FREETYPE_OBJ := $(AUI_ROOT)/Custom/obj/freetype_amalgamation.o
 
+
+# If building a release mode, force instrumentation off entirely.
+# Otherwise, default to 1 (instrumentation ON) for debug configurations.
+ifneq ($(filter release srelease,$(BUILD_MODE)),)
+  override UNIT_TEST :=
+else
+  UNIT_TEST ?= 1
+endif
 
 # Detect number of CPU cores for parallel build
 NPROCS := 1
@@ -70,6 +78,9 @@ else
   LDFLAGS  := -L$(AUI_LIB_DIR)
 endif
 
+# Add instrumentation flag if UNIT_TEST evaluates to 1 at runtime
+CXXFLAGS += $(if $(filter 1,$(UNIT_TEST)),-DAUI_UNIT_TEST)
+
 # Include paths: AUI root AND FreeType headers (required by AUILib.h)
 CPPFLAGS := -I$(AUI_ROOT) -I$(AUI_ROOT)/freetype2/include
 
@@ -110,7 +121,7 @@ endif
 # Recursive call to the root Makefile to ensure libAUI.a is up to date.
 build_aui_lib:
 	@echo "--- Ensuring AUI Library [Mode: $(BUILD_MODE)] ---"
-	+@$(MAKE) -C $(AUI_ROOT) BUILD_MODE=$(BUILD_MODE) all
+	+@$(MAKE) -C $(AUI_ROOT) BUILD_MODE=$(BUILD_MODE) UNIT_TEST=$(UNIT_TEST) all
 
 # Compilation rule: Compile each .cpp into an .o file
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR) $(DEP_DIR)

@@ -4,6 +4,8 @@ namespace aui {
 
   ALabel::ALabel() {
     D2("ALabel constructed");
+    mBGColor = AUI_DEFAULT_LABEL_BG;
+    D4("bgcolor {}", mBGColor);
     mSizeX = 100;
     mSizeY = 28;
     mWidgetType = AUIWidgetType::defaultLabel;
@@ -15,7 +17,7 @@ namespace aui {
     D2("Attaching ALabel to window");
     if(!parent)
       E("ALabel::AttachTo: parent window is null");
-    ALabel *label = new ALabel();
+    ALabel* label = new ALabel();
     parent->AddWidget(std::unique_ptr<AWidget>(label));
     return label;
   }
@@ -24,13 +26,13 @@ namespace aui {
     D2("Attaching ALabel to widget");
     if(!parent)
       E("ALabel::AttachTo: parent widget is null");
-    ALabel *label = new ALabel();
+    ALabel* label = new ALabel();
     parent->AddWidget(std::unique_ptr<AWidget>(label));
     return label;
   }
 
   ALabel* ALabel::AttachTo(AWindow *parent, const std::string &text, int32_t x, int32_t y, uint32_t w, uint32_t h) {
-    ALabel *label = AttachTo(parent);
+    ALabel* label = AttachTo(parent);
     label->SetText(text);
     label->Move(x, y);
     label->Resize(w, h);
@@ -38,7 +40,7 @@ namespace aui {
   }
 
   ALabel* ALabel::AttachTo(AWidget *parent, const std::string &text, int32_t x, int32_t y, uint32_t w, uint32_t h) {
-    ALabel *label = AttachTo(parent);
+    ALabel* label = AttachTo(parent);
     label->SetText(text);
     label->Move(x, y);
     label->Resize(w, h);
@@ -46,13 +48,13 @@ namespace aui {
   }
 
   ALabel* ALabel::AttachTo(AWindow *parent, const std::string &text) {
-    ALabel *label = AttachTo(parent);
+    ALabel* label = AttachTo(parent);
     label->SetText(text);
     return label;
   }
 
   ALabel* ALabel::AttachTo(AWidget *parent, const std::string &text) {
-    ALabel *label = AttachTo(parent);
+    ALabel* label = AttachTo(parent);
     label->SetText(text);
     return label;
   }
@@ -69,7 +71,7 @@ namespace aui {
   void ALabel::Draw(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
       int32_t offsetY) const {
     int32_t absX = offsetX + mX;
-        int32_t absY = offsetY + mY;
+    int32_t absY = offsetY + mY;
 // 1. Strict Guard Clause against out-of-bounds or negative rendering areas
     if(absX < 0 || absY < 0 || static_cast<uint32_t>(absX) >= parentWidth
         || static_cast<uint32_t>(absY) >= parentHeight) {
@@ -94,10 +96,12 @@ namespace aui {
       }
       DrawBorder(buffer, parentWidth, parentHeight, offsetX, offsetY);
       if(!mText.empty()) {
-        AUI *engine = static_cast<AUI*>(mEnginePtr);
+        AUI* engine = static_cast<AUI*>(mEnginePtr);
         if(engine) {
           std::unique_lock lock(mEnginePtr->GetFontMutex(), std::chrono::milliseconds(50));
-          if (!lock.owns_lock()) { E("locked"); }
+          if(!lock.owns_lock()) {
+            E("locked");
+          }
 
           FT_Face face = engine->GetDefaultFontFace();
           if(face) {
@@ -151,10 +155,12 @@ namespace aui {
       }
     }
     if(!mText.empty()) {
-      AUI *engine = static_cast<AUI*>(mEnginePtr);
+      AUI* engine = static_cast<AUI*>(mEnginePtr);
       if(engine) {
         std::unique_lock lock(mEnginePtr->GetFontMutex(), std::chrono::milliseconds(50));
-        if (!lock.owns_lock()) { E("locked"); }
+        if(!lock.owns_lock()) {
+          E("locked");
+        }
         FT_Face face = engine->GetDefaultFontFace();
         if(face) {
           ARect textBounds { absX + 4, absY + 2, mSizeX - 8, mSizeY - 4 };

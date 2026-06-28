@@ -1,6 +1,4 @@
 #include "AUILib.h"
-#include "AWindow.h"
-#include "ABox.h"
 
 using namespace aui;
 

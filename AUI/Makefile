@@ -1,6 +1,13 @@
 # --- AUI Library Makefile (Root) ---
 SRC_DIR := .
 BUILD_MODE ?= debug
+
+ifneq ($(filter release srelease,$(BUILD_MODE)),)
+  override UNIT_TEST :=
+else
+  UNIT_TEST ?= 1
+endif
+
 UNIT_TEST ?=          # empty by default; set to 1 for instrumentation
 
 # Detect number of CPU cores
@@ -77,7 +84,7 @@ endif
 
 # Add instrumentation flag if UNIT_TEST is set to 1
 ifeq ($(UNIT_TEST),1)
-  CXXFLAGS += -DAUI_UNIT_TEST
+	CXXFLAGS += $(if $(filter 1,$(UNIT_TEST)),-DAUI_UNIT_TEST)
 endif
 
 CXXFLAGS += -I$(SRC_DIR)/freetype2/include -I$(SRC_DIR)/freetype2/include/freetype/config
@@ -88,7 +95,8 @@ OBJ_FILES  := $(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/%.o, $(SRC_FILES))
 OBJ_FILES  += $(GEN_OBJS)
 
 # Font embedding
-FONT_FILE := $(SRC_DIR)/fonts/DejaVuSans-Bold.ttf 
+#FONT_FILE := $(SRC_DIR)/fonts/DejaVuSans-Bold.ttf 
+FONT_FILE := $(SRC_DIR)/fonts/Raleway-VariableFont_wght.ttf
 FONT_OBJ  := $(OBJ_DIR)/font_data.o
 
 ifneq ($(wildcard $(FONT_FILE)),)

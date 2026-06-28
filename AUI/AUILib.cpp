@@ -8,10 +8,16 @@ extern "C" {
     return 0;
   }
 }
-extern "C" const uint8_t _binary_fonts_DejaVuSans_Bold_ttf_start[];
-extern "C" const uint8_t _binary_fonts_DejaVuSans_Bold_ttf_end[];
-size_t g_embedded_font_size = (size_t) _binary_fonts_DejaVuSans_Bold_ttf_end
-    - (size_t) _binary_fonts_DejaVuSans_Bold_ttf_start;
+//extern "C" const uint8_t _binary_fonts_DejaVuSans_Bold_ttf_start[];
+//extern "C" const uint8_t _binary_fonts_DejaVuSans_Bold_ttf_end[];
+//size_t g_embedded_font_size = (size_t) _binary_fonts_DejaVuSans_Bold_ttf_end
+//    - (size_t) _binary_fonts_DejaVuSans_Bold_ttf_start;
+
+//Raleway-VariableFont_wght.ttf
+extern "C" const uint8_t _binary_fonts_Raleway_VariableFont_wght_ttf_start[];
+extern "C" const uint8_t _binary_fonts_Raleway_VariableFont_wght_ttf_end[];
+size_t g_embedded_font_size = (size_t) _binary_fonts_Raleway_VariableFont_wght_ttf_end
+    - (size_t) _binary_fonts_Raleway_VariableFont_wght_ttf_start;
 
 //UNUSED static void xcb_connection_error_handler(const char *msg, UNUSED xcb_connection_t *conn) {
 //    E("XCB CONNECTION ERROR: %s", msg ? msg : "(null)");
@@ -362,10 +368,30 @@ namespace aui {
     }
     if(err != 0) {
       if(g_embedded_font_size > 0) {
-        err = FT_New_Memory_Face(au->mFtLibrary, _binary_fonts_DejaVuSans_Bold_ttf_start,
+//        err = FT_New_Memory_Face(au->mFtLibrary, _binary_fonts_DejaVuSans_Bold_ttf_start,
+//            (int64_t) g_embedded_font_size, 0, &au->mFtDefaultFace);
+//Raleway_VariableFont_wght_ttf
+        err = FT_New_Memory_Face(au->mFtLibrary, _binary_fonts_Raleway_VariableFont_wght_ttf_start,
             (int64_t) g_embedded_font_size, 0, &au->mFtDefaultFace);
-        if(err == 0)
+        if(err == 0) {
           D1("Loaded embedded fallback font");
+// Adjust variable font weight on initialization
+          FT_MM_Var* mmVar = nullptr;
+          if(FT_Get_MM_Var(au->mFtDefaultFace, &mmVar) == 0) {
+            std::vector<FT_Fixed> coords(mmVar->num_axis);
+            for(FT_UInt i = 0; i < mmVar->num_axis; ++i) {
+              coords[i] = mmVar->axis[i].def;
+// 0x77676874U is the hardcoded Big-Endian calculation of 'w','g','h','t'
+// This completely avoids using FT_MAKE_TAG which uses the banned 'unsigned' keyword
+              if(mmVar->axis[i].tag == 0x77676874U) {
+// Adjusting to bold (700). 16.16 fixed point formatting
+                coords[i] = 700 * 65536;
+              }
+            }
+            FT_Set_Var_Design_Coordinates(au->mFtDefaultFace, static_cast<FT_UInt>(coords.size()), coords.data());
+            FT_Done_MM_Var(au->mFtLibrary, mmVar);
+          }
+        }
       }
     }
     if(err != 0) {
@@ -426,10 +452,7 @@ namespace aui {
       au->mWindowType = AUIWindowType::XCB;
     }
     au->mMainWnd = AWindow::AttachTo(au, windowTitle);
-    if(!au->mMainWnd) {
-      delete au;
-      return nullptr;
-    }
+    if(!au->mMainWnd) E("main window creation error")
     au->Draw();
     return au;
   }
@@ -787,7 +810,7 @@ namespace aui {
           size_t current_allocated_bytes = ctx->GetSoftwareBufferPtr()->size() * sizeof(uint32_t);
           size_t incoming_command_bytes = static_cast<size_t>(xcb.width) * xcb.height * 4;
           if(current_allocated_bytes < incoming_command_bytes) {
-            D("Safety Bypass: Command demands {} bytes, but active window frame only contains {} bytes. Dropping stale frame command.",
+            D2("Safety Bypass: Command demands {} bytes, but active window frame only contains {} bytes. Dropping stale frame command.",
                 incoming_command_bytes, current_allocated_bytes);
             if (awin && ctx && ctx->IsMapped()) {
                 awin->Draw();
@@ -804,7 +827,7 @@ namespace aui {
         if(geom) {
           D3("Window geometry: depth={}, width={}, height={}", geom->depth, geom->width, geom->height);
           if(geom->width != xcb.width || geom->height != xcb.height) {
-            D1("Window geometry (%dx%d) differs from command (%dx%d)", geom->width, geom->height, xcb.width, xcb.height);
+            D2("Window geometry (%dx%d) differs from command (%dx%d)", geom->width, geom->height, xcb.width, xcb.height);
             free(geom);
             // do not do any of this!!!
 //            if(awin && !mShouldExit) { //

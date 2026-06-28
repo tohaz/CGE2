@@ -400,6 +400,99 @@ int32_t test_table_render_performance(AUI* au) {
   return 0;
 }
 
+int32_t test_table_scrollbar_click(AUI *au) {
+  D1("test_table_scrollbar_click start");
+  AWindow* win = au->MainWnd();
+  win->EnableResize();
+  win->Resize(500, 400);
+  ABox* box = ABox::AttachTo(win);
+  box->Move(20, 20);
+  box->Resize(460, 360);
+  ATable* table = ATable::AttachTo(box);
+  table->Move(0, 0);
+  table->Resize(460, 360);
+  table->SetHeaderHeight(24);// <-- set known header height
+  table->AddRows(100);
+  table->AddColumns(5);
+  table->SetScrollbarsEnabled(true);
+  table->UpdateLayout();
+// Force a draw to populate scrollbar positions
+  win->Draw();
+  AScrollBar* vbar = table->GetVScrollBar();
+  TEST_ASSERT(vbar != nullptr && vbar->IsVisible(), 2);
+// Get actual scrollbar position (set during Draw)
+  int32_t sbX = vbar->X();
+  int32_t sbY = vbar->Y();
+  int32_t sbW = (int32_t) vbar->SizeX();
+  int32_t sbH = (int32_t) vbar->SizeY();
+  D1("Scrollbar: pos=(%d,%d) size=(%d,%d)", sbX, sbY, sbW, sbH);
+// Click near the bottom arrow (assume arrow size = 18)
+  int32_t arrowSize = 18;
+  int32_t clickX = sbX + sbW / 2;
+  int32_t clickY = sbY + sbH - arrowSize / 2;// inside the arrow area
+  D1("Clicking at abs (%d,%d)", clickX, clickY);
+  int64_t initialValue = vbar->GetValue();
+// Simulate click (press and release)
+  win->OnMousePress(clickX, clickY, 1);
+  win->OnMouseRelease(clickX, clickY, 1);
+  int64_t newValue = vbar->GetValue();
+  D1("initial=%lld new=%lld", (long long)initialValue, (long long)newValue);
+  TEST_ASSERT(newValue > initialValue, 3);
+  D1("test_table_scrollbar_click passed");
+  return 0;
+}
+
+int32_t test_callback_user_data(AUI *au) {
+  D1("test_callback_user_data start");
+  AWindow* win = au->MainWnd();
+  ATable* table = ATable::AttachTo(win);
+  table->Resize(200, 200);
+  table->AddRows(5);
+  table->AddColumns(5);
+  int32_t testValue = 42;
+  bool callbackCalled = false;
+  table->SetClickCallback([&](AWindow*, AWidget*, void *userData, int32_t, int32_t, bool pressed) {
+    if(!pressed)
+      return;
+    int* val = static_cast<int*>(userData);
+    if(val && *val == 42) {
+      callbackCalled = true;
+    }
+  }, &testValue);
+// Click on a cell (local coordinates: row header 40, col header 24, cell (1,1) at x=40+80+40, y=24+24+12)
+  int32_t clickX = 40 + 80 + 40;// header width + column0 width + half of column1
+  int32_t clickY = 24 + 24 + 12;
+  table->OnMouseClick(clickX, clickY, true);
+  table->OnMouseClick(clickX, clickY, false);
+  TEST_ASSERT(callbackCalled, 2);
+  D1("test_callback_user_data passed");
+  return 0;
+}
+
+int32_t test_click_header_fires_callback(AUI *au) {
+  D1("test_click_header_fires_callback start");
+  AWindow* win = au->MainWnd();
+  ATable* table = ATable::AttachTo(win);
+  table->Resize(300, 200);
+  table->AddRows(3);
+  table->AddColumns(3);
+  table->SetHeaderWidth(50);
+  table->SetHeaderHeight(30);
+  bool callbackFired = false;
+  table->SetClickCallback([&](AWindow*, AWidget*, void*, int32_t, int32_t, bool pressed) {
+    if(pressed)
+      callbackFired = true;
+  }, nullptr);
+// Click on the column header (x = headerWidth + some column, y < headerHeight)
+  int32_t clickX = 50 + 20;// inside first column header
+  int32_t clickY = 10;// inside header area
+  table->OnMouseClick(clickX, clickY, true);
+  table->OnMouseClick(clickX, clickY, false);
+  TEST_ASSERT(callbackFired, 2);
+  D1("test_click_header_fires_callback passed");
+  return 0;
+}
+
 // ------------------------------------------------------------------
 // main
 // ------------------------------------------------------------------
@@ -423,6 +516,9 @@ int main() {
   testsfailed += runTimedTest("test_table_resize_no_separator_on_last", test_table_resize_no_separator_on_last, 1);
   testsfailed += runTimedTest("test_table_resize_click_outside_header", test_table_resize_click_outside_header, 100);
   testsfailed += runTimedTest("test_table_render_performance", test_table_render_performance, 1);
+  testsfailed += runTimedTest("test_table_scrollbar_click", test_table_scrollbar_click, 1);
+  testsfailed += runTimedTest("test_callback_user_data", test_callback_user_data, 1);
+  testsfailed += runTimedTest("test_click_header_fires_callback", test_click_header_fires_callback, 1);
 
   testsfailed += runTimedTest("test_table_attachment", test_table_attachment, 200);
   testsfailed += runTimedTest("test_table_add_rows_columns", test_table_add_rows_columns, 200);
@@ -441,6 +537,9 @@ int main() {
   testsfailed += runTimedTest("test_table_resize_no_separator_on_last", test_table_resize_no_separator_on_last, 200);
   testsfailed += runTimedTest("test_table_resize_click_outside_header", test_table_resize_click_outside_header, 200);
   testsfailed += runTimedTest("test_table_render_performance", test_table_render_performance, 1);
+  testsfailed += runTimedTest("test_table_scrollbar_click", test_table_scrollbar_click, 200);
+  testsfailed += runTimedTest("test_callback_user_data", test_callback_user_data, 200);
+  testsfailed += runTimedTest("test_click_header_fires_callback", test_click_header_fires_callback, 200);
   
   
   D("test suite complete");

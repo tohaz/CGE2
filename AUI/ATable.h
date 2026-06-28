@@ -152,6 +152,10 @@ namespace aui {
       void SetHeaderHeight(uint32_t h) {
         mColumnHeaderHeight = h;
       }
+      uint32_t HeaderHeight() {
+        return mColumnHeaderHeight;
+      }
+
       void SetHeaderWidth(uint32_t w) {
         mRowHeaderWidth = w;
       }

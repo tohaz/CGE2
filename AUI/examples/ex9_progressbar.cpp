@@ -1,7 +1,4 @@
 #include "AUILib.h"
-#include <atomic>
-#include <thread>
-#include <chrono>
 
 using namespace aui;
 
