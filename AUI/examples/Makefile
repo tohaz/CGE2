@@ -75,7 +75,7 @@ ifdef UNIT_TEST
   CPPFLAGS += -DAUI_UNIT_TEST
 endif
 
-LIBS     := -lAUI -lX11 -lX11-xcb -lxcb -lxcb-cursor -lxcb-image -lXrender -lwayland-client -lxkbcommon -lxcb-keysyms -lxkbcommon-x11 -lwayland-cursor -lxcb-cursor -lpng -lz
+LIBS     := -lAUI -lX11 -lX11-xcb -lxcb -lxcb-cursor -lxcb-image -lXrender -lwayland-client -lxkbcommon -lxcb-keysyms -lxkbcommon-x11 -lwayland-cursor -lxcb-cursor -lxcb-sync -lpng -lz
 
 # Source and Target discovery
 # Every .cpp file becomes a separate executable in $(BUILD_DIR)

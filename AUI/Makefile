@@ -62,7 +62,7 @@ GEN_HDRS          := $(OBJ_DIR)/xdg-shell-client-protocol.h \
 GEN_OBJS          := $(patsubst $(OBJ_DIR)/%.c, $(OBJ_DIR)/%.o, $(GEN_SRCS))
 
 # Strict compiler flags
-BASE_FLAGS := -fmax-errors=25 -std=c++26 -pedantic -pedantic-errors -Wall -Wextra -Werror \
+BASE_FLAGS := -fmax-errors=99 -std=c++26 -pedantic -pedantic-errors -Wall -Wextra -Werror \
               -Wcast-align -Wdisabled-optimization -Wlogical-op \
               -Wmissing-declarations -Wmissing-include-dirs -Wnoexcept \
               -Woverloaded-virtual -Wredundant-decls -Wshadow -Wsign-promo \
@@ -98,12 +98,26 @@ OBJ_FILES  += $(GEN_OBJS)
 #FONT_FILE := $(SRC_DIR)/fonts/DejaVuSans-Bold.ttf 
 FONT_FILE := $(SRC_DIR)/fonts/Raleway-VariableFont_wght.ttf
 FONT_OBJ  := $(OBJ_DIR)/font_data.o
-
+CURSOR_FILE := $(SRC_DIR)/fonts/mousepointer1.png
+CURSOR_FILEV := $(SRC_DIR)/fonts/mousepointerV.png
+CURSOR_FILEH := $(SRC_DIR)/fonts/mousepointerH.png
+CURSOR_OBJ  := $(OBJ_DIR)/cursor1_data.o
+CURSORH_OBJ  := $(OBJ_DIR)/cursorH_data.o
+CURSORV_OBJ  := $(OBJ_DIR)/cursorV_data.o
 ifneq ($(wildcard $(FONT_FILE)),)
   OBJ_FILES += $(FONT_OBJ)
   CXXFLAGS += -DAUI_EMBEDDED_FONT
 else
   $(warning Font file $(FONT_FILE) not found – using system font fallback)
+endif
+
+ifneq ($(wildcard $(CURSOR_FILE) $(CURSOR_FILEH) $(CURSOR_FILEV)),)
+  OBJ_FILES += $(CURSOR_OBJ)
+  OBJ_FILES += $(CURSORH_OBJ)
+  OBJ_FILES += $(CURSORV_OBJ)
+  CXXFLAGS += -DAUI_EMBEDDED_CURSOR
+else
+  $(warning Cursor file $(CURSOR_FILE) not found)
 endif
 
 LIB_NAME   := libAUI.a
@@ -130,6 +144,18 @@ build_aui: $(STATIC_LIB)
 # Font object – depends on headers if it includes anything (safe to add)
 $(FONT_OBJ): $(FONT_FILE) $(GEN_HDRS) | $(OBJ_DIR)
 	@echo "Converting font to object: $<"
+	objcopy -I binary -O elf64-x86-64 -B i386:x86-64 $< $@
+	
+$(CURSOR_OBJ): $(CURSOR_FILE) $(GEN_HDRS) | $(OBJ_DIR)
+	@echo "Converting cursor to object: $<"
+	objcopy -I binary -O elf64-x86-64 -B i386:x86-64 $< $@
+	
+$(CURSORH_OBJ): $(CURSOR_FILEH) $(GEN_HDRS) | $(OBJ_DIR)
+	@echo "Converting cursor H to object: $<"
+	objcopy -I binary -O elf64-x86-64 -B i386:x86-64 $< $@
+
+$(CURSORV_OBJ): $(CURSOR_FILEV) $(GEN_HDRS) | $(OBJ_DIR)
+	@echo "Converting cursor V to object: $<"
 	objcopy -I binary -O elf64-x86-64 -B i386:x86-64 $< $@
 
 $(STATIC_LIB): $(OBJ_FILES)

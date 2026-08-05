@@ -3,132 +3,115 @@
 namespace aui {
 
   AButton::AButton() {
-    D3("AButton constructed");
-    mSizeX = 80;
-    mSizeY = 28;
-    mBGColor = 0xFFCCCCCC;
+    D2("AButton constructing");
+    mSizeX = AUI_DEFAULT_BUTTON_SZX;
+    mSizeY = AUI_DEFAULT_BUTTON_SZY;
+    mX = AUI_DEFAULT_BUTTON_X;
+    mY = AUI_DEFAULT_BUTTON_Y;
+    mBGColor = AUI_DEFAULT_BUTTON_BG;
     mTextColor = 0xFF000000;
-    mText = "Button";
+    mText = "some button";
     mHAlign = AUIHAlign::center;
     mVAlign = AUIVAlign::center;
     mFontSize = 14;
-    mBorderThick = 2;
-    mBorderColor = 0xFF888888;
-    mWidgetType = AUIWidgetType::defaultButton;
+    mBorderThick = AUI_DEFAULT_BUTTON_BORDERW;
+    mBorderColor = 0xFF333333;
+    mType = AUIWidgetType::defaultButton;
+    DefaultFillBG(false);
+    DefaultDrawBorder(false);
+    HLToggle(true);
+    BGColor2(DarkenColor(BGColor()));
+    D1("bgcolor {:x} bgcolor2 {:x}", BGColor(),BGColor2())
   }
 
-  AButton* AButton::AttachTo(AWindow *parent) {
-    D3("Attaching AButton to window");
-    if(!parent)
-      E("AButton::AttachTo: parent window is null");
-    AButton *btn = new AButton();
-    parent->AddWidget(std::unique_ptr<AWidget>(btn));
-    return btn;
+  AButton::AButton(std::string text) :
+      AButton() {
+    mText = text;
   }
 
-  AButton* AButton::AttachTo(AWidget *parent) {
-    D1("Attaching AButton to widget");
-    if(!parent)
-      E("AButton::AttachTo: parent widget is null");
-    AButton *btn = new AButton();
-    parent->AddWidget(std::unique_ptr<AWidget>(btn));
-    return btn;
-  }
-
-// ------------------------------------------------------------------
-// Factory methods with text
-// ------------------------------------------------------------------
-  AButton* AButton::AttachTo(AWindow *parent, const std::string &text) {
-    AButton *btn = AttachTo(parent);
-    btn->SetText(text);
-    return btn;
-  }
-
-  AButton* AButton::AttachTo(AWidget *parent, const std::string &text) {
-    AButton *btn = AttachTo(parent);
-    btn->SetText(text);
-    return btn;
-  }
-
-  bool AButton::OnMouseClick(int32_t localX, int32_t localY, bool pressed) {
-    D2("AButton click at ({},{}) pressed={}", localX, localY, pressed);
-    if(pressed) {
-      mPressed = true;
-      if(mParentWindow)
-        mParentWindow->Draw();
-// Call base to invoke callback (if any)
-      return AWidget::OnMouseClick(localX, localY, pressed);
-    }
-    else {
-      mPressed = false;
-      if(mParentWindow)
-        mParentWindow->Draw();
-      return false;
-    }
-  }
-
-  void AButton::OnMouseMove(int32_t localX, int32_t localY) {
-    bool inside = (localX >= 0 && localX < static_cast<int32_t>(mSizeX) && localY >= 0
-        && localY < static_cast<int32_t>(mSizeY));
-    if(mHoverEnabled && inside != mHovered) {
-      mHovered = inside;
-      if(mParentWindow)
-        mParentWindow->Draw();
-    }
-  }
-
-  void AButton::Draw(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
-      int32_t offsetY) const {
-// Determine background color
-    uint32_t bgColor = mBGColor;
-    if(mPressed && mClickHighlightEnabled) {
-      bgColor = ShiftColor(mBGColor, true);// double shift for click
-    }
-    else if(mHovered && mHoverEnabled) {
-      bgColor = ShiftColor(mBGColor, false);// single shift for hover
-    }
-// Clipping and background drawing
+  void AButton::OnDraw(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
+      int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB) const {
+    D2("bufferW %u bufferH %u offsetX %d offsetY %d clip=(%d,%d)-(%d,%d)", bufferW, bufferH, offsetX, offsetY, clipL,
+        clipT, clipR, clipB);
+    AUI* au = Wnd()->EnginePtr();
+    if(!au)
+      return;
+// Absolute position of the button
     int32_t absX = offsetX + mX;
     int32_t absY = offsetY + mY;
-    int32_t drawW = static_cast<int32_t>(mSizeX);
-    int32_t drawH = static_cast<int32_t>(mSizeY);
-    int32_t pW = static_cast<int32_t>(parentWidth);
-    int32_t pH = static_cast<int32_t>(parentHeight);
-    if(absX < 0) {
-      drawW += absX;
-      absX = 0;
-    }
-    if(absY < 0) {
-      drawH += absY;
-      absY = 0;
-    }
-    if(absX + drawW > pW)
-      drawW = pW - absX;
-    if(absY + drawH > pH)
-      drawH = pH - absY;
-    if(drawW > 0 && drawH > 0) {
-      uint32_t bg = bgColor & 0x00FFFFFFU;
-      size_t totalPixels = static_cast<size_t>(pW) * static_cast<size_t>(pH);
-      for(int32_t row = 0; row < drawH; ++row) {
-        size_t lineStart = static_cast<size_t>(absY + row) * (size_t) pW + static_cast<size_t>(absX);
-        for(int32_t col = 0; col < drawW; ++col) {
-          size_t idx = lineStart + static_cast<size_t>(col);
-          if(idx < totalPixels)
-            buffer[idx] = bg;
-        }
+// ---------------------------
+// 1. Draw background
+// ---------------------------
+    uint32_t bgColor = HL() ? HLColor(BGColor()) : BGColor();
+    D4("HL {}", HL())
+    bgColor = mPressed ? BGColor2() : bgColor;
+    double angleAbsDeg = AngleAbs();
+    double angleRad = angleAbsDeg * M_PI / 180.0;
+    double parentAngle = Parent() ? Parent()->AngleAbs() : 0.0;
+    if(std::abs(angleAbsDeg) < 1e-6 && std::abs(parentAngle) < 1e-6) {
+      int32_t wLeft = absX;
+      int32_t wTop = absY;
+      int32_t wRight = absX + static_cast<int32_t>(SizeX());
+      int32_t wBottom = absY + static_cast<int32_t>(SizeY());
+// Intersect with incoming clip and buffer limits
+      int32_t left = std::max( { wLeft, clipL, 0 });
+      int32_t top = std::max( { wTop, clipT, 0 });
+      int32_t right = std::min( { wRight, clipR, static_cast<int32_t>(bufferW) });
+      int32_t bottom = std::min( { wBottom, clipB, static_cast<int32_t>(bufferH) });
+      int32_t drawW = right - left;
+      int32_t drawH = bottom - top;
+      if(drawW > 0 && drawH > 0) {
+        FillRect(buffer, bufferW, left, top, drawW, drawH, bgColor);
       }
     }
-    DrawBorder(buffer, parentWidth, parentHeight, offsetX, offsetY);
-    DrawText(buffer, parentWidth, parentHeight, offsetX, offsetY);
-  }
-
-  void AButton::OnMouseLeave() {
-    if(mHovered) {
-      mHovered = false;
-      if(mParentWindow)
-        mParentWindow->Draw();
+    else {
+      DrawRotatedRect(buffer, bufferW, 0, 0, static_cast<int32_t>(bufferW), static_cast<int32_t>(bufferH), X(), Y(),
+          SizeX(), SizeY(), angleAbsDeg, Parent() ? Parent()->AbsX() : 0, Parent() ? Parent()->AbsY() : 0,
+          Parent() ? Parent()->SizeX() : bufferW, Parent() ? Parent()->SizeY() : bufferH, parentAngle, bgColor);
+    }
+    if(Border() != 0) {
+      if(std::abs(angleAbsDeg) < 1e-6 && std::abs(parentAngle) < 1e-6) {
+// Use the existing non‑rotated border drawing
+        int32_t effOffsetX = absX - X();
+        int32_t effOffsetY = absY - Y();
+        DrawBorder(buffer, bufferW, bufferH, effOffsetX, effOffsetY, clipL, clipT, clipR, clipB);
+      }
+      else {
+// Rotated border
+        DrawRotatedBorder(buffer, bufferW, bufferH, clipL, clipT, clipR, clipB, X(), Y(), SizeX(), SizeY(), Border(),
+            BorderColor(), angleAbsDeg, Parent() ? Parent()->AbsX() : 0, Parent() ? Parent()->AbsY() : 0,
+            Parent() ? Parent()->SizeX() : bufferW, Parent() ? Parent()->SizeY() : bufferH, parentAngle);
+      }
+    }
+    FT_Face face = au->DefaultFontFace();
+    if(!Text().empty() && face) {
+      uint32_t textW = (SizeX() > 8u) ? static_cast<uint32_t>(SizeX() - 8u) : 0u;
+      uint32_t textH = (SizeY() > 4u) ? static_cast<uint32_t>(SizeY() - 4u) : 0u;
+      ARect textBounds { absX + 4, absY + 2, textW, textH };
+      int32_t btnClipL = std::max(clipL, absX);
+      int32_t btnClipR = std::min(clipR, absX + static_cast<int32_t>(SizeX()));
+      int32_t btnClipT = std::max(clipT, absY);
+      int32_t btnClipB = std::min(clipB, absY + static_cast<int32_t>(SizeY()));
+      if(btnClipL < btnClipR && btnClipT < btnClipB) {
+        ARect clipBounds { btnClipL, btnClipT, static_cast<uint32_t>(btnClipR - btnClipL),
+            static_cast<uint32_t>(btnClipB - btnClipT) };
+        ATextStyle textStyle { TextColor(), FontSize(), HAlign(), VAlign(), angleRad };
+        DrawTextEx(buffer, bufferW, bufferH, textBounds, Text(), face, textStyle, &clipBounds);
+      }
     }
   }
+
+  void AButton::OnMouseDownLeftInternal(UNUSED int32_t localX, UNUSED int32_t localY) {
+    D1()
+    Pressed(true);
+  }
+
+  void AButton::OnMouseUpLeftInternal(UNUSED int32_t localX, UNUSED int32_t localY) {
+    D1()
+    Pressed(false);
+  }
+
+
 
 }// namespace aui
 

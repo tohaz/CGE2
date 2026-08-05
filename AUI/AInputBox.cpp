@@ -5,15 +5,16 @@ namespace aui {
 // ------------------------------------------------------------------
 // UTF-8 code point counter (fallback to byte length for simplicity)
 // ------------------------------------------------------------------
-  static size_t utf8_length(const std::string &str) {
+  UNUSED static size_t utf8_length(const std::string& str) {
 // Replace with proper UTF-8 length function if needed
     return str.length();
   }
-
+//
   AInputBox::AInputBox() :
       mBlinkingEnabled(true), mStopBlinkThread(false), mCursorVisible(true), mCursorPos(0), mInsertMode(true), mEditable(
           true), mMaxLength(DEFAULT_MAX_LENGTH) {
-    mWidgetType = AUIWidgetType::defaultInputBox;
+    D4()
+    mType = AUIWidgetType::defaultInputBox;
     mHAlign = AUIHAlign::right;
     mVAlign = AUIVAlign::center;
     mX = AUI_DEFAULT_INPUT_X;
@@ -22,380 +23,23 @@ namespace aui {
     mSizeY = AUI_DEFAULT_INPUT_SZY;
     mBGColor = AUI_DEFAULT_INPUT_BG;
     mBorderThick = AUI_DEFAULT_INPUT_BORDERW;
-    SetFocusable(true);
-    SetEditable(true);
-// Assume AWidget has SetFocusable(true); if not, add a flag manually
-// SetFocusable(true);
+    Focusable(true);
+    Editable(true);
     mBlinkThread = std::make_unique<std::thread>(&AInputBox::BlinkThreadFunc, this);
   }
-// ------------------------------------------------------------------
-// Factory methods
-// ------------------------------------------------------------------
-  AInputBox* AInputBox::AttachTo(AWindow *parent) {
-    if(!parent) {
-      E("AInputBox::AttachTo: parent window is null");
-      return nullptr;
-    }
-    auto *box = new AInputBox();
-    parent->AddWidget(std::unique_ptr<AWidget>(box));
-    return box;
-  }
 
-  AInputBox* AInputBox::AttachTo(AWidget *parent) {
-    if(!parent) {
-      E("AInputBox::AttachTo: parent widget is null");
-      return nullptr;
-    }
-    auto *box = new AInputBox();
-    parent->AddWidget(std::unique_ptr<AWidget>(box));
-    return box;
-  }
-// ------------------------------------------------------------------
-// AWidget overrides
-// ------------------------------------------------------------------
-  void AInputBox::Draw(uint32_t *buffer, uint32_t parentWidth, uint32_t parentHeight, int32_t offsetX,
-      int32_t offsetY) const {
-// 1. Background (with disabled dimming)
-    int32_t absX = offsetX + mX;
-    int32_t absY = offsetY + mY;
-    uint32_t bgColor = mEnabled ? mBGColor : ShiftColor(mBGColor, true);
-    int32_t drawW = static_cast<int32_t>(mSizeX);
-    int32_t drawH = static_cast<int32_t>(mSizeY);
-    int32_t pW = static_cast<int32_t>(parentWidth);
-    int32_t pH = static_cast<int32_t>(parentHeight);
-    if(absX < 0) {
-      drawW += absX;
-      absX = 0;
-    }
-    if(absY < 0) {
-      drawH += absY;
-      absY = 0;
-    }
-    if(absX + drawW > pW)
-      drawW = pW - absX;
-    if(absY + drawH > pH)
-      drawH = pH - absY;
-    if(drawW > 0 && drawH > 0 && absX >= 0 && absY >= 0) {
-      size_t maxIdx = static_cast<size_t>(pW) * static_cast<size_t>(pH);
-      for(int32_t row = 0; row < drawH; ++row) {
-        size_t lineStart = static_cast<size_t>(absY + row) * static_cast<size_t>(pW) + static_cast<size_t>(absX);
-        for(int32_t col = 0; col < drawW; ++col) {
-          size_t idx = lineStart + static_cast<size_t>(col);
-          if(idx < maxIdx)
-            buffer[idx] = bgColor;
-        }
-      }
-    }
-// 2. Border
-    DrawBorder(buffer, parentWidth, parentHeight, offsetX, offsetY);
-// 3. Client area (excluding border)
-    int32_t clientX = absX + static_cast<int32_t>(mBorderThick);
-    int32_t clientY = absY + static_cast<int32_t>(mBorderThick);
-    int32_t clientW = static_cast<int32_t>(mSizeX) - 2 * static_cast<int32_t>(mBorderThick);
-    int32_t clientH = static_cast<int32_t>(mSizeY) - 2 * static_cast<int32_t>(mBorderThick);
-    if(clientW <= 0 || clientH <= 0)
-      return;
-// 4. Draw text or placeholder (with dimmed colors when disabled)
-    FT_Face face = mEnginePtr ? mEnginePtr->GetDefaultFontFace() : nullptr;
-    if(face) {
-      UNUSED uint32_t textColor = mEnabled ? mTextColor : ShiftColor(mTextColor, true);
-      UNUSED uint32_t placeholderColor = mEnabled ? mPlaceholderColor : ShiftColor(mPlaceholderColor, true);
-
-      std::string displayText = GetDisplayText();// handles password mode
-      if(!displayText.empty()) {
-        DrawTextEx(buffer, parentWidth, parentHeight, clientX, clientY, clientW, clientH, displayText, face, mFontSize,
-            mHAlign, mVAlign, 0, textColor, clientW);
-      }
-      else if(!mPlaceholder.empty() && !IsFocused()) {
-        DrawTextEx(buffer, parentWidth, parentHeight, clientX, clientY, clientW, clientH, mPlaceholder, face, mFontSize,
-            mHAlign, mVAlign, 0, placeholderColor, clientW);
-      }
-    }
-// 5. Draw cursor (only when enabled)
-    if(mEnabled && IsFocused() && mCursorVisible) {
-      int32_t cursorX = GetCursorX();
-      if(cursorX >= clientX && cursorX <= clientX + clientW) {
-        const uint32_t CURSOR_COLOR = 0xFFFFFF00;// bright yellow, fully opaque
-        auto drawPixel = [&](int32_t x, int32_t y) {
-          if(x >= 0 && x < static_cast<int32_t>(parentWidth) && y >= 0 && y < static_cast<int32_t>(parentHeight)) {
-            size_t idx = static_cast<size_t>(y) * parentWidth + static_cast<size_t>(x);
-            buffer[idx] = CURSOR_COLOR;
-          }
-        };
-        if(mInsertMode) {
-          for(int32_t y = clientY; y < clientY + clientH; ++y) {
-            drawPixel(cursorX, y);
-            if(cursorX + 1 < clientX + clientW + 1)
-              drawPixel(cursorX + 1, y);
-          }
-        }
-        else {
-          int32_t lineY = clientY + clientH - 2;
-          for(int32_t x = cursorX; x < cursorX + 2; ++x)
-            drawPixel(x, lineY);
-        }
-      }
+  void AInputBox::Editable(bool v) {
+    mEditable = v;
+    if(Wnd()) {
+      Wnd()->RequestRedraw();
     }
   }
 
-  void AInputBox::OnFocusGained() {
-    mCursorVisible = true;
-    if(mParentWindow)
-      mParentWindow->Draw();
-  }
-
-  void AInputBox::OnFocusLost() {
-    mCursorVisible = false;
-    if(mParentWindow)
-      mParentWindow->Draw();
-  }
-
-  void AInputBox::Enable() {
-    AWidget::Enable();
-    SetEditable(true);
-    if(mParentWindow)
-      mParentWindow->Draw();
-  }
-
-  void AInputBox::Disable() {
-    D2("inputbox disabled")
-    AWidget::Disable();
-    SetEditable(false);
-    mCursorVisible = false;
-    if(mParentWindow)
-      mParentWindow->Draw();
-  }
-
-// ------------------------------------------------------------------
-// Editable state
-// ------------------------------------------------------------------
-  void AInputBox::SetEditable(bool editable) {
-    mEditable = editable;
-    if(mParentWindow)
-      mParentWindow->Draw();
-  }
-
-// ------------------------------------------------------------------
-// Max length
-// ------------------------------------------------------------------
-  void AInputBox::SetMaxLength(size_t maxLen) {
-    mMaxLength = maxLen;
-    if(utf8_length(mText) > mMaxLength) {
-// Truncate (simple byte truncation; may break UTF-8 – improve as needed)
-      std::string truncated = mText.substr(0, mMaxLength);
-      SetText(truncated);
-    }
-  }
-
-// ------------------------------------------------------------------
-// Input filtering (regex)
-// ------------------------------------------------------------------
-  void AInputBox::SetInputFilter(const std::string &regexPattern) {
-    try {
-      mInputFilter = std::regex(regexPattern, std::regex::ECMAScript);
-    } catch (const std::regex_error &e) {
-      E("Invalid regex pattern: {} - {}", regexPattern, e.what());
-      mInputFilter.reset();
-    }
-  }
-
-  void AInputBox::ClearInputFilter() {
-    mInputFilter.reset();
-  }
-
-// ------------------------------------------------------------------
-// Cursor control
-// ------------------------------------------------------------------
-  void AInputBox::SetCursorBlinkingEnabled(bool enable) {
-    mBlinkingEnabled = enable;
-    if(!enable) {
-      mCursorVisible = true;
-    }
-    if(mParentWindow)
-      mParentWindow->Draw();
-  }
-
-  void AInputBox::SetCursorPos(size_t pos) {
-    if(!mEnabled) {
-      D2("widget is disabled")
-      return;// block programmatic changes too
-    }
-    mCursorPos = std::min(pos, mText.length());
-    mCursorVisible = true;
-    if(mParentWindow)
-      mParentWindow->Draw();
-  }
-
-  size_t AInputBox::GetCursorPos() const {
-    return mCursorPos;
-  }
-
-// ------------------------------------------------------------------
-// Insert/Overwrite mode
-// ------------------------------------------------------------------
-  void AInputBox::SetInsertMode(bool insert) {
+  void AInputBox::InsertMode(bool insert) {
     mInsertMode = insert;
-    if(mParentWindow)
-      mParentWindow->Draw();
-  }
-
-  bool AInputBox::IsInsertMode() const {
-    return mInsertMode;
-  }
-
-// ------------------------------------------------------------------
-// Callbacks
-// ------------------------------------------------------------------
-  void AInputBox::SetOnChangeCallback(OnChangeCallback cb) {
-    mOnChange = std::move(cb);
-  }
-
-  void AInputBox::SetOnSubmitCallback(OnSubmitCallback cb) {
-    mOnSubmit = std::move(cb);
-  }
-
-// ------------------------------------------------------------------
-// Text manipulation
-// ------------------------------------------------------------------
-  void AInputBox::SetText(const std::string &text) {
-// First truncate to max length
-    std::string newText = text;
-    if(utf8_length(newText) > mMaxLength) {
-      newText = newText.substr(0, mMaxLength);// byte truncation – consider UTF-8 safety
+    if(Wnd()) {
+      Wnd()->RequestRedraw();
     }
-// Then check filter on the truncated string
-    if(!IsInputAllowed(newText))
-      return;
-    if(mText == newText)
-      return;
-    mText = newText;
-    mCursorPos = std::min(mCursorPos, mText.length());
-    SetValueAndNotify(mText);
-  }
-
-// ------------------------------------------------------------------
-// Private helpers
-// ------------------------------------------------------------------
-  void AInputBox::BlinkThreadFunc() {
-    std::unique_lock<std::mutex> lock(mBlinkMutex);
-    while (!mStopBlinkThread) {
-// Wait for BLINK_INTERVAL_MS or until stop requested
-      mBlinkCV.wait_for(lock, std::chrono::milliseconds(BLINK_INTERVAL_MS), [this] {
-        return mStopBlinkThread.load();
-      });
-      if(mStopBlinkThread)
-        break;
-// Toggle cursor visibility when conditions are met
-      if(mBlinkingEnabled && IsFocused() && mEnabled) {
-        mCursorVisible = !mCursorVisible;
-        if(mParentWindow)
-          mParentWindow->Draw();
-      }
-      else if(mCursorVisible) {
-        mCursorVisible = false;
-        if(mParentWindow)
-          mParentWindow->Draw();
-      }
-//      mParentWindow->ForceDraw();
-    }
-  }
-
-  bool AInputBox::IsInputAllowed(const std::string &newValue) const {
-    if(!IsLengthAllowed(newValue))
-      return false;
-    if(mInputFilter.has_value()) {
-      return std::regex_match(newValue, mInputFilter.value());
-    }
-    return true;
-  }
-
-  bool AInputBox::IsLengthAllowed(const std::string &newValue) const {
-    return utf8_length(newValue) <= mMaxLength;
-  }
-
-  void AInputBox::SetValueAndNotify(const std::string &newValue) {
-    if(newValue == mLastNotifiedValue)
-      return;
-    mLastNotifiedValue = newValue;
-    if(mOnChange)
-      mOnChange(this, newValue);
-    if(mParentWindow)
-      mParentWindow->Draw();
-  }
-
-  int32_t AInputBox::GetCursorX() const {
-    int32_t clientX = mX + static_cast<int32_t>(mBorderThick);
-    int32_t clientW = static_cast<int32_t>(mSizeX) - 2 * static_cast<int32_t>(mBorderThick);
-    if(clientW <= 0)
-      return clientX;
-// Use displayed text (masked in password mode)
-    std::string displayText = GetDisplayText();
-    if(displayText.empty()) {
-// Empty text: position cursor according to alignment
-      switch (mHAlign) {
-        case AUIHAlign::left:
-          return clientX;
-        case AUIHAlign::right:
-          return clientX + clientW;
-        case AUIHAlign::center:
-          return clientX + clientW / 2;
-        default:
-          break;
-      }
-      return clientX;
-    }
-    int32_t totalWidth = MeasureTextWidth(displayText);
-    std::string prefix = displayText.substr(0, mCursorPos);
-    int32_t prefixWidth = MeasureTextWidth(prefix);
-    int32_t cursorX = clientX;
-    switch (mHAlign) {
-      case AUIHAlign::left:
-        cursorX += prefixWidth;
-        break;
-      case AUIHAlign::right:
-        cursorX += clientW - (totalWidth - prefixWidth);
-        break;
-      case AUIHAlign::center:
-        cursorX += (clientW - totalWidth) / 2 + prefixWidth;
-        break;
-      default:
-        break;
-    }
-    return std::clamp(cursorX, clientX, clientX + clientW);
-  }
-
-  void AInputBox::InsertChar(char ch) {
-    if(!mEditable)
-      return;
-    std::string candidate;
-    if(mInsertMode) {
-      candidate = mText;
-      candidate.insert(mCursorPos, 1, ch);
-    }
-    else {
-      if(mCursorPos < mText.length()) {
-        candidate = mText;
-        candidate[mCursorPos] = ch;
-      }
-      else {
-        candidate = mText + ch;
-      }
-    }
-    if(!IsInputAllowed(candidate))
-      return;
-    mText = candidate;
-    if(mInsertMode) {
-      ++mCursorPos;
-    }
-    else {
-      if(mCursorPos < mText.length())
-        ++mCursorPos;
-      else
-        ++mCursorPos;// at end, same as insert
-    }
-    mCursorPos = std::min(mCursorPos, mText.length());
-    mCursorVisible = true;
-    SetValueAndNotify(mText);
   }
 
   void AInputBox::DeleteChar() {
@@ -405,7 +49,7 @@ namespace aui {
       return;
     std::string candidate = mText;
     candidate.erase(mCursorPos - 1, 1);
-    if(!IsInputAllowed(candidate))
+    if(!InputAllowed(candidate))
       return;
     mText = candidate;
     --mCursorPos;
@@ -420,32 +64,38 @@ namespace aui {
       return;
     std::string candidate = mText;
     candidate.erase(mCursorPos, 1);
-    if(!IsInputAllowed(candidate))
+    if(!InputAllowed(candidate))
       return;
     mText = candidate;
     mCursorVisible = true;
     SetValueAndNotify(mText);
   }
 
-  bool AInputBox::OnMouseClick(int32_t localX, int32_t, bool pressed) {
-    if(!mEnabled || !pressed)
+  bool AInputBox::InputAllowed(const std::string& newValue) const {
+    if(!LengthAllowed(newValue))
       return false;
-    size_t newPos = GetIndexFromX(localX);
-    D2("OnMouseClick: localX={}, newPos={}, oldPos={}", localX, newPos, mCursorPos);
-    if(newPos != mCursorPos) {
-      mCursorPos = newPos;
-      mCursorVisible = true;
-      if(mParentWindow)
-        mParentWindow->Draw();
+    if(mInputFilter.has_value()) {
+      return std::regex_match(newValue, mInputFilter.value());
     }
     return true;
   }
 
-  void AInputBox::OnKeyEvent(const AUIKeyEvent &event) {
+  void AInputBox::SetValueAndNotify(const std::string& newValue) {
+    if(newValue == mLastNotifiedValue)
+      return;
+    mLastNotifiedValue = newValue;
+    if(mOnChange)
+      mOnChange(this, newValue);
+    if(Wnd()) {
+      Wnd()->RequestRedraw();
+    }
+  }
+
+  void AInputBox::OnKeyEvent(const AUIKeyEvent& event) {
     if(!mEnabled || !event.pressed)
       return;
-    D3("AInputBox::OnKeyEvent: code={}, unicode=0x{:X}", (int32_t)event.code, event.unicode);
-    switch (event.code) {
+    D1("AInputBox::OnKeyEvent: code={}, unicode=0x{:X}", (int32_t)event.code, event.unicode);
+    switch(event.code) {
       case AUIKeyCode::Backspace:
         DeleteChar();
         break;
@@ -471,23 +121,241 @@ namespace aui {
           mOnSubmit(this, mText);
         break;
       case AUIKeyCode::Insert:
-        SetInsertMode(!mInsertMode);
+        InsertMode(!mInsertMode);
         break;
       default:
+        D("Insert char chosen")
         if(event.unicode >= 32 && event.unicode <= 126) {
           InsertChar(static_cast<char>(event.unicode));
+        }
+        else {
+          D("Insert char filtered")
         }
         break;
     }
     mCursorVisible = true;
-    if(mParentWindow)
-      mParentWindow->Draw();
+    if(Wnd())
+      Wnd()->RequestRedraw();
   }
 
-  int32_t AInputBox::MeasureTextWidth(const std::string &text) const {
-    if(!mEnginePtr)
-      return 0;
-    FT_Face face = mEnginePtr->GetDefaultFontFace();
+  void AInputBox::BlinkThreadFunc() {
+    std::unique_lock<std::mutex> lock(mBlinkMutex);
+    while(!mStopBlinkThread) {
+// Wait for BLINK_INTERVAL_MS or until stop requested
+      mBlinkCV.wait_for(lock, std::chrono::milliseconds(BLINK_INTERVAL_MS), [this] {
+        return mStopBlinkThread.load();
+      });
+      if(mStopBlinkThread)
+        break;
+// Toggle cursor visibility when conditions are met
+      if(mBlinkingEnabled && Focused() && mEnabled) {
+        mCursorVisible = !mCursorVisible;
+        if(Wnd())
+          Wnd()->RequestRedraw();
+      }
+      else
+        if(mCursorVisible) {
+          mCursorVisible = false;
+          if(Wnd())
+            Wnd()->RequestRedraw();
+        }
+    }
+  }
+
+  bool AInputBox::LengthAllowed(const std::string& newValue) const {
+    return utf8_length(newValue) <= mMaxLength;
+  }
+
+  void AInputBox::InsertChar(int8_t ch) {
+    D("11111")
+    if(!mEditable)
+      return;
+    std::string candidate;
+    if(mInsertMode) {
+      candidate = mText;
+      candidate.insert(mCursorPos, 1, ch);
+    }
+    else {
+      if(mCursorPos < mText.length()) {
+        candidate = mText;
+        candidate[mCursorPos] = ch;
+      }
+      else {
+        candidate = mText + std::to_string(ch);
+      }
+    }
+    if(!InputAllowed(candidate))
+      return;
+    mText = candidate;
+    if(mInsertMode) {
+      ++mCursorPos;
+    }
+    else {
+      if(mCursorPos < mText.length())
+        ++mCursorPos;
+      else
+        ++mCursorPos;// at end, same as insert
+    }
+    mCursorPos = std::min(mCursorPos, mText.length());
+    mCursorVisible = true;
+    SetValueAndNotify(mText);
+  }
+
+  void AInputBox::Text(const std::string& text) {
+// First truncate to max length
+    std::string newText = text;
+    if(utf8_length(newText) > mMaxLength) {
+      newText = newText.substr(0, mMaxLength);// byte truncation – consider UTF-8 safety
+    }
+// Then check filter on the truncated string
+    if(!InputAllowed(newText))
+      return;
+    if(mText == newText)
+      return;
+    mText = newText;
+    mCursorPos = std::min(mCursorPos, mText.length());
+    SetValueAndNotify(mText);
+  }
+
+  AInputBox::~AInputBox() {
+    {
+      std::lock_guard<std::mutex> lock(mBlinkMutex);
+      mStopBlinkThread = true;
+    }
+    mBlinkCV.notify_one();
+    if(mBlinkThread && mBlinkThread->joinable())
+      mBlinkThread->join();
+  }
+
+  void AInputBox::OnFocusGained() {
+    mCursorVisible = true;
+    Wnd()->RequestRedraw();
+  }
+
+  void AInputBox::OnFocusLost() {
+    mCursorVisible = false;
+    Wnd()->RequestRedraw();
+  }
+
+  void AInputBox::Enable() {
+    AWidget::Enable();
+    Editable(true);
+    if(Wnd())
+      Wnd()->RequestRedraw();
+  }
+
+  void AInputBox::Disable() {
+    D2("inputbox disabled")
+    AWidget::Disable();
+    Editable(false);
+    mCursorVisible = false;
+    if(Wnd())
+      Wnd()->RequestRedraw();
+  }
+
+  void AInputBox::MaxLength(size_t maxLen) {
+    mMaxLength = maxLen;
+    if(utf8_length(mText) > mMaxLength) {
+// Truncate (simple byte truncation; may break UTF-8 – improve as needed)
+      std::string truncated = mText.substr(0, mMaxLength);
+      Text(truncated);
+    }
+  }
+
+  void AInputBox::InputFilter(const std::string& regexPattern) {
+    try {
+      mInputFilter = std::regex(regexPattern, std::regex::ECMAScript);
+    } catch (const std::regex_error& e) {
+      E("Invalid regex pattern: {} - {}", regexPattern, e.what());
+      mInputFilter.reset();
+    }
+  }
+
+  void AInputBox::ClearInputFilter() {
+    mInputFilter.reset();
+  }
+
+  void AInputBox::CursorBlinkingEnabled(bool enable) {
+    mBlinkingEnabled = enable;
+    if(!enable) {
+      mCursorVisible = true;
+    }
+    if(Wnd())
+      Wnd()->RequestRedraw();
+  }
+
+  void AInputBox::CursorPos(size_t pos) {
+    if(!mEnabled) {
+      D1("widget is disabled")
+      return;// block programmatic changes too
+    }
+    mCursorPos = std::min(pos, mText.length());
+    mCursorVisible = true;
+    if(Wnd())
+      Wnd()->RequestRedraw();
+  }
+
+  size_t AInputBox::CursorPos() const {
+    return mCursorPos;
+  }
+
+  bool AInputBox::IsInsertMode() const {
+    return mInsertMode;
+  }
+
+  void AInputBox::SetOnChangeCallback(OnChangeCallback cb) {
+    mOnChange = std::move(cb);
+  }
+
+  void AInputBox::SetOnSubmitCallback(OnSubmitCallback cb) {
+    mOnSubmit = std::move(cb);
+  }
+
+  int32_t AInputBox::CursorX() const {
+    int32_t clientX = mX + static_cast<int32_t>(mBorderThick);
+    int32_t clientW = static_cast<int32_t>(mSizeX) - 2 * static_cast<int32_t>(mBorderThick);
+    if(clientW <= 0)
+      return clientX;
+// Use displayed text (masked in password mode)
+    std::string displayText = DisplayText();
+    if(displayText.empty()) {
+// Empty text: position cursor according to alignment
+      switch(mHAlign) {
+        case AUIHAlign::left:
+          return clientX;
+        case AUIHAlign::right:
+          return clientX + clientW;
+        case AUIHAlign::center:
+          return clientX + clientW / 2;
+        default:
+          break;
+      }
+      return clientX;
+    }
+    int32_t totalWidth = MeasureTextWidth(displayText);
+    std::string prefix = displayText.substr(0, mCursorPos);
+    int32_t prefixWidth = MeasureTextWidth(prefix);
+    int32_t cursorX = clientX;
+    switch(mHAlign) {
+      case AUIHAlign::left:
+        cursorX += prefixWidth;
+        break;
+      case AUIHAlign::right:
+        cursorX += clientW - (totalWidth - prefixWidth);
+        break;
+      case AUIHAlign::center:
+        cursorX += (clientW - totalWidth) / 2 + prefixWidth;
+        break;
+      default:
+        break;
+    }
+    return std::clamp(cursorX, clientX, clientX + clientW);
+  }
+
+  int32_t AInputBox::MeasureTextWidth(const std::string& text) const {
+    if(!Wnd()) return 0;
+    if(!Wnd()->EnginePtr()) return 0;
+    FT_Face face = Wnd()->EnginePtr()->DefaultFontFace();
     if(!face)
       return 0;
     FT_Set_Pixel_Sizes(face, 0, mFontSize);
@@ -500,10 +368,18 @@ namespace aui {
     return width;
   }
 
+  std::string AInputBox::DisplayText() const {
+    if(mPasswordMode && !mText.empty()) {
+      return std::string(mText.length(), mMaskChar);
+    }
+    return mText;
+  }
+
   int32_t AInputBox::MeasureCharWidth(char ch) const {
-    if(!mEnginePtr)
+    if(!Wnd()->EnginePtr())
       return 0;
-    FT_Face face = mEnginePtr->GetDefaultFontFace();
+    FT_Face face = Wnd()->EnginePtr()->DefaultFontFace();
+    ;
     if(!face)
       return 0;
     FT_Set_Pixel_Sizes(face, 0, mFontSize);
@@ -512,7 +388,8 @@ namespace aui {
     }
     return 0;
   }
-  size_t AInputBox::GetIndexFromX(int32_t localX) const {
+
+  size_t AInputBox::IndexFromX(int32_t localX) const {
     int32_t clientLeft = static_cast<int32_t>(mBorderThick);
     int32_t clientWidth = static_cast<int32_t>(mSizeX) - 2 * clientLeft;
     if(clientWidth <= 0)
@@ -526,7 +403,7 @@ namespace aui {
     if(totalWidth <= 0)
       return 0;
     int32_t textStartX = 0;
-    switch (mHAlign) {
+    switch(mHAlign) {
       case AUIHAlign::left:
         textStartX = 0;
         break;
@@ -562,40 +439,129 @@ namespace aui {
     return mText.length();
   }
 
-  void AInputBox::SetPlaceholder(const std::string &placeholder) {
+  void AInputBox::Placeholder(const std::string& placeholder) {
     mPlaceholder = placeholder;
-    if(mParentWindow)
-      mParentWindow->Draw();
+    if(Wnd())
+      Wnd()->RequestRedraw();
   }
 
-  void AInputBox::SetPlaceholderColor(uint32_t color) {
+  void AInputBox::PlaceholderColor(uint32_t color) {
     mPlaceholderColor = color;
-    if(mParentWindow)
-      mParentWindow->Draw();
+    if(Wnd())
+      Wnd()->RequestRedraw();
   }
 
-  void AInputBox::SetPasswordMode(bool enable, char maskChar) {
+  void AInputBox::PasswordMode(bool enable, int8_t maskChar) {
     mPasswordMode = enable;
     mMaskChar = maskChar;
-    if(mParentWindow)
-      mParentWindow->Draw();
+    if(Wnd())
+      Wnd()->RequestRedraw();
   }
 
-  std::string AInputBox::GetDisplayText() const {
-    if(mPasswordMode && !mText.empty()) {
-      return std::string(mText.length(), mMaskChar);
+  AWidget* AInputBox::OnMouseDownLeft(UNUSED int32_t localX, UNUSED int32_t localY) {
+    if(!mEnabled)
+      return nullptr;
+    size_t newPos = IndexFromX(localX);
+    D2("OnMouseClick: localX={}, newPos={}, oldPos={}", localX, newPos, mCursorPos);
+    if(newPos != mCursorPos) {
+      mCursorPos = newPos;
+      mCursorVisible = true;
+      if(Wnd())
+        Wnd()->RequestRedraw();
     }
-    return mText;
+    return this;
   }
 
-  AInputBox::~AInputBox() {
-    {
-      std::lock_guard<std::mutex> lock(mBlinkMutex);
-      mStopBlinkThread = true;
+  void AInputBox::OnDraw(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
+      int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB) const {
+    int32_t absX = offsetX + mX;
+    int32_t absY = offsetY + mY;
+// 1. Background (with disabled dimming) intersected with clip region
+    int32_t drawL = std::max(absX, clipL);
+    int32_t drawT = std::max(absY, clipT);
+    int32_t drawR = std::min(absX + static_cast<int32_t>(mSizeX), clipR);
+    int32_t drawB = std::min(absY + static_cast<int32_t>(mSizeY), clipB);
+    if(drawR > drawL && drawB > drawT && drawL >= 0 && drawT >= 0) {
+      uint32_t bgColor = mEnabled ? mBGColor : ShiftColor(mBGColor, true);
+      size_t pW = static_cast<size_t>(bufferW);
+      size_t pH = static_cast<size_t>(bufferH);
+      size_t maxIdx = pW * pH;
+      for(int32_t y = drawT; y < drawB; ++y) {
+        size_t lineStart = static_cast<size_t>(y) * pW;
+        for(int32_t x = drawL; x < drawR; ++x) {
+          size_t idx = lineStart + static_cast<size_t>(x);
+          if(idx < maxIdx)
+            buffer[idx] = bgColor;
+        }
+      }
     }
-    mBlinkCV.notify_one();
-    if(mBlinkThread && mBlinkThread->joinable())
-      mBlinkThread->join();
+// 2. Client area (excluding border)
+    int32_t clientX = absX + static_cast<int32_t>(mBorderThick);
+    int32_t clientY = absY + static_cast<int32_t>(mBorderThick);
+    int32_t clientW = static_cast<int32_t>(mSizeX) - 2 * static_cast<int32_t>(mBorderThick);
+    int32_t clientH = static_cast<int32_t>(mSizeY) - 2 * static_cast<int32_t>(mBorderThick);
+    if(clientW <= 0 || clientH <= 0)
+      return;
+// 3. Draw text or placeholder (using new DrawTextEx signature)
+    FT_Face face = Wnd() && Wnd()->EnginePtr() ? Wnd()->EnginePtr()->DefaultFontFace() : nullptr;
+    if(face) {
+      aui::ARect clientBounds { clientX, clientY, static_cast<uint32_t>(clientW), static_cast<uint32_t>(clientH) };
+// Compute effective clipping rectangle intersecting client area with screen clip region
+      int32_t textClipL = std::max(clientX, clipL);
+      int32_t textClipT = std::max(clientY, clipT);
+      int32_t textClipR = std::min(clientX + clientW, clipR);
+      int32_t textClipB = std::min(clientY + clientH, clipB);
+      if(textClipR > textClipL && textClipB > textClipT) {
+        aui::ARect customClip { textClipL, textClipT, static_cast<uint32_t>(textClipR - textClipL),
+            static_cast<uint32_t>(textClipB - textClipT) };
+        std::string displayText = DisplayText();// handles password mode
+//D("text: {}", displayText)
+        if(!displayText.empty()) {
+          uint32_t textColor = mEnabled ? mTextColor : ShiftColor(mTextColor, true);
+          aui::ATextStyle style { textColor, mFontSize, mHAlign, mVAlign, 0.0 };
+          DrawTextEx(buffer, bufferW, bufferH, clientBounds, displayText, face, style, &customClip);
+        }
+        else
+          if(!mPlaceholder.empty() && !Focused()) {
+            uint32_t placeholderColor = mEnabled ? mPlaceholderColor : ShiftColor(mPlaceholderColor, true);
+            aui::ATextStyle style { placeholderColor, mFontSize, mHAlign, mVAlign, 0.0 };
+            DrawTextEx(buffer, bufferW, bufferH, clientBounds, mPlaceholder, face, style, &customClip);
+          }
+      }
+    }
+// 4. Draw cursor (only when enabled and focused)
+    if(mEnabled && Focused() && mCursorVisible) {
+      int32_t cursorX = CursorX();
+// Clamp cursorX so it stays within the last drawable column of the client area
+      int32_t maxCursorX = clientX + clientW - 1;
+      if(cursorX > maxCursorX) {
+        cursorX = maxCursorX;
+      }
+      if(cursorX >= clientX) {
+        const uint32_t CURSOR_COLOR = 0xFFFFFF00;// bright yellow, fully opaque
+        auto drawPixel = [&](int32_t x, int32_t y) {
+          if(x >= clipL && x < clipR && y >= clipT && y < clipB && x >= 0 && x < static_cast<int32_t>(bufferW) && y >= 0
+              && y < static_cast<int32_t>(bufferH)) {
+            size_t idx = static_cast<size_t>(y) * static_cast<size_t>(bufferW) + static_cast<size_t>(x);
+            buffer[idx] = CURSOR_COLOR;
+          }
+        };
+        if(mInsertMode) {
+          for(int32_t y = clientY; y < clientY + clientH; ++y) {
+            drawPixel(cursorX, y);
+// Note: cursorX + 1 will automatically be clipped safely by drawPixel
+// if cursorX is at maxCursorX
+            drawPixel(cursorX + 1, y);
+          }
+        }
+        else {
+          int32_t lineY = clientY + clientH - 2;
+          for(int32_t x = cursorX; x < cursorX + 2; ++x) {
+            drawPixel(x, lineY);
+          }
+        }
+      }
+    }
   }
 
 }// namespace aui

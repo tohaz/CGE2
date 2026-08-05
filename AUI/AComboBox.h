@@ -3,24 +3,26 @@
 
 namespace aui {
 
-class AComboBox : public AWidget {
+class AComboBox : public AWidgetFactory<AComboBox> {
+    friend class AWidgetFactory<AComboBox>;
   private:
-    AInputBox* mInputBox;
-    AList*     mDropList;          // sibling, owned by parent window
-    AWindow* mParentWindow;
-    // Button properties (drawn manually)
-    uint32_t mButtonBGColor;
-    uint32_t mButtonBorderColor;
-    uint32_t mButtonTextColor;
-    bool mButtonPressed;
-    bool mButtonHovered;
+    void OnDraw(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH,
+                int32_t offsetX, int32_t offsetY,
+                int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB) const override;
+    AInputBox* mInputBox = nullptr;
+    AList*     mDropList = nullptr;          // sibling, owned by parent window
+    AButton*   mButton = nullptr;          // sibling, owned by parent window
+    uint32_t mButtonBGColor = 0;
+    uint32_t mButtonBorderColor = 0;
+    uint32_t mButtonTextColor = 0;
+    bool mButtonHovered = false;
     std::vector<std::string> mItems;
-    int32_t mSelectedIndex;
-    bool mEditable;
-    bool mDropDownOpen;
-    bool mNeedsLayoutUpdate;
+    int32_t mSelectedIndex = 0;
+    bool mEditable = false;
+    bool mDropDownOpen = false;
+//    bool mNeedsLayoutUpdate;
     void PropagateParentSettings();
-    void UpdateChildrenLayout();
+//    void UpdateChildrenLayout();
     void PopulateList();
     void SyncInputToSelection();
     int32_t FindItem(const std::string& text) const;
@@ -29,12 +31,10 @@ class AComboBox : public AWidget {
     void ShowList();
     void HideList();
     void OnListSelectionChanged(int32_t index);
-    static AComboBox* s_activeDropDown; // track the one currently open
+    //static AComboBox* s_activeDropDown; // track the one currently open
 public:
   AComboBox();
   virtual ~AComboBox();
-  static AComboBox* AttachTo(AWindow* parent);
-  static AComboBox* AttachTo(AWidget* parent);
   void AddItem(const std::string& text);
   void InsertItem(size_t index, const std::string& text);
   void RemoveItem(size_t index);
@@ -52,26 +52,30 @@ public:
   void OpenDropDown();
   void CloseDropDown();
   void ToggleDropDown();
-  virtual void Draw(uint32_t* buffer, uint32_t parentWidth, uint32_t parentHeight,
-                    int32_t offsetX, int32_t offsetY) const override;
-  virtual bool OnMouseClick(int32_t localX, int32_t localY, bool pressed) override;
-  virtual void OnMouseMove(int32_t localX, int32_t localY) override;
+//  virtual void Draw(uint32_t* buffer, uint32_t parentWidth, uint32_t parentHeight,
+//                    int32_t offsetX, int32_t offsetY) const override;
+//  virtual bool OnMouseClick(int32_t localX, int32_t localY, bool pressed) override;
+  virtual bool OnMouseMove(int32_t localX, int32_t localY) override;
   virtual void OnKeyEvent(const AUIKeyEvent& event) override;
   virtual void OnFocusGained() override;
   virtual void OnFocusLost() override;
   virtual void Enable() override;
   virtual void Disable() override;
-  virtual void OnParentResize(uint32_t newWidth, uint32_t newHeight) override;
-  void SetInputBoxBGColor(uint32_t color);
-  void SetButtonBGColor(uint32_t color);
-  void SetListBGColor(uint32_t color);
-  void SetInputBoxTextColor(uint32_t color);
-  void SetButtonTextColor(uint32_t color);
-  void SetListTextColor(uint32_t color);
-  virtual void SetFontSize(uint32_t size) override;
-
+  virtual void OnResize(uint32_t newWidth, uint32_t newHeight) override;
+  void InputBoxBGColor(uint32_t color);
+  void ButtonBGColor(uint32_t color);
+  void ListBGColor(uint32_t color);
+  void InputBoxTextColor(uint32_t color);
+  void ButtonTextColor(uint32_t color);
+  void ListTextColor(uint32_t color);
+  //virtual void FontSize(uint32_t size) override;
+  virtual void FontSize(uint32_t size) override;
   AInputBox* GetInputBox() const { return mInputBox; }
-
+  void LayoutUpdate();
+  void Init();
+  AList* DropList() {return mDropList;}
+  std::string Text() const {D4() if(mInputBox){return mInputBox->Text();} else return "";}
+  void Text(std::string v) {if(mInputBox) mInputBox->Text(v);}
 };
 
 } // namespace aui

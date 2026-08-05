@@ -2,25 +2,21 @@
 #define ABUTTON_H_
 
 namespace aui {
+  class AButton: public AWidgetFactory<AButton> {
+      friend class AWidgetFactory<AButton>;
+    private:
+      void OnMouseUpLeftInternal(int32_t localX, int32_t localY);
+      void OnMouseDownLeftInternal(int32_t localX, int32_t localY);
 
-class AButton : public AWidget {
-private:
-  bool mClickHighlightEnabled = true;   // specific to button (press highlight)
-public:
-  AButton();
-  ~AButton() override = default;
-  void Draw(uint32_t* buffer, uint32_t parentWidth, uint32_t parentHeight,
-            int32_t offsetX, int32_t offsetY) const override;
-  bool OnMouseClick(int32_t localX, int32_t localY, bool pressed) override;
-  void OnMouseMove(int32_t localX, int32_t localY) override;
-  static AButton* AttachTo(AWindow* parent);
-  static AButton* AttachTo(AWidget* parent);
-  static AButton* AttachTo(AWindow* parent, const std::string& text);
-  static AButton* AttachTo(AWidget* parent, const std::string& text);
-  void SetClickHighlightEnabled(bool enable) { mClickHighlightEnabled = enable; }
-  void OnMouseLeave() override;
-};
+    protected:
+      AButton();
+      AButton(std::string);
+    public:
+      virtual void OnDraw(uint32_t *buffer, uint32_t bufferW, uint32_t bufferH,
+          int32_t offsetX, int32_t offsetY, int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB) const;
 
-} // namespace aui
+  };
+
+}// namespace aui
 
 #endif // ABUTTON_H_

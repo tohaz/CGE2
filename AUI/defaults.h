@@ -7,21 +7,22 @@
 // catch(SegmentationFault:) {}
 
 #define UNUSED [[maybe_unused]]
-
+//
 inline void print_stack() {
   void* buffer[64];
-  int size = backtrace(buffer, 64);
+  int32_t size = backtrace(buffer, 64);
   char** symbols = backtrace_symbols(buffer, size);
-  if (!symbols) return;
-  for (int i = 1; i < size; ++i) {
+  if(!symbols)
+    return;
+  for(int i = 1; i < size; ++i) {
     std::string entry = symbols[i];
     size_t first = entry.find('(');
     size_t last = entry.find('+');
-    if (first != std::string::npos && last != std::string::npos && first < last) {
+    if(first != std::string::npos && last != std::string::npos && first < last) {
       std::string mangled = entry.substr(first + 1, last - first - 1);
       int status = 0;
       char* demangled = abi::__cxa_demangle(mangled.c_str(), nullptr, nullptr, &status);
-      if (status == 0 && demangled) {
+      if(status == 0 && demangled) {
         std::printf("  #%d %s\n", i, demangled);
         std::free(demangled);
         continue;
@@ -44,13 +45,7 @@ static_assert(sizeof(char) == 1, "char must be 1 bytes");
 static_assert(sizeof(short) == 2, "short must be 2 bytes");
 static_assert(sizeof(int) == 4, "integer must be 4 bytes");
 static_assert(sizeof(long) == 8, "long must be 8 bytes");
-#define UCHAR8 uint8_t
-#define UINT8 uint8_t
-#define INT32 int32_t
-#define UINT32 uint32_t
-#define INT64 int64_t
-#define UINT64 uint64_t
-
+//
 #ifdef BUILDING_MY_STATIC_LIB
 template <int N>
 struct ProhibitedType {
@@ -73,33 +68,152 @@ struct ProhibitedType {
 #endif // BUILDING_MY_STATIC_LIB
 
 #pragma pack(push, 1)
+
 union ARGBColor {
-    UINT32 value;
+    uint32_t value;
     struct {
-        UCHAR8 b; // Least significant byte (LSB) on Little-Endian x86_64 storage layouts
-        UCHAR8 g;
-        UCHAR8 r;
-        UCHAR8 a; // Most significant byte (MSB) on Little-Endian x86_64 storage layouts matching 0xAARRGGBB
+        uint8_t b;// Least significant byte (LSB) on Little-Endian x86_64 storage layouts
+        uint8_t g;
+        uint8_t r;
+        uint8_t a;// Most significant byte (MSB) on Little-Endian x86_64 storage layouts matching 0xAARRGGBB
     } argb;
     ARGBColor() :
-        value(0xFF000000U) {
-    }
-    ARGBColor(UINT32 val) :
-        value(val) {
-    }
-    ARGBColor(UCHAR8 red, UCHAR8 green, UCHAR8 blue, UCHAR8 alpha = 255U) {
+        value(0xFF000000U) {}
+    ARGBColor(uint32_t val) :
+        value(val) {}
+    ARGBColor(uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha = 255U) {
       argb.a = alpha;
       argb.r = red;
       argb.g = green;
       argb.b = blue;
     }
-    UCHAR8 getLuminance() const {
-      return static_cast<UCHAR8>((static_cast<UINT32>(argb.r) + static_cast<UINT32>(argb.g) + static_cast<UINT32>(argb.b)) / 3U);
+    uint8_t getLuminance() const {
+      return static_cast<uint8_t>((static_cast<uint32_t>(argb.r) + static_cast<uint32_t>(argb.g)
+          + static_cast<uint32_t>(argb.b)) / 3U);
     }
-    operator UINT32() const { return value; }
-    void Clear() { value = 0U; }
+    operator uint32_t() const {return value;}
+    void Clear() {value = 0U;}
 };
 #pragma pack(pop)
+
+#define AUI_XCB_FD_INDEX 0
+#define AUI_WAYLAND_FD_INDEX 1
+#define AUI_SELFPIPE_FD_INDEX 2
+#define AUI_FD_NUM 3
+#define AUI_NUM_BUFFERS 3
+#define AUI_HL_SHIFT 30
+#define AUI_DARKEN_SHIFT 60
+
+//// AWindow
+#define AUI_DEFAULT_WINDOW_SZX 100
+#define AUI_DEFAULT_WINDOW_SZY 100
+// orange 0xFFFF8000 dark grey 0xFF2E3440
+#define AUI_DEFAULT_WINDOW_BG 0xFFAAAAAAU
+//// AButton
+#define AUI_DEFAULT_BUTTON_X 10
+#define AUI_DEFAULT_BUTTON_Y 10
+#define AUI_DEFAULT_BUTTON_SZX 80
+#define AUI_DEFAULT_BUTTON_SZY 30
+#define AUI_DEFAULT_BUTTON_BORDERW 2
+#define AUI_DEFAULT_BUTTON_BG 0xFFCCCCCC
+//// AInputBox
+#define AUI_DEFAULT_INPUT_X 15
+#define AUI_DEFAULT_INPUT_Y 15
+#define AUI_DEFAULT_INPUT_SZX 80
+#define AUI_DEFAULT_INPUT_SZY 20
+#define AUI_DEFAULT_INPUT_BG 0xFFAACCAA
+#define AUI_DEFAULT_INPUT_FG 0xFF000000
+//#define AUI_DEFAULT_INPUT_CURSORW 2
+//#define AUI_DEFAULT_INPUT_CURSORH 10
+#define AUI_DEFAULT_INPUT_BORDERW 2
+//// ALabel
+#define AUI_DEFAULT_LABEL_BG 0xFFAAAAFF
+#define AUI_DEFAULT_LABEL_X 1
+#define AUI_DEFAULT_LABEL_Y 1
+#define AUI_DEFAULT_LABEL_SZX 120
+#define AUI_DEFAULT_LABEL_SZY 30
+#define AUI_DEFAULT_LABEL_BORDERW 0
+#define AUI_DEFAULT_LABEL_TEXT "label me"
+//// AList
+//#define AUI_LIST_X 20
+//#define AUI_LIST_Y 20
+//#define AUI_LIST_SZX 300
+//#define AUI_LIST_SZY 200
+//#define AUI_LIST_FG_COLOR 0xFF333333
+//#define AUI_LIST_BG 0xFFCCCCCC
+// ABox
+#define AUI_BOX_X 5
+#define AUI_BOX_Y 5
+#define AUI_BOX_SZX 100
+#define AUI_BOX_SZY 100
+#define AUI_BOX_BG 0xFF00FF00
+//// ATable
+//#define AUI_TABLE_X 20
+//#define AUI_TABLE_Y 20
+//#define AUI_TABLE_SZX 300
+//#define AUI_TABLE_SZY 200
+#define AUI_TABLE_CELL_W 50
+//#define AUI_TABLE_CELL_H 18
+//#define AUI_TABLE_BG 0xFF999999
+//#define AUI_TABLE_INTERSEC_BG 0xFF888888
+//#define AUI_TABLE_SCROLL_THICK 5
+//
+//// how much color will attempt to darken/lighten on highlight operation
+//// value must be less than 0x80
+
+enum class AUIWidgetType {
+  unset = 1,
+  defaultBox = 1000,
+  defaultWindow = 1001,
+  defaultButton = 1002,
+  defaultList = 1003,
+  defaultLabel = 1004,
+  defaultInputBox = 1005,
+  defaultTable = 1006,
+  defaultMenu = 1007,
+  defaultModalWindow = 1008,
+  defaultComboBox = 1009,
+  defaultProgressBar = 1010,
+  defaultScrollBar = 1011
+};
+
+enum class AUIWindowType {
+  unset = 2,
+  Wayland = 2001,
+  X11 = 2002
+};
+
+enum class AUIOrientation {
+  unset = 0,
+  vertical = 1,
+  horizontal = 2
+};
+
+enum class AUIHAlign {
+  center = 1,
+  left = 2,
+  right = 3
+};
+
+enum class AUIVAlign {
+  center = 1, top = 2, bottom = 3
+};
+
+enum class AUIBorderStyle {
+  Flat = 1, Simple3D = 2
+};
+
+enum class AUIBackgroundStyle {
+  Flat = 1, Gradient = 2
+};
+
+enum class AUIDirection {
+  unset = 1, left = 2, right = 3, top = 4, bottom = 5
+};
+
+enum class AUICursorType {
+  Default, HResize, VResize
+};
 
 enum class AUIKeyCode : uint32_t {
   None = 0,
@@ -128,140 +242,25 @@ enum class AUIModifier : uint8_t {
 };
 
 inline AUIModifier operator|(AUIModifier a, AUIModifier b) {
-    return static_cast<AUIModifier>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
+  return static_cast<AUIModifier>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
 }
 
 inline AUIModifier operator&(AUIModifier a, AUIModifier b) {
-    return static_cast<AUIModifier>(static_cast<uint8_t>(a) & static_cast<uint8_t>(b));
+  return static_cast<AUIModifier>(static_cast<uint8_t>(a) & static_cast<uint8_t>(b));
 }
 
 inline AUIModifier& operator|=(AUIModifier& a, AUIModifier b) {
-    a = a | b;
-    return a;
+  a = a | b;
+  return a;
 }
 
 struct AUIKeyEvent {
-    bool pressed;               // true = key down, false = key up
-    uint32_t unicode;           // Unicode code point (0 if not a printable character)
-    AUIKeyCode code;            // logical key code (for non‑printable keys)
-    AUIModifier modifiers;      // active modifiers
+    bool pressed;// true = key down, false = key up
+    uint32_t unicode;// Unicode code point (0 if not a printable character)
+    AUIKeyCode code;// logical key code (for non‑printable keys)
+    AUIModifier modifiers;// active modifiers
 };
 
-// AWindow
-#define AUI_DEFAULT_WINDOW_TITLE "aui dummy title, set me plz"
-#define AUI_DEFAULT_WINDOW_SZX 500
-#define AUI_DEFAULT_WINDOW_SZY 300
-#define AUI_DEFAULT_WINDOW_BG 0xFFAAAAAAU
-// AButton
-#define AUI_DEFAULT_BUTTON_X 10
-#define AUI_DEFAULT_BUTTON_Y 10
-#define AUI_DEFAULT_BUTTON_SZX 80
-#define AUI_DEFAULT_BUTTON_SZY 30
-// disabled for now as it conflicts with content drawing
-//#define AUI_DEFAULT_BUTTON_BORDERW 3
-#define AUI_DEFAULT_BUTTON_BG 0xFFCCCCCC
-// AInputBox
-#define AUI_DEFAULT_INPUT_X 15
-#define AUI_DEFAULT_INPUT_Y 15
-#define AUI_DEFAULT_INPUT_SZX 80
-#define AUI_DEFAULT_INPUT_SZY 20
-#define AUI_DEFAULT_INPUT_BG 0xFFAACCAA
-#define AUI_DEFAULT_INPUT_FG 0xFF000000
-#define AUI_DEFAULT_INPUT_CURSORW 2
-#define AUI_DEFAULT_INPUT_CURSORH 10
-#define AUI_DEFAULT_INPUT_BORDERW 2
-// ALabel
-#define AUI_DEFAULT_LABEL_BG 0xFFBBBBBB
-#define AUI_DEFAULT_LABEL_SZX 120
-#define AUI_DEFAULT_LABEL_SZY 30
-#define AUI_DEFAULT_LABEL_BORDERW 0
-// AList
-#define AUI_LIST_X 20
-#define AUI_LIST_Y 20
-#define AUI_LIST_SZX 300
-#define AUI_LIST_SZY 200
-#define AUI_LIST_FG_COLOR 0xFF333333
-#define AUI_LIST_BG 0xFFCCCCCC
-// ABox
-#define AUI_BOX_X 25
-#define AUI_BOX_Y 25
-#define AUI_BOX_SZX 100
-#define AUI_BOX_SZY 100
-// ATable
-#define AUI_TABLE_X 20
-#define AUI_TABLE_Y 20
-#define AUI_TABLE_SZX 300
-#define AUI_TABLE_SZY 200
-#define AUI_TABLE_CELL_W 50
-#define AUI_TABLE_CELL_H 18
-#define AUI_TABLE_BG 0xFF999999
-#define AUI_TABLE_INTERSEC_BG 0xFF888888
-#define AUI_TABLE_SCROLL_THICK 5
-
-// how much color will attempt to darken/lighten on highlight operation
-// value must be less than 0x80
-#define AUI_HL_SHIFT 20
-//#define CG_DEFAULT_FONT "-*-helvetica-medium-r-*--*-120-100-100-*-*-iso8859-1"
-#define AUI_DEFAULT_FONT "-*-*-*-R-Normal--18-*-100-100-*-*-iso8859-1"
-
-enum class AUIWidgetType {
-  unset = 1,
-  defaultWindow = 1001,
-  defaultButton = 1002,
-  defaultList = 1003,
-  defaultLabel = 1004,
-  defaultInputBox = 1005,
-  defaultTable = 1006,
-  defaultMenu = 1007,
-  defaultModalWindow = 1008,
-  defaultComboBox = 1009,
-  defaultProgressBar = 1010,
-  defaultScrollBar = 1011
-};
-
-enum class AUIWindowType {
-  unset = 2,
-  Wayland = 2001,
-  XCB = 2002
-};
-
-struct AWidgetSettings {
-  std::string text = "";
-  INT64 x = 10;
-  INT64 y = 10;
-  UINT64 width = 100;
-  UINT64 height = 28;
-  UINT32 backgroundColor = 0xE0E0E0;
-  AUIWidgetType type = AUIWidgetType::unset;
-  bool startVisible = true;
-};
-
-enum class AUIOrientation {
-  vertical = 1,
-  horizontal = 2
-};
-
-enum class AUIHAlign {
-  center = 1,
-  left = 2,
-  right = 3
-};
-
-enum class AUIVAlign {
-  center = 1, top = 2, bottom = 3
-};
-
-enum class AUIWidgetStyle {
-  Flat = 1, Simple3D = 2
-};
-
-enum class AUIDirection {
-  left = 1, right = 2, top = 3, bottom = 4
-};
-
-enum class AUICursorType {
-  Default, HResize, VResize
-};
 
 #ifndef AUI_GIT_VERSION
 #define AUI_GIT_VERSION "Not a controlled build"
@@ -282,6 +281,7 @@ namespace detail {
     return false;
   }
 
+
 // 2. Universal output engine (Protected by int32_t types against the aggressive '#define int' macro)
   template<typename ... Args>
   void SmartInternalPrint(std::string_view prefix, int32_t lvl, const char *file, const char *func, int32_t line,
@@ -298,7 +298,6 @@ namespace detail {
         auto payload = [](auto &&first, auto &&... rest) {
           return std::pair { std::forward<decltype(first)>(first), sizeof...(rest) };
         }(std::forward<Args>(args)...);
-
 // Case B: Exactly one argument provided (treated as a raw unformatted text string)
         if constexpr (sizeof...(args) == 1) {
           std::print("{}{}\n", header, std::get < 0 > (payload));
@@ -378,93 +377,164 @@ namespace detail {
   }
 }
 
-// --- MANDATORY DT MACRO ---
+//
+#define INTERNAL_PRINT(prefix, lvl, ...) \
+        ::detail::SmartInternalPrint(prefix, static_cast<int32_t>(lvl), __FILE__, __func__, static_cast<int32_t>(__LINE__) __VA_OPT__(,) __VA_ARGS__)
 #define DT(...) \
     do { ::detail::SmartDateTimePrint(__FILE__, __func__, __LINE__ __VA_OPT__(,) __VA_ARGS__); } while (0);
+#define D(...)       do { INTERNAL_PRINT("D", 1 __VA_OPT__(,) __VA_ARGS__); } while (0);
+#define E(...)       do { INTERNAL_PRINT("E", 1 __VA_OPT__(,) __VA_ARGS__); print_stack(); exit(1); } while (0);
 
-// Original setup configuration for debug levels
+#define CONCAT_IMPL(x, y) x##y
+#define CONCAT(x, y) CONCAT_IMPL(x, y)
+
 #ifndef DEBUG_LEVEL
   #define DEBUG_LEVEL 0
 #endif
 
 #if DEBUG_LEVEL > 0
 // Internal base printing macro (Seamlessly passes all variadic arguments via __VA_OPT__)
-#define INTERNAL_PRINT(prefix, lvl, ...) \
-        ::detail::SmartInternalPrint(prefix, static_cast<int32_t>(lvl), __FILE__, __func__, static_cast<int32_t>(__LINE__) __VA_OPT__(,) __VA_ARGS__)
-
-// Complete original macro suite (DEBUG MODE) with mandatory trailing semicolons
-#define D(...)       do { INTERNAL_PRINT("D", 1 __VA_OPT__(,) __VA_ARGS__); } while (0);
-#define E(...)       do { INTERNAL_PRINT("E", 1 __VA_OPT__(,) __VA_ARGS__); print_stack(); exit(1); } while (0);
 #define DD(...)      do { __VA_ARGS__; } while (0);
 #define W()          do { try { std::println("W {}|{}({})", __FILE__, __func__, __LINE__); } catch(...) {} } while (0);
 #define DS()         do { D("\n---Trace at {}:{}---", __FILE__, __LINE__); print_stack(); } while (0);
+#define ST(fmt, ...) \
+    ScopedTimer CONCAT(timer_, __LINE__)(std::format(fmt __VA_OPT__(,) __VA_ARGS__), std::source_location::current());
+
 #else
-    // Complete original macro suite (RELEASE MODE) matching your exact structure
-    #define D(...)       do {} while (0);
-    #define E(...)       do {} while (0);
     #define DD(...)      do {} while (0);
     #define W()          do {} while (0);
     #define DS()         do {} while (0);
+#define ST(...)      do {} while (0);
 #endif
 
 // --- LEVEL 1 ---
 #if DEBUG_LEVEL >= 1
 #define D1(...) do { INTERNAL_PRINT("D", 1 __VA_OPT__(,) __VA_ARGS__); } while (0);
-#define DS1()   DS()
+#define DS1() DS()
+#define ST1(fmt, ...) \
+    ScopedTimer CONCAT(timer_, __LINE__)(std::format(fmt __VA_OPT__(,) __VA_ARGS__), std::source_location::current());
 #else
   #define D1(...) do {} while (0);
   #define DS1()   do {} while (0);
+  #define ST1(...)      do {} while (0);
 #endif
 
 // --- LEVEL 2 ---
 #if DEBUG_LEVEL >= 2
 #define D2(...) do { INTERNAL_PRINT("D", 2 __VA_OPT__(,) __VA_ARGS__); } while (0);
 #define DS2()   DS()
+#define ST2(fmt, ...) \
+    ScopedTimer CONCAT(timer_, __LINE__)(std::format(fmt __VA_OPT__(,) __VA_ARGS__), std::source_location::current());
 #else
   #define D2(...) do {} while (0);
   #define DS2()   do {} while (0);
+  #define ST2(...)      do {} while (0);
 #endif
 
 // --- LEVEL 3 ---
 #if DEBUG_LEVEL >= 3
 #define D3(...) do { INTERNAL_PRINT("D", 3 __VA_OPT__(,) __VA_ARGS__); } while (0);
 #define DS3()   DS()
+#define ST3(fmt, ...) \
+    ScopedTimer CONCAT(timer_, __LINE__)(std::format(fmt __VA_OPT__(,) __VA_ARGS__), std::source_location::current());
 #else
   #define D3(...) do {} while (0);
   #define DS3()   do {} while (0);
+  #define ST3(...)      do {} while (0);
 #endif
 
 // --- LEVEL 4 ---
 #if DEBUG_LEVEL >= 4
 #define D4(...) do { INTERNAL_PRINT("D", 4 __VA_OPT__(,) __VA_ARGS__); } while (0);
+#define ST4(fmt, ...) \
+    ScopedTimer CONCAT(timer_, __LINE__)(std::format(fmt __VA_OPT__(,) __VA_ARGS__), std::source_location::current());
 #else
   #define D4(...) do {} while (0);
+  #define ST4(...)      do {} while (0);
 #endif
-
-#define TEST_ASSERT(cond, errcode) do { if(!(cond)) { E("Test failed: {}", #cond); return errcode; } } while(0)
-
-
-template <typename T>
-constexpr const void* ToPrintablePtr(const T& val) { // 1. Changed to const T& to avoid copying large objects
-    if constexpr (std::is_null_pointer_v<std::remove_cvref_t<T>>) {
-        return nullptr;
-    } else if constexpr (std::is_pointer_v<std::remove_cvref_t<T>>) {
-        return static_cast<const void*>(val);
-    } else if constexpr (std::integral<std::remove_cvref_t<T>> || std::is_enum_v<std::remove_cvref_t<T>>) {
-        // Safe to cast actual integers or enums to uintptr_t
-        return reinterpret_cast<const void*>(static_cast<uintptr_t>(val));
-    } else {
-        // Fallback for objects (like std::string). Returns the address of the object itself.
-        return static_cast<const void*>(&val);
-    }
+//
+//
+//
+template<typename T>
+constexpr const void* ToPrintablePtr(const T &val) {
+  if constexpr (std::is_null_pointer_v<std::remove_cvref_t<T>>) {
+    return static_cast<const void*>(nullptr);
+  }
+  else if constexpr (std::is_pointer_v<std::remove_cvref_t<T>>) {
+    return static_cast<const void*>(val);
+  }
+  else if constexpr (std::integral<std::remove_cvref_t<T>> || std::is_enum_v<std::remove_cvref_t<T>>) {
+    return reinterpret_cast<const void*>(static_cast<uintptr_t>(val));
+  }
+  else {
+    return static_cast<const void*>(&val);
+  }
 }
 
 template<typename T, typename U>
 constexpr bool safe_equal(T t, U u) {
+  if constexpr (std::is_pointer_v<T> || std::is_null_pointer_v<T> ||
+                std::is_pointer_v<U> || std::is_null_pointer_v<U>) {
+    return t == u;
+  } else {
     using Common = std::common_type_t<T, U>;
     return static_cast<Common>(t) == static_cast<Common>(u);
+  }
 }
 
+//#define TEST_ASSERT(cond, errcode) do { if(!(cond)) { E("Test failed: {}", #cond); return errcode; } } while(0)
+template<typename T>
+struct ExpressionDecomposer {
+    T lhs;
+    template<typename U>
+    bool operator==(const U &rhs) {
+      if(lhs == rhs)
+        return true;
+      D(std::format("{} == {}", lhs, rhs))
+      return false;
+    }
+    template<typename U>
+    bool operator<(const U &rhs) {
+      if(lhs < rhs)
+        return true;
+      D(std::format("{} < {}", lhs, rhs))
+      return false;
+    }
+    template<typename U>
+    bool operator>(const U &rhs) {
+      if(lhs > rhs)
+        return true;
+      D(std::format("{} > {}", lhs, rhs))
+      return false;
+    }
+    template<typename U>
+    bool operator>=(const U &rhs) {
+      if(lhs >= rhs)
+        return true;
+      D(std::format("{} >= {}", lhs, rhs))
+      return false;
+    }
+    template<typename U>
+    bool operator<=(const U &rhs) {
+      if(lhs <= rhs)
+        return true;
+      D(std::format("{} <= {}", lhs, rhs))
+      return false;
+    }
+};
+struct DecomposeStart {
+    template<typename T>
+    ExpressionDecomposer<T> operator->*(T lhs) {
+      return {lhs};
+    }
+};
+
+#define TEST_ASSERT(cond, errcode) \
+do { \
+    if (!([&](){ return (DecomposeStart{} ->* cond); }())) { \
+        E(std::format("Test failed: {}", #cond)); \
+    } \
+} while(0)
 
 #define TEST_ASSERT_EQ(actual, expected, errcode) \
   do { \
@@ -475,7 +545,6 @@ constexpr bool safe_equal(T t, U u) {
         #actual, #expected, \
         ToPrintablePtr(act), \
         ToPrintablePtr(exp)); \
-      return errcode; \
     } \
   } while(0)
 
@@ -488,7 +557,6 @@ constexpr bool safe_equal(T t, U u) {
         #actual, #expected, \
         ToPrintablePtr(act), \
         ToPrintablePtr(exp)); \
-      return errcode; \
     } \
   } while(0)
 // ------------------------------------------------------------------
@@ -501,19 +569,17 @@ constexpr bool safe_equal(T t, U u) {
     if (std::abs(a - e) > 1e-9) {                                    \
       E("Test failed: {} == {} (got {}, expected {})",             \
         #actual, #expected, a, e);                                 \
-      return errcode;                                              \
     }                                                                \
   } while(0)
 
-
 inline std::string FormatWithSpaces(uint64_t value) {
-    std::string s = std::to_string(value);
-    int32_t n = (int32_t)s.length() - 3;
-    while (n > 0) {
-        s.insert((size_t)n, " ");
-        n -= 3;
-    }
-    return s;
+  std::string s = std::to_string(value);
+  int32_t n = (int32_t) s.length() - 3;
+  while(n > 0) {
+    s.insert((size_t) n, " ");
+    n -= 3;
+  }
+  return s;
 }
 
 class ScopedTimer {
@@ -526,30 +592,19 @@ class ScopedTimer {
         m_msg(std::move(msg)), m_start(std::chrono::high_resolution_clock::now()), m_loc(loc) {
     }
     ~ScopedTimer() {
-        auto end = std::chrono::high_resolution_clock::now();
-        auto us = std::chrono::duration_cast<std::chrono::microseconds>(end - m_start).count();
-        auto now = std::chrono::system_clock::now();
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
-
-        // Format the number manually to guarantee zero heap leakage
-        std::string formatted_us = FormatWithSpaces((uint64_t)us);
-
-        // Print normally without using the :L locale flag
-        std::println("{:%H:%M:%S}.{:03d} {}|{}({}): {}: {} µs",
-            now,
-            static_cast<int32_t>(ms.count()),
-            m_loc.file_name(),
-            m_loc.function_name(),
-            m_loc.line(),
-            m_msg,
-            formatted_us);
+      auto end = std::chrono::high_resolution_clock::now();
+      auto us = std::chrono::duration_cast < std::chrono::microseconds > (end - m_start).count();
+      auto now = std::chrono::system_clock::now();
+      auto ms = std::chrono::duration_cast < std::chrono::milliseconds > (now.time_since_epoch()) % 1000;
+// Format the number manually to guarantee zero heap leakage
+      std::string formatted_us = FormatWithSpaces((uint64_t) us);
+// Print normally without using the :L locale flag
+      std::println("{:%H:%M:%S}.{:03d} {}|{}({}): {}: {} µs", now, static_cast<int32_t>(ms.count()), m_loc.file_name(),
+          m_loc.function_name(), m_loc.line(), m_msg, formatted_us);
     }
 };
 
-#define ST(fmt, ...) \
-  ScopedTimer timer_##__LINE__(std::format(fmt __VA_OPT__(,) __VA_ARGS__), std::source_location::current())
-
-const std::unordered_map<std::string,UINT64> string_to_case{
+const std::unordered_map<std::string,int64_t> string_to_case{
   {"BackSpace", 1},
   {"space", 2},
   {"Return", 3},
@@ -559,9 +614,9 @@ const std::unordered_map<std::string,UINT64> string_to_case{
   {"Delete", 7},
   {"Insert", 8}
 };
+//
 
 static std::string BaseAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
 
 
 #endif // DEFAULTS_H_

@@ -1,4 +1,3 @@
-// This is required to link Wayland protocol implementations. DO NOT MOVE IT
 extern "C" {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-qual"
@@ -12,371 +11,499 @@ extern "C" {
 #pragma GCC diagnostic pop
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+#pragma GCC diagnostic ignored "-Wswitch-default"
+#define STB_IMAGE_IMPLEMENTATION
+#include "fonts/stb_image.h"
+#pragma GCC diagnostic pop
+
 #include "AUILib.h"
 
 namespace aui {
-  static void buffer_release(void *data, UNUSED wl_buffer *buffer) {
-    auto *buf = static_cast<WaylandBuffer*>(data);
-    buf->busy = false;
-    D3("Buffer released, now free");
-    if(buf->pendingDeletion) {
-      if(buf->buffer) {
-        wl_buffer_destroy(buf->buffer);
-        buf->buffer = nullptr;
+
+  UNUSED static int32_t CreateWaylandShmFile(UNUSED off_t size) {
+    int32_t fd = memfd_create("aui-wayland-shm", MFD_CLOEXEC);
+    if(fd < 0)
+      E("memfd_create failed")
+    if(ftruncate(fd, size) < 0)
+      E("ftruncate failed")
+    return fd;
+  }
+
+  static void buffer_handle_release(void* data, struct wl_buffer* wl_buffer) {
+    if(!data)
+      return;
+    auto* ctx = static_cast<WaylandWindowContext*>(data);
+// Find the buffer entry matching this wl_buffer handle inside our tracking lists
+    WaylandBuffer* buf = nullptr;
+    bool isOrphan = false;
+    size_t orphanIdx = 0;
+// Check orphans first
+    for(size_t i = 0; i < ctx->mOrphanedBuffers.size(); ++i) {
+      if(ctx->mOrphanedBuffers[i] && ctx->mOrphanedBuffers[i]->wlBuffer == wl_buffer) {
+        buf = ctx->mOrphanedBuffers[i].get();
+        isOrphan = true;
+        orphanIdx = i;
+        break;
       }
-      if(buf->data) {
-        munmap(buf->data, buf->size);
-        buf->data = nullptr;
+    }
+// If not found in orphans, it's an active buffer in the base class array
+    if(!buf) {
+      for(size_t i = 0; i < AUI_NUM_BUFFERS; ++i) {
+        if(ctx->mBuffers[i] && static_cast<WaylandBuffer*>(ctx->mBuffers[i].get())->wlBuffer == wl_buffer) {
+          buf = static_cast<WaylandBuffer*>(ctx->mBuffers[i].get());
+          break;
+        }
       }
-      buf->size = 0;
-      buf->pendingDeletion = false;
-      D2("Pending buffer destroyed on release");
+    }
+    if(!buf)
+      return;
+    buf->isBusy = false;
+    if(isOrphan) {
+// 1. Destroy Wayland handles immediately
+      if(buf->wlBuffer) {
+        wl_buffer_destroy(buf->wlBuffer);
+        buf->wlBuffer = nullptr;
+      }
+      if(buf->shmData && buf->size > 0) {
+        munmap(buf->shmData, buf->size);
+        buf->shmData = nullptr;
+        buf->size = 0;
+      }
+// 2. Erase it from the vector. This invokes std::unique_ptr's destructor
+// and cleanly deletes the memory, removing it from the destructor's radar!
+      ctx->mOrphanedBuffers.erase(ctx->mOrphanedBuffers.begin() + SafeINT64(orphanIdx));
     }
   }
 
-  static const wl_buffer_listener buffer_listener = { .release = buffer_release };
+  static void xdg_surface_handle_configure(UNUSED void* data, UNUSED struct xdg_surface* xdg_surf,
+  UNUSED uint32_t serial) {
+    D2("serial {}", serial)
+    UNUSED auto* ctx = static_cast<WaylandWindowContext*>(data);
+    xdg_surface_ack_configure(xdg_surf, serial);
+    if(!ctx->IsConfigured()) {
+      ctx->Configured();
+    }
+    ctx->Draw();
+  }
 
-  static void frame_handle_done(void *data, UNUSED wl_callback *cb, UNUSED uint32_t time) {
-    auto *ctx = static_cast<WaylandWindowContext*>(data);
-    ctx->mFramePending = false;
+  static void xdg_toplevel_handle_configure(UNUSED void* data, UNUSED struct xdg_toplevel* toplevel,
+  UNUSED int32_t szx, UNUSED int32_t szy, UNUSED struct wl_array* states) {
+    D2("{}x{}", szx, szy)
+    if(szx == 0 || szy == 0)
+      return;
+    auto* ctx = static_cast<WaylandWindowContext*>(data);
+// Store the latest size, overwriting any previous pending
+    ctx->mPendingSizeX = szx;
+    ctx->mPendingSizeY = szy;
+  }
+
+  static void xdg_toplevel_handle_close(UNUSED void* data, UNUSED struct xdg_toplevel* toplevel) {
+    UNUSED auto* w = static_cast<WaylandWindowContext*>(data);
+    UNUSED AUI* au = w->EnginePtr();
+    if(au->MainWnd() == (AWindow*) w) {
+      D2("closing main window, bye")
+      au->ExitAUI();
+    }
+    else {
+      D1("closing secondary window")
+      w->Close();
+    }
+  }
+
+  static const struct xdg_toplevel_listener xdg_toplevel_listener = { .configure = xdg_toplevel_handle_configure,
+      .close = xdg_toplevel_handle_close,
+#ifdef XDG_TOPLEVEL_CONFIGURE_BOUNDS_SINCE_VERSION
+      .configure_bounds = [](void*, struct xdg_toplevel*, int32_t, int32_t) {
+      },
+#endif
+#ifdef XDG_TOPLEVEL_WM_CAPABILITIES_SINCE_VERSION
+      .wm_capabilities = [](void*, struct xdg_toplevel*, struct wl_array*) {
+      },
+#endif
+      };
+
+  static void frame_callback_done(void* data, struct wl_callback* cb, uint32_t) {
+    auto* ctx = static_cast<WaylandWindowContext*>(data);
     wl_callback_destroy(cb);
-    ctx->mFrameCallback = nullptr;
-  }
-
-  static const wl_callback_listener frame_listener = { .done = frame_handle_done };
-
-  static void xdg_toplevel_close(void *data, UNUSED xdg_toplevel *top) {
-    D3("xdg_toplevel_close called");
-    auto *ctx = static_cast<WaylandWindowContext*>(data);
-    if(ctx && ctx->Wnd()) {
-      D2("Calling Close on window");
-      if(ctx->Wnd() == ctx->GetEnginePtr()->MainWnd()) {
-        ctx->GetEnginePtr()->ExitAUI();
+    ctx->mFrameCallback = nullptr;// ← CRITICAL: prevent double destroy
+    ctx->mFrameCallbackPending = false;
+// Apply pending size if any
+    if(ctx->mPendingSizeX > 0 && ctx->mPendingSizeY > 0) {
+      int32_t curX = SafeINT32(ctx->SizeX());
+      int32_t curY = SafeINT32(ctx->SizeY());
+      if(ctx->mPendingSizeX != curX || ctx->mPendingSizeY != curY) {
+        ctx->ApplyNewSize(ctx->mPendingSizeX, ctx->mPendingSizeY);
       }
-      else {
-        ctx->Wnd()->Close();
-      }
-    }
-    else {
-      DT("No window to close");
+      ctx->mPendingSizeX = ctx->mPendingSizeY = 0;
     }
   }
 
-  WaylandWindowContext::WaylandWindowContext(AUI *aui, AWindow *window) {
-    mAUI = aui;
-    mWindow = window;
-  }
+  static const struct wl_buffer_listener buffer_listener = { .release = buffer_handle_release, };
+  static const struct wl_callback_listener frame_callback_listener = { .done = frame_callback_done };
+  static const struct xdg_surface_listener xdg_surface_listener = { .configure = xdg_surface_handle_configure, };
 
-  bool WaylandWindowContext::CreateFrame(UNUSED uint32_t width, UNUSED uint32_t height, const std::string &title) {
-    if(!mAUI || !mWindow)
-      return false;
-    wl_display *display = mAUI->GetWaylandDisplay();
-    wl_compositor *compositor = mAUI->GetWaylandCompositor();
-    wl_shm *shm = mAUI->GetWaylandShm();
-    xdg_wm_base *xdg_base = mAUI->GetWaylandXdgBase();
-    if(!display || !compositor || !shm || !xdg_base)
-      return false;
+  WaylandWindowContext::WaylandWindowContext(UNUSED AUI* au) {
+    D2("DEBUG: Context Created at {:p}", (void*)this);
+    EnginePtr(au);
+    UNUSED wl_compositor* compositor = au->WaylandCompositor();
     mSurface = wl_compositor_create_surface(compositor);
-    mXdgSurface = xdg_wm_base_get_xdg_surface(xdg_base, mSurface);
-    static const struct xdg_surface_listener surf_listener = { .configure = [](void *data, xdg_surface *surf,
-        uint32_t serial) {
-      auto *ctx = static_cast<WaylandWindowContext*>(data);
-      if(!ctx || !ctx->Wnd())
-        return;
-      xdg_surface_ack_configure(surf, serial);
-      if (!ctx->mFrameSyncEnabled) {
-        ctx->mFrameSyncEnabled = true;
-// Trigger a draw – now the guard in QueueFrameCommit will pass
-        ctx->Wnd()->Draw();
+    CreateFrame();
+  }
+
+  void WaylandWindowContext::CreateBuffers() {
+    D2("buffer creation")
+    AUI* au = EnginePtr();
+    UNUSED int32_t iszx = SafeINT32(SizeX());
+    UNUSED int32_t iszy = SafeINT32(SizeY());
+    int32_t size = iszx * iszy * 4;
+    int32_t fd = -1;
+    UNUSED int32_t stride = iszx * 4;
+    wl_shm* shm = au->WaylandShm();
+    struct wl_shm_pool* pool = nullptr;
+    void* mmem = nullptr;
+    for(size_t i = 0; i < AUI_NUM_BUFFERS; i++) {
+      fd = CreateWaylandShmFile(size);
+      if(fd < 0) {
+        E("Failed to create shm file");
+        continue;
       }
-    } };
-    xdg_surface_add_listener(mXdgSurface, &surf_listener, this);
-    mToplevel = xdg_surface_get_toplevel(mXdgSurface);
-    static const struct xdg_toplevel_listener toplevel_listener = { .configure = [](void *data,
-    UNUSED xdg_toplevel *top, int32_t width2, int32_t height2, UNUSED wl_array *states) {
-      auto *ctx = static_cast<WaylandWindowContext*>(data);
-      D2("xdg_toplevel_configure: new size {}x{}, resizeEnabled={}", width2, height2,
-          ctx->Wnd() ? ctx->Wnd()->IsResizeEnabled() : false);
-      if(!ctx || !ctx->Wnd())
-        return;
-// Enable frame sync after the first real configure (non‑zero size)
-      if(width2 > 0 && height2 > 0 && !ctx->mFrameSyncEnabled) {
-        ctx->mFrameSyncEnabled = true;
-        D2("Frame sync enabled after configure");
+      mmem = mmap(nullptr, static_cast<size_t>(size), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+      if(mmem == MAP_FAILED) {
+        E("mmap failed");
+        close(fd);
+        continue;
       }
-      if(width2 > 0 && height2 > 0 && ctx->Wnd()->IsResizeEnabled()) {
-        ctx->Wnd()->Resize(static_cast<uint32_t>(width2), static_cast<uint32_t>(height2));
-      }
-    }, .close = xdg_toplevel_close, .configure_bounds = nullptr, .wm_capabilities = nullptr };
-    xdg_toplevel_add_listener(mToplevel, &toplevel_listener, this);
-    xdg_toplevel_set_title(mToplevel, title.c_str());
-    if(mAUI->GetWaylandDecorationManager()) {
-      mDecoration = zxdg_decoration_manager_v1_get_toplevel_decoration(mAUI->GetWaylandDecorationManager(), mToplevel);
-      zxdg_toplevel_decoration_v1_set_mode(mDecoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
-      D2("CreateFrame: Server-side decorations requested successfully before initial commit.");
+      uint32_t* pixel_data = static_cast<uint32_t*>(mmem);
+      std::fill(pixel_data, pixel_data + (iszx * iszy), BGColor());
+      auto wBuf = std::make_unique<WaylandBuffer>();
+      wBuf->shmData = mmem;
+      wBuf->size = static_cast<size_t>(size);
+      wBuf->isBusy = false;
+      pool = wl_shm_create_pool(shm, fd, size);
+      wBuf->wlBuffer = wl_shm_pool_create_buffer(pool, 0, iszx, iszy, stride, WL_SHM_FORMAT_ARGB8888);
+      wl_buffer_add_listener(wBuf->wlBuffer, &buffer_listener, this);
+      wl_shm_pool_destroy(pool);
+      close(fd);
+      this->mBuffers[i] = std::move(wBuf);
     }
-    else {
-      D1("CreateFrame: No decoration manager available.");
+    D2("ends")
+  }
+
+  bool WaylandWindowContext::CreateFrame() {
+    D2("starts")
+    AUI* au = EnginePtr();
+    UNUSED wl_display* display = au->WaylandDisplay();
+    CreateBuffers();
+    UNUSED xdg_wm_base* xdg_base = au->WaylandXdgBase();
+    D2("xdg_base {}", (uint64_t) xdg_base)
+    mXDG_Surface = xdg_wm_base_get_xdg_surface(xdg_base, mSurface);
+    if(mXDG_Surface == nullptr)
+      E("xdg_wm_base_get_xdg_surface failed")
+    if(xdg_surface_add_listener(mXDG_Surface, &xdg_surface_listener, this) == -1) {
+      E("xdg_surface_add_listener failed")
     }
-    mPendingWidth = width;
-    mPendingHeight = height;
-    mPendingResizeEnabled = false;
-// Disable frame sync until we receive the first configure event
-    mFrameSyncEnabled = false;
-    mFramePending = false;
-    mFrameCallback = nullptr;
+    mXDG_Toplevel = xdg_surface_get_toplevel(mXDG_Surface);
+    if(!mXDG_Toplevel)
+      E("xdg_surface_get_toplevel failed")
+    if(xdg_toplevel_add_listener(mXDG_Toplevel, &xdg_toplevel_listener, this) != 0) {
+      E("xdg_toplevel_add_listener failed")
+    }
+    UpdateDecorations();
+    xdg_toplevel_set_min_size(mXDG_Toplevel, 1, 1);
+    xdg_toplevel_set_max_size(mXDG_Toplevel, 0, 0);
+    xdg_toplevel_set_title(mXDG_Toplevel, Title().c_str());
     wl_surface_commit(mSurface);
     wl_display_flush(display);
+    D2("ends")
     return true;
   }
 
-  void WaylandWindowContext::DestroyFrame() {
-    if(!mSurface)
+  uint64_t WaylandWindowContext::NativeWindowId() const {
+    if(mSurface != nullptr)
+      return reinterpret_cast<uint64_t>(mSurface);
+    else
+      E("null reference")
+  }
+
+  void WaylandWindowContext::Draw() {
+    if(!mConfigured || mIsRecreatingBuffers) {
+      D3("Not configured or recreating buffers, skipping draw");
       return;
-    D2("DestroyFrame");
-    if(mFrameCallback) {
-      wl_callback_destroy(mFrameCallback);
-      mFrameCallback = nullptr;
-      mFramePending = false;
+    }
+    ST2("")
+    int32_t idx = FindFreeBufferIndex();
+    if(idx < 0) {
+      D2("No free buffer, skipping frame");
+      return;
+    }
+    WaylandBuffer* buf = static_cast<WaylandBuffer*>(mBuffers[static_cast<size_t>(idx)].get());
+    if(!buf) {
+      E("Buffer is null");
+      return;
+    }
+    buf->isBusy = true;
+    int32_t iszx = SafeINT32(SizeX());
+    int32_t iszy = SafeINT32(SizeY());
+    uint32_t* pixel_data = nullptr;
+    if(buf->shmData) {
+      pixel_data = static_cast<uint32_t*>(buf->shmData);
+// Fill the sequential memory range with your AWindow background color
+      std::fill(pixel_data, pixel_data + (iszx * iszy), BGColor());
+    }
+    else {
+      E("shmData pointer is unmapped or null");
+      return;
+    }
+    if(pixel_data != nullptr) {
+      AWindow::Draw((void*) pixel_data);
+    }
+    else {
+      E("pixel data missing")
+    }
+    wl_surface_attach(mSurface, buf->wlBuffer, 0, 0);
+    wl_surface_damage_buffer(mSurface, 0, 0, SafeINT32(SizeX()), SafeINT32(SizeY()));
+    wl_surface_commit(mSurface);
+    if(!mFrameCallbackPending) {
+      mFrameCallback = wl_surface_frame(mSurface);
+      wl_callback_add_listener(mFrameCallback, &frame_callback_listener, this);
+      mFrameCallbackPending = true;
+    }
+    wl_display_flush(EnginePtr()->WaylandDisplay());
+  }
+
+  WaylandBuffer* WaylandWindowContext::Buffers() {
+    return static_cast<WaylandBuffer*>(mBuffers[0].get());
+  }
+
+  void WaylandWindowContext::UpdateDecorations() {
+    if(!mDecoration) {
+      AUI* au = EnginePtr();
+      auto* mgr = au->WaylandDecorationManager();
+      if(mgr) {
+        mDecoration = zxdg_decoration_manager_v1_get_toplevel_decoration(mgr, mXDG_Toplevel);
+      }
     }
     if(mDecoration) {
-      zxdg_toplevel_decoration_v1_destroy(mDecoration);
-      mDecoration = nullptr;
-    }
-    if(mToplevel) {
-      xdg_toplevel_destroy(mToplevel);
-      mToplevel = nullptr;
-    }
-    if(mXdgSurface) {
-      xdg_surface_destroy(mXdgSurface);
-      mXdgSurface = nullptr;
-    }
-    if(mSurface) {
-      wl_surface_destroy(mSurface);
-      mSurface = nullptr;
-    }
-    wl_display_flush(mAUI->GetWaylandDisplay());
-    DestroyShmBuffer();
-  }
-
-  void WaylandWindowContext::CreateShmBuffer(uint32_t width, uint32_t height, WaylandBuffer *targetBuffers) {
-    if(!targetBuffers)
-      targetBuffers = mBuffers;
-    mBufferWidth = width;
-    mBufferHeight = height;
-    D2("CreateShmBuffer: {}x{} (Double Buffered)", width, height);
-    size_t stride = width * 4;
-    size_t size = stride * height;
-    for(int32_t i = 0; i < 2; ++i) {
-// 1. Create anonymous file descriptor in memory
-      int32_t fd = memfd_create("aui-wl-shm", MFD_CLOEXEC);
-      if(fd < 0) {
-        E("Wayland Shm Allocation Fatal: memfd_create failed. System may be out of file descriptors.");
-      }
-// 2. Allocate the exact sizing layout
-      if(ftruncate(fd, static_cast<off_t>(size)) < 0) {
-        close(fd);
-        E("Wayland Shm Allocation Fatal: ftruncate failed to allocate {} bytes. Out of memory/shm space.", size);
-      }
-// 3. Map memory pages to the process space
-      void *data = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-      if(data == MAP_FAILED) {
-        close(fd);
-        E("Wayland Shm Allocation Fatal: mmap failed to expose shared memory buffer to UI process.");
-      }
-// 4. Register backing pool tracking structures with Wayland
-      wl_shm_pool *pool = wl_shm_create_pool(mAUI->GetWaylandShm(), fd, static_cast<int32_t>(size));
-      if(!pool) {
-        munmap(data, size);
-        close(fd);
-        E("Wayland Protocol Error: wl_shm_create_pool failed. Wayland connection may be corrupted.");
-      }
-      targetBuffers[i].buffer = wl_shm_pool_create_buffer(pool, 0, static_cast<int32_t>(width),
-          static_cast<int32_t>(height), static_cast<int32_t>(stride), WL_SHM_FORMAT_XRGB8888);
-      wl_shm_pool_destroy(pool);
-      close(fd);// Safe to close the descriptor now; pool keeps a duplicate internally
-      if(!targetBuffers[i].buffer) {
-        munmap(data, size);
-        E("Wayland Protocol Error: wl_shm_pool_create_buffer failed to generate client pixel buffer handle.");
-      }
-// Populate state attributes safely
-      targetBuffers[i].data = static_cast<uint32_t*>(data);
-      targetBuffers[i].size = size;
-      targetBuffers[i].busy = false;
-      targetBuffers[i].pendingDeletion = false;
-// Zero/clear out raw background (Pre-fill layout texture)
-      std::fill(targetBuffers[i].data, targetBuffers[i].data + width * height, 0xFFAAAAAA);
-// Establish hardware release sync boundaries
-      wl_buffer_add_listener(targetBuffers[i].buffer, &buffer_listener, &targetBuffers[i]);
+      zxdg_toplevel_decoration_v1_set_mode(mDecoration,
+          mDecorations ? ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE : ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE);
     }
   }
 
-  void WaylandWindowContext::DestroyShmBuffer() {
-    DestroyShmBuffer(mBuffers, true);
+  void WaylandWindowContext::Configured() {
+    D3("")
+    if(!mConfigured)
+      mConfigured = true;
   }
 
-  void WaylandWindowContext::Move(UNUSED int32_t x, UNUSED int32_t y) {
-    E("wayland windows are not supposed to be moved programmatically. compositor restricts it")
+  bool WaylandWindowContext::IsConfigured() {
+    return mConfigured;
   }
 
-  void WaylandWindowContext::EnableResize() {
-    mPendingResizeEnabled = true;
+  void WaylandWindowContext::BackendResize(uint32_t x, uint32_t y) {
+    if(mXDG_Toplevel) {
+// 1. Cast and safely bound check the sizes
+      int32_t targetWidth = static_cast<int32_t>(x);
+      int32_t targetHeight = static_cast<int32_t>(y);
+// 2. Reallocate internal buffers and update internal tracking dimensions
+      ApplyNewSize(targetWidth, targetHeight);
+// 3. Commit the surface to notify the compositor that the surface state (and buffer size) changed
+      if(mSurface) {
+        wl_surface_commit(mSurface);
+      }
+      D2("Requested resize to {}x{}", x, y);
+    }
+    else {
+      E("No toplevel to resize");
+    }
   }
 
-  void WaylandWindowContext::SetTitle(const std::string &title) {
-    if(mToplevel)
-      xdg_toplevel_set_title(mToplevel, title.c_str());
-  }
-
-  uint64_t WaylandWindowContext::GetNativeWindowId() const {
-    return reinterpret_cast<uint64_t>(mSurface);
-  }
-
-  uint32_t* WaylandWindowContext::GetSoftwareBuffer() {
-    int32_t backIdx = mCurrentBufferIndex ^ 1;
-    return mBuffers[backIdx].data;
-  }
-
-  void WaylandWindowContext::QueueFrameCommit() {
-    if(mFramePending) {
-      D3("Frame callback still pending, skipping commit");
+  void WaylandWindowContext::ApplyNewSize(int32_t width, int32_t height) {
+    if(width <= 0 || height <= 0)
       return;
+    SizeX(SafeUINT32(width));
+    SizeY(SafeUINT32(height));
+    if(mXDG_Surface) {
+      xdg_surface_set_window_geometry(mXDG_Surface, 0, 0, width, height);
     }
-    if(!mFrameSyncEnabled) {
-      D1("Frame sync not enabled (no configure yet), skipping commit");
-      return;
-    }
-    int32_t backBufferIdx = mCurrentBufferIndex ^ 1;
-    D3("QueueFrameCommit: surface={}, buffer_index={}, w={}, h={}", (void*)mSurface, backBufferIdx, mWindow->SizeX(),
-        mWindow->SizeY());
-    if(!mSurface || !mBuffers[backBufferIdx].buffer) {
-      E("Missing surface {} or buffer {}", (void*)mSurface, (void*) mBuffers[backBufferIdx].buffer);
-    }
-// Skip if the back buffer is still busy (being held by the compositor)
-    if(mBuffers[backBufferIdx].busy) {
-      D3("Back buffer busy, skipping commit");
-      return;
-    }
-// Enqueue the draw command (this will be processed by AUI::Draw)
-    DrawCommand cmd;
-    cmd.type = DrawCommandType::Wayland;
-    cmd.wayland.surface = mSurface;
-    cmd.wayland.buffer = mBuffers[backBufferIdx].buffer;
-    cmd.wayland.width = mWindow->SizeX();
-    cmd.wayland.height = mWindow->SizeY();
-    D3("QueueFrameCommit: Enqueueing command. Current mDrawCommands size BEFORE push = {}", mAUI->DrawCommands());
-    mAUI->EnqueueDrawCommand(cmd);
-#ifdef AUI_UNIT_TEST
-    ++mEnqueueCount;
-#endif
-// Mark buffer as busy (will be released by the buffer_release listener)
-    mBuffers[backBufferIdx].busy = true;
-    mCurrentBufferIndex = backBufferIdx;
-    if(mFrameSyncEnabled) {
-      mFrameCallback = wl_surface_frame(mSurface);
-      wl_callback_add_listener(mFrameCallback, &frame_listener, this);
-      mFramePending = true;
-      D3("Frame callback requested");
-    }
+    RecreateBuffers();
   }
 
-  void WaylandWindowContext::DisableResize() {
-    if(!mToplevel || !mWindow)
-      return;
-    int32_t w = static_cast<int32_t>(mWindow->SizeX());
-    int32_t h = static_cast<int32_t>(mWindow->SizeY());
-    xdg_toplevel_set_min_size(mToplevel, w, h);
-    xdg_toplevel_set_max_size(mToplevel, w, h);
-// Send the requests to the compositor now
-    if(mSurface) {
-      wl_surface_commit(mSurface);
-      wl_display_flush(mAUI->GetWaylandDisplay());
-    }
-  }
-
-  void WaylandWindowContext::ProcessEvent(void*) {
-    E("unmplemented")
-  }
-
-  void WaylandWindowContext::CreateShmBuffer(uint32_t width, uint32_t height) {
-    CreateShmBuffer(width, height, mBuffers);
-  }
-
-  void WaylandWindowContext::DestroyShmBuffer(WaylandBuffer *buffers, bool immediate) {
-    if(!buffers)
-      buffers = mBuffers;
-    for(int32_t i = 0; i < 2; ++i) {
-      if(buffers[i].buffer) {
-        if(immediate || !buffers[i].busy) {
-          if(buffers[i].buffer) {
-            wl_buffer_destroy(buffers[i].buffer);
-            buffers[i].buffer = nullptr;
-          }
-          if(buffers[i].data) {
-            munmap(buffers[i].data, buffers[i].size);
-            buffers[i].data = nullptr;
-          }
-          buffers[i].size = 0;
-          buffers[i].busy = false;
-          buffers[i].pendingDeletion = false;
+  void WaylandWindowContext::RecreateBuffers() {
+    for(auto& baseBuf : mBuffers) {
+      if(baseBuf) {
+        auto* buf = static_cast<aui::WaylandBuffer*>(baseBuf.get());
+        if(buf->isBusy) {
+          buf->isOrphaned = true;
+// Release from the array and transfer unique ownership to our orphan vector
+          mOrphanedBuffers.push_back(std::unique_ptr<WaylandBuffer>(static_cast<WaylandBuffer*>(baseBuf.release())));
         }
         else {
-          buffers[i].pendingDeletion = true;
+          if(buf->wlBuffer) {
+            wl_buffer_destroy(buf->wlBuffer);
+            buf->wlBuffer = nullptr;
+          }
+          if(buf->shmData && buf->size > 0) {
+            munmap(buf->shmData, buf->size);
+            buf->shmData = nullptr;
+            buf->size = 0;
+          }
+          baseBuf.reset();// Safely deletes the non-busy buffer
         }
       }
     }
+    CreateBuffers();
   }
 
-  void WaylandWindowContext::Resize(uint32_t width, uint32_t height) {
-    if(width == 0 || height == 0 || mInResize)
+  void WaylandWindowContext::BackendMove(int32_t, int32_t) {
+    D2("window move not supported by Wayland")
+  }
+
+  void WaylandWindowContext::BackendTitle([[maybe_unused]] std::string title) {
+    if(mXDG_Toplevel)
+      xdg_toplevel_set_title(mXDG_Toplevel, title.c_str());
+    else {
+      E("window not initialized")
+    }
+  }
+
+  void WaylandWindowContext::UpdateResizeHints() {
+    if(!mXDG_Toplevel) {
+      D1("No toplevel to apply resize hints");
       return;
-    mInResize = true;
-    if(mWindow && !mWindow->IsResizeEnabled()) {
-      xdg_toplevel_set_min_size(mToplevel, SafeINT32(width), SafeINT32(height));
-      xdg_toplevel_set_max_size(mToplevel, SafeINT32(width), SafeINT32(height));
+    }
+    if(mResizeEnabled) {
+// Allow resizing: min 1x1, max unlimited (0,0)
+      xdg_toplevel_set_min_size(mXDG_Toplevel, 1, 1);
+      xdg_toplevel_set_max_size(mXDG_Toplevel, 0, 0);
+    }
+    else {
+// Lock to current size
+      int32_t w = static_cast<int32_t>(SizeX());
+      int32_t h = static_cast<int32_t>(SizeY());
+      xdg_toplevel_set_min_size(mXDG_Toplevel, w, h);
+      xdg_toplevel_set_max_size(mXDG_Toplevel, w, h);
+    }
+// Commit to make the changes take effect
+    if(mSurface) {
       wl_surface_commit(mSurface);
-      wl_display_flush(mAUI->GetWaylandDisplay());
+      wl_display_flush(EnginePtr()->WaylandDisplay());
     }
-// Clear stale draw commands
-    uint64_t nativeId = reinterpret_cast<uint64_t>(mSurface);
-    if(mAUI)
-      mAUI->ClearDrawCommandsForWindow(nativeId);
-    mPendingWidth = width;
-    mPendingHeight = height;
-    if (mWindow) {
-        mWindow->Draw();   // instantly redraw at the new size
-    }
-// Do NOT create/destroy buffers here; DoDraw will call EnsureBuffer.
-    mInResize = false;
   }
 
-  void WaylandWindowContext::SetCursor(AUICursorType type) {
-    if(!mCursorTheme) {
-      wl_shm *shm = mAUI->GetWaylandShm();
-      if(!shm) {
-        D1("Wayland: No SHM");
-        return;
-      }
-      mCursorTheme = wl_cursor_theme_load(nullptr, 24, shm);
-      if(!mCursorTheme) {
-        D1("Wayland: Failed to load cursor theme");
-        return;
-      }
-    }
+  void WaylandWindowContext::BackendDisableResize() {
+    mResizeEnabled = false;
+    UpdateResizeHints();
+  }
+
+  void WaylandWindowContext::BackendEnableResize() {
+    mResizeEnabled = true;
+    UpdateResizeHints();
+  }
+
+  void WaylandWindowContext::BackendCursor(AUICursorType type) {
+    AUI* au = EnginePtr();
+    mCurrentCursorType = type;
+// Create cursor surface if not yet created
     if(!mCursorSurface) {
-      wl_compositor *compositor = mAUI->GetWaylandCompositor();
+      wl_compositor* compositor = au->WaylandCompositor();
       if(!compositor) {
-        D1("Wayland: No compositor");
+        E("Wayland: No compositor");
         return;
       }
       mCursorSurface = wl_compositor_create_surface(compositor);
       if(!mCursorSurface) {
-        D1("Wayland: Failed to create cursor surface");
+        E("Wayland: Failed to create cursor surface");
         return;
       }
     }
-    const char *name = "left_ptr";
-    switch (type) {
+    int32_t idx = static_cast<int32_t>(type);
+    CursorData& data = mCursorData[idx];
+// Attempt to load embedded cursor for this type if not tried before
+    if(!data.buffer && !data.embeddedAttempted) {
+      data.embeddedAttempted = true;
+      const uint8_t* start = nullptr;
+      const uint8_t* end = nullptr;
+      switch(type) {
+        case AUICursorType::Default:
+          start = _binary_fonts_mousepointer1_png_start;
+          end = _binary_fonts_mousepointer1_png_end;
+          break;
+        case AUICursorType::HResize:
+          start = _binary_fonts_mousepointerH_png_start;
+          end = _binary_fonts_mousepointerH_png_end;
+          break;
+        case AUICursorType::VResize:
+          start = _binary_fonts_mousepointerV_png_start;
+          end = _binary_fonts_mousepointerV_png_end;
+          break;
+        default:
+          E("unknown cursor type")
+          break;
+      }
+      if(start && end && (end - start) > 0) {
+        int32_t w = 0, h = 0;
+        wl_buffer* buf = CreateBufferFromPNGData(au->WaylandShm(), start, SafeUINT32(end - start), &w, &h);
+        if(buf) {
+          data.buffer = buf;
+          data.width = w;
+          data.height = h;
+// Set hotspot: for resize cursors, use centre; default top‑left.
+          switch(type) {
+            case AUICursorType::Default:
+              data.hotspot_x = 0;
+              data.hotspot_y = 0;
+              break;
+            case AUICursorType::HResize:
+            case AUICursorType::VResize:
+              data.hotspot_x = w / 2;
+              data.hotspot_y = h / 2;
+              break;
+            default:
+              E("unknown cursor type 2")
+              break;
+          }
+        }
+      }
+    }
+// If we have an embedded buffer, use it
+    if(data.buffer) {
+      wl_surface_attach(mCursorSurface, data.buffer, 0, 0);
+      wl_surface_damage(mCursorSurface, 0, 0, data.width, data.height);
+      wl_surface_commit(mCursorSurface);
+      uint32_t serial = au->WaylandPointerSerial();
+      wl_pointer* pointer = au->WaylandPointer();
+      if(pointer) {
+        wl_pointer_set_cursor(pointer, serial, mCursorSurface, data.hotspot_x, data.hotspot_y);
+      }
+      return;
+    }
+// Fallback: system cursor theme
+// Load theme asynchronously if not loaded yet
+    if(!mCursorTheme.load(std::memory_order_acquire)) {
+      static std::atomic<bool> isLoading { false };
+      bool expected = false;
+      if(isLoading.compare_exchange_strong(expected, true)) {
+        wl_shm* shm = au->WaylandShm();
+        if(shm) {
+          if(mCursorLoaderThread.joinable()) {
+            mCursorLoaderThread.join();
+          }
+          mCursorLoaderThread = std::thread([this, shm]() noexcept {
+            auto* theme = wl_cursor_theme_load(nullptr, 24, shm);
+            mCursorTheme.store(theme, std::memory_order_release);
+            mCursorNeedsApply = true;
+            RequestRedraw();
+          });
+        }
+      }
+      return;// Wait for theme to load
+    }
+// Theme loaded: get the appropriate cursor
+    const char* name = "left_ptr";
+    switch(type) {
       case AUICursorType::HResize:
         name = "ew-resize";
         break;
@@ -385,76 +512,165 @@ namespace aui {
         break;
       default:
         name = "left_ptr";
+        break;
     }
-    wl_cursor *cursor = wl_cursor_theme_get_cursor(mCursorTheme, name);
+    wl_cursor* cursor = wl_cursor_theme_get_cursor(mCursorTheme.load(std::memory_order_relaxed), name);
     if(!cursor || cursor->image_count == 0) {
-      D1("Wayland: Failed to load cursor '{}'", name);
+      E("Wayland: Failed to load cursor '{}'", name);
       return;
     }
-    wl_pointer *pointer = mAUI->GetWaylandPointer();
-    if(!pointer) {
-      D1("Wayland: No pointer");
-      return;
-    }
-    struct wl_cursor_image *image = cursor->images[0];
-    struct wl_buffer *buffer = wl_cursor_image_get_buffer(image);
+    wl_cursor_image* image = cursor->images[0];
+    wl_buffer* buffer = wl_cursor_image_get_buffer(image);
     if(!buffer) {
-      D1("Wayland: Failed to get buffer for cursor image");
+      E("Wayland: Failed to get buffer for cursor image");
       return;
     }
+    int32_t width = static_cast<int32_t>(image->width);
+    int32_t height = static_cast<int32_t>(image->height);
+    int32_t hx = static_cast<int32_t>(image->hotspot_x);
+    int32_t hy = static_cast<int32_t>(image->hotspot_y);
     wl_surface_attach(mCursorSurface, buffer, 0, 0);
-    wl_surface_damage(mCursorSurface, 0, 0, static_cast<int32_t>(image->width), static_cast<int32_t>(image->height));
+    wl_surface_damage(mCursorSurface, 0, 0, width, height);
     wl_surface_commit(mCursorSurface);
-    uint32_t serial = mAUI->GetLastPointerSerial();
-    wl_pointer_set_cursor(pointer, serial, mCursorSurface, static_cast<int32_t>(image->hotspot_x),
-        static_cast<int32_t>(image->hotspot_y));
-    mWindow->Draw();
+    uint32_t serial = au->WaylandPointerSerial();
+    wl_pointer* pointer = au->WaylandPointer();
+    if(pointer) {
+      wl_pointer_set_cursor(pointer, serial, mCursorSurface, hx, hy);
+    }
   }
 
-  bool WaylandWindowContext::EnsureBuffer(uint32_t width, uint32_t height) {
-    if(mBufferWidth == width && mBufferHeight == height && mBuffers[0].buffer && mBuffers[1].buffer) {
-        return true;
-      }
+  bool WaylandWindowContext::CursorNeedsApply() {
+    if(mCursorNeedsApply) {
+      mCursorNeedsApply = false;
+      return true;
+    }
+    return false;
+  }
 
-      // Guard against overwriting an inflight old buffer setup
-      for(uint32_t i = 0; i < 2; ++i) {
-        if (mOldBuffers[i].buffer && mOldBuffers[i].busy) {
-          // Force immediate cleanup or mark it explicitly so it isn't orphaned
-          wl_buffer_destroy(mOldBuffers[i].buffer);
-          if(mOldBuffers[i].data) munmap(mOldBuffers[i].data, mOldBuffers[i].size);
-          mOldBuffers[i] = WaylandBuffer{};
-        }
-      }
+  wl_buffer* CreateBufferFromPNGData(wl_shm* shm, const uint8_t* data, size_t size, int32_t* out_w, int32_t* out_h) {
+    if(!shm || !data || size == 0)
+      return nullptr;
+    int32_t w = 0, h = 0, channels = 0;
+    uint8_t* raw_rgba = stbi_load_from_memory(data, static_cast<int32_t>(size), &w, &h, &channels, 4);
+    if(!raw_rgba)
+      return nullptr;
+    int32_t stride = w * 4;
+    size_t total_size = static_cast<size_t>(stride * h);
+    int32_t fd = memfd_create("cursor_shm", MFD_CLOEXEC);
+    if(fd < 0) {
+      stbi_image_free(raw_rgba);
+      return nullptr;
+    }
+    if(ftruncate(fd, static_cast<off_t>(total_size)) < 0) {
+      close(fd);
+      stbi_image_free(raw_rgba);
+      return nullptr;
+    }
+    uint32_t* pixels = static_cast<uint32_t*>(mmap(nullptr, total_size, PROT_READ | PROT_WRITE,
+    MAP_SHARED, fd, 0));
+    if(pixels == MAP_FAILED) {
+      close(fd);
+      stbi_image_free(raw_rgba);
+      return nullptr;
+    }
+// Convert RGBA to premultiplied ARGB8888 (Wayland format)
+    for(int32_t i = 0; i < w * h; ++i) {
+      uint8_t r = raw_rgba[i * 4 + 0];
+      uint8_t g = raw_rgba[i * 4 + 1];
+      uint8_t b = raw_rgba[i * 4 + 2];
+      uint8_t a = raw_rgba[i * 4 + 3];
+      r = static_cast<uint8_t>((r * a) / 255);
+      g = static_cast<uint8_t>((g * a) / 255);
+      b = static_cast<uint8_t>((b * a) / 255);
+      pixels[i] = (static_cast<uint32_t>(a) << 24) | (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8)
+          | static_cast<uint32_t>(b);
+    }
 
-      // Safe to swap now...
-      for(uint32_t i = 0; i < 2; ++i) {
-        mOldBuffers[i] = mBuffers[i];
-        mBuffers[i] = WaylandBuffer { };
-      }
-    mHasOldBuffers = true;
-// Create new buffers
-    CreateShmBuffer(width, height, mBuffers);
-// Destroy old buffers asynchronously (they'll be freed when released)
-    DestroyShmBuffer(mOldBuffers, false);
-    mBufferWidth = width;
-    mBufferHeight = height;
-    return true;
+    munmap(pixels, total_size);
+    stbi_image_free(raw_rgba);
+
+    wl_shm_pool* pool = wl_shm_create_pool(shm, fd, static_cast<int32_t>(total_size));
+    wl_buffer* buffer = wl_shm_pool_create_buffer(pool, 0, w, h, stride, WL_SHM_FORMAT_ARGB8888);
+    wl_shm_pool_destroy(pool);
+    close(fd);
+
+    if(out_w)
+      *out_w = w;
+    if(out_h)
+      *out_h = h;
+    return buffer;
   }
 
   WaylandWindowContext::~WaylandWindowContext() {
+    D2("Context Destroyed at {:p}", (void*)this);
+    for(auto& data : mCursorData) {
+      if(data.buffer) {
+        wl_buffer_destroy(data.buffer);
+        data.buffer = nullptr;
+      }
+    }
+// 1. Clean up remaining active buffers safely
+    for(size_t i = 0; i < AUI_NUM_BUFFERS; ++i) {
+      if(mBuffers[i]) {
+        auto* buf = static_cast<WaylandBuffer*>(mBuffers[i].get());
+        if(buf->wlBuffer) {
+          wl_buffer_destroy(buf->wlBuffer);
+          buf->wlBuffer = nullptr;
+        }
+        if(buf->shmData && buf->size > 0) {
+          munmap(buf->shmData, buf->size);
+          buf->shmData = nullptr;
+        }
+        mBuffers[i].reset();
+      }
+    }
+// 2. Clean up stranded orphans that never fired a callback before exit
+    for(auto& buf : mOrphanedBuffers) {
+      if(buf) {
+        if(buf->wlBuffer) {
+          wl_buffer_destroy(buf->wlBuffer);
+          buf->wlBuffer = nullptr;
+        }
+        if(buf->shmData && buf->size > 0) {
+          munmap(buf->shmData, buf->size);
+          buf->shmData = nullptr;
+        }
+      }
+    }
+    mOrphanedBuffers.clear();// Safely wipes whatever is left
     if(mCursorSurface) {
       wl_surface_destroy(mCursorSurface);
       mCursorSurface = nullptr;
+    }
+    if(mCursorLoaderThread.joinable()) {
+      mCursorLoaderThread.join();
     }
     if(mCursorTheme) {
       wl_cursor_theme_destroy(mCursorTheme);
       mCursorTheme = nullptr;
     }
-// Destroy active buffers immediately (window is closing)
-    DestroyShmBuffer(mBuffers, true);
-// Destroy any old buffers that may still be pending
-    DestroyShmBuffer(mOldBuffers, true);
-    DestroyFrame();
+    if(mFrameCallback) {
+      wl_callback_destroy(mFrameCallback);
+      mFrameCallback = nullptr;
+    }
+    if(mDecoration) {
+      zxdg_toplevel_decoration_v1_destroy(mDecoration);
+      mDecoration = nullptr;
+    }
+// 2. Destroy Wayland surface layers in chronological reverse order
+    if(mXDG_Toplevel) {
+      xdg_toplevel_destroy(mXDG_Toplevel);
+      mXDG_Toplevel = nullptr;
+    }
+    if(mXDG_Surface) {
+      xdg_surface_destroy(mXDG_Surface);
+      mXDG_Surface = nullptr;
+    }
+    if(mSurface) {
+      wl_surface_destroy(mSurface);
+      mSurface = nullptr;
+    }
   }
 
-}// namespace aui
+
+}

@@ -35,7 +35,7 @@ static void UpdateButtonPositions(ScrollState* state) {
 // ------------------------------------------------------------------
 // Callback for vertical scrollbar
 // ------------------------------------------------------------------
-static void OnVerticalScroll(AWindow*, AWidget*, void* data, int32_t val) {
+static void OnVerticalScroll(AWidget*, void* data, int32_t val) {
   ScrollState* state = static_cast<ScrollState*>(data);
   state->vScroll = val;
   UpdateButtonPositions(state);
@@ -44,7 +44,7 @@ static void OnVerticalScroll(AWindow*, AWidget*, void* data, int32_t val) {
 // ------------------------------------------------------------------
 // Callback for horizontal scrollbar
 // ------------------------------------------------------------------
-static void OnHorizontalScroll(AWindow*, AWidget*, void* data, int32_t val) {
+static void OnHorizontalScroll(AWidget*, void* data, int32_t val) {
   ScrollState* state = static_cast<ScrollState*>(data);
   state->hScroll = val;
   UpdateButtonPositions(state);
@@ -53,34 +53,34 @@ static void OnHorizontalScroll(AWindow*, AWidget*, void* data, int32_t val) {
 // ------------------------------------------------------------------
 // Callback for "Toggle V‑Scroll" button
 // ------------------------------------------------------------------
-static void OnToggleVScroll(AWindow*, AWidget*, void* data, int32_t, int32_t, bool pressed) {
-  if(!pressed) return;
+static AWidget* OnToggleVScroll(AWidget* wi, void* data, int32_t, int32_t) {
   ScrollState* state = static_cast<ScrollState*>(data);
-  if(state->vScrollBar->IsVisible())
+  if(state->vScrollBar->Visible())
     state->vScrollBar->Hide();
   else
     state->vScrollBar->Show();
+  return wi;
 }
 
 // ------------------------------------------------------------------
 // Callback for "Toggle H‑Scroll" button
 // ------------------------------------------------------------------
-static void OnToggleHScroll(AWindow*, AWidget*, void* data, int32_t, int32_t, bool pressed) {
-  if(!pressed) return;
+static AWidget* OnToggleHScroll(AWidget* wi, void* data, int32_t, int32_t) {
   ScrollState* state = static_cast<ScrollState*>(data);
-  if(state->hScrollBar->IsVisible())
+  if(state->hScrollBar->Visible())
     state->hScrollBar->Hide();
   else
     state->hScrollBar->Show();
+  return wi;
 }
 
 // ------------------------------------------------------------------
 // Callback for "Close App" button
 // ------------------------------------------------------------------
-static void OnCloseApp(AWindow*, AWidget*, void* data, int32_t, int32_t, bool pressed) {
-  if(!pressed) return;
+static AWidget* OnCloseApp(AWidget* wi, void* data, int32_t, int32_t) {
   ScrollState* state = static_cast<ScrollState*>(data);
   if(state->engine) state->engine->ExitAUI();
+  return wi;
 }
 
 // ------------------------------------------------------------------
@@ -91,63 +91,58 @@ int32_t main() {
   AUI* au = AUI::Create("ScrollBar with Buttons");
   if(!au) return 1;
   AWindow* w = au->MainWnd();
-  w->SetBGColor(0xFF222222);
+  w->BGColor(0xFF222222);
   w->EnableResize();
   w->Resize(800, 600);
   w->DisableResize();
-
   // Info label
-  ALabel* info = ALabel::AttachTo(w, "Scrollbars move buttons in opposite direction", 10, 10, 780, 30);
-  info->SetBGColor(0xFF444444);
-  info->SetTextColor(0xFFFFFFFF);
-  info->SetHAlignment(AUIHAlign::center);
-
+  ALabel* info = ALabel::AttachTo(w, "Scrollbars move buttons in opposite direction");
+  info->Move(10, 10);
+  info->Resize(780, 30);
+  info->BGColor(0xFF444444);
+  info->TextColor(0xFFFFFFFF);
+  info->HAlign(AUIHAlign::center);
   // Vertical scrollbar
   AScrollBar* vScroll = AScrollBar::AttachTo(w, AUIOrientation::vertical);
   vScroll->Move(784, 40);
   vScroll->Resize(16, 520);
-  vScroll->SetRange(0, 200);
-  vScroll->SetPageStep(50);
-  vScroll->SetValue(0);
-  vScroll->SetTrackThickness(4);
-  vScroll->SetThumbThickness(8);
-  vScroll->SetTrackColor(0xFF666666);
-  vScroll->SetThumbColor(0xFFAAAAAA);
-
+  vScroll->Range(0, 200);
+  vScroll->PageStep(50);
+  vScroll->Value(0);
+  vScroll->TrackThick(4);
+  vScroll->ThumbThick(8);
+  vScroll->TrackColor(0xFF666666);
+  vScroll->ThumbColor(0xFFAAAAAA);
   // Horizontal scrollbar
   AScrollBar* hScroll = AScrollBar::AttachTo(w, AUIOrientation::horizontal);
   hScroll->Move(40, 584);
   hScroll->Resize(720, 16);
-  hScroll->SetRange(0, 200);
-  hScroll->SetPageStep(50);
-  hScroll->SetValue(0);
-  hScroll->SetTrackThickness(4);
-  hScroll->SetThumbThickness(8);
-  hScroll->SetTrackColor(0xFF666666);
-  hScroll->SetThumbColor(0xFFAAAAAA);
-
+  hScroll->Range(0, 200);
+  hScroll->PageStep(50);
+  hScroll->Value(0);
+  hScroll->TrackThick(4);
+  hScroll->ThumbThick(8);
+  hScroll->TrackColor(0xFF666666);
+  hScroll->ThumbColor(0xFFAAAAAA);
   // Three buttons
   AButton* btnV = AButton::AttachTo(w, "Toggle V-Scroll");
   btnV->Resize(120, 30);
-  btnV->SetBGColor(0xFF999999);
-  btnV->SetTextColor(0xFFFFFFFF);
-  btnV->SetBorderThickness(1);
-  btnV->SetBorderColor(0xFFAAAAAA);
-
+  btnV->BGColor(0xFF999999);
+  btnV->TextColor(0xFFFFFFFF);
+  btnV->Border(1);
+  btnV->BorderColor(0xFFAAAAAA);
   AButton* btnH = AButton::AttachTo(w, "Toggle H-Scroll");
   btnH->Resize(120, 30);
-  btnH->SetBGColor(0xFF44CC88);
-  btnH->SetTextColor(0xFFFFFFFF);
-  btnH->SetBorderThickness(1);
-  btnH->SetBorderColor(0xFFAAAAAA);
-
+  btnH->BGColor(0xFF44CC88);
+  btnH->TextColor(0xFFFFFFFF);
+  btnH->Border(1);
+  btnH->BorderColor(0xFFAAAAAA);
   AButton* btnClose = AButton::AttachTo(w, "Close App");
   btnClose->Resize(120, 30);
-  btnClose->SetBGColor(0xFFCC8844);
-  btnClose->SetTextColor(0xFFFFFFFF);
-  btnClose->SetBorderThickness(1);
-  btnClose->SetBorderColor(0xFFAAAAAA);
-
+  btnClose->BGColor(0xFFCC8844);
+  btnClose->TextColor(0xFFFFFFFF);
+  btnClose->Border(1);
+  btnClose->BorderColor(0xFFAAAAAA);
   // Build state object
   ScrollState state;
   state.engine = au;
@@ -160,22 +155,17 @@ int32_t main() {
   state.infoLabel = info;
   state.baseX = 380;   // center X
   state.baseY = 280;   // center Y
-
   // Set initial button positions
   UpdateButtonPositions(&state);
-
   // Register callbacks
   vScroll->SetScrollCallback(OnVerticalScroll, &state);
   hScroll->SetScrollCallback(OnHorizontalScroll, &state);
-  btnV->SetClickCallback(OnToggleVScroll, &state);
-  btnH->SetClickCallback(OnToggleHScroll, &state);
-  btnClose->SetClickCallback(OnCloseApp, &state);
-
+  btnV->SetMouseClickCallback(OnToggleVScroll, &state);
+  btnH->SetMouseClickCallback(OnToggleHScroll, &state);
+  btnClose->SetMouseClickCallback(OnCloseApp, &state);
   // Run event loop
   au->ProcessMessages();
 
   delete au;
   return 0;
 }
-
-

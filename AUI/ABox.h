@@ -3,18 +3,16 @@
 
 namespace aui {
 
-class ABox : public AWidget {
-private:
-  ABox();
-public:
-  static ABox* AttachTo(AWindow* parent);
-  static ABox* AttachTo(AWidget* parent);
-  void Draw(uint32_t* buffer, uint32_t parentWidth, uint32_t parentHeight,
-            int32_t offsetX, int32_t offsetY) const override;
-  void SetBorderThickness(uint32_t thick) { mBorderThick = thick; }
-  void SetBorderColor(uint32_t color) { mBorderColor = color; }
-  void OnMouseWheel(int32_t delta);
-  void OnMouseMove(int32_t localX, int32_t localY);
+class ABox : public AWidgetFactory<ABox> {
+    friend class AWidget;
+    friend class AWidgetFactory<ABox>;
+    private:
+    protected:
+      ABox();
+    public:
+      void OnDraw(UNUSED uint32_t *buffer, UNUSED uint32_t bufferW, UNUSED uint32_t bufferH, UNUSED int32_t offsetX,
+          UNUSED int32_t offsetY, UNUSED int32_t clipL, UNUSED int32_t clipT,
+          UNUSED int32_t clipR, UNUSED int32_t clipB) const;
 };
 
 } // namespace aui

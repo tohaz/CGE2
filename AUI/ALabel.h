@@ -3,26 +3,21 @@
 
 namespace aui {
 
-class ALabel : public AWidget {
+class ALabel : public AWidgetFactory<ALabel> {
+  friend class AWidgetFactory<ALabel>;
 private:
   mutable int32_t mCachedTextWidth = 0;
   mutable int32_t mCachedTextHeight = 0;
   mutable bool mTextMetricsValid = false;
-public:
+protected:
   ALabel();
+  ALabel(const std::string& text);
+  ALabel(const std::string& text, int32_t x, int32_t y, uint32_t szx, uint32_t szy);
+public:
   ~ALabel() override = default;
-  void Draw(uint32_t* buffer, uint32_t parentWidth, uint32_t parentHeight,
-            int32_t offsetX, int32_t offsetY) const override;
-  bool OnMouseClick(int32_t localX, int32_t localY, bool pressed);
-  void OnMouseMove(int32_t localX, int32_t localY);
-  static ALabel* AttachTo(AWindow* parent);
-  static ALabel* AttachTo(AWidget* parent);
-  static ALabel* AttachTo(AWindow* parent, const std::string& text,
-                          int32_t x, int32_t y, uint32_t w, uint32_t h);
-  static ALabel* AttachTo(AWidget* parent, const std::string& text,
-                          int32_t x, int32_t y, uint32_t w, uint32_t h);
-  static ALabel* AttachTo(AWindow* parent, const std::string& text);
-  static ALabel* AttachTo(AWidget* parent, const std::string& text);
+  using AWidgetFactory<ALabel>::AttachTo;
+  virtual void OnDraw(uint32_t *buffer, uint32_t bufferW, uint32_t bufferH,
+      int32_t offsetX, int32_t offsetY, int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB) const;
 };
 
 } // namespace aui

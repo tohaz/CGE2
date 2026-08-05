@@ -12,10 +12,10 @@ int32_t main() {
   ALabel* label = ALabel::AttachTo(win);
   label->Move(50, 50);
   label->Resize(300, 60);
-  label->SetText("Hello 😀 World! 🎉");
-  label->SetFontSize(24);
-  label->SetBGColor(0xFFEEEEEE);
-  label->SetBorderThickness(1);
+  label->Text("Hello 😀 World! 🎉");
+  label->FontSize(24);
+  label->BGColor(0xFFEEEEEE);
+  label->Border(1);
   au->ProcessMessages();
   delete au;
   return 0;

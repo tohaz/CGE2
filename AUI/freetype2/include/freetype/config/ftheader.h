@@ -816,7 +816,6 @@
 #define FT_CACHE_INTERNAL_IMAGE_H    FT_CACHE_H
 #define FT_CACHE_INTERNAL_SBITS_H    FT_CACHE_H
 
-/* TODO(david): Move this section below to a different header */
 #ifdef FT2_BUILD_LIBRARY
 #if defined( _MSC_VER )      /* Visual C++ (and Intel C++) */
 

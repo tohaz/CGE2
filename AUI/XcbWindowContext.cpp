@@ -1,80 +1,171 @@
 #include "AUILib.h"
 
 namespace aui {
-
-  XcbWindowContext::XcbWindowContext(AUI *aui, AWindow *window)
-    : mSoftwareBuffer(std::make_shared<std::vector<uint32_t>>()){
-    mWindow = window;
-    mAUI = aui;
-    D3("w {} aui {}", (int64_t)mWindow, (int64_t)mAUI)
+  XCBWindowContext::XCBWindowContext(UNUSED AUI *au) {
+    EnginePtr(au);
+    CreateFrame();
   }
 
-  bool XcbWindowContext::CreateFrame(uint32_t width, uint32_t height, const std::string &title) {
-    D2("CreateFrame entry: width={}, height={}, title='{}'", width, height, title);
-    if(!mAUI) {
-      DT("mAUI is null");
-      return false;
+  void XCBWindowContext::Draw() {
+    D4()
+    AUI* au = EnginePtr();
+    xcb_connection_t* conn = au->X11Connection();
+    xcb_screen_t* screen = au->X11Screen();
+    if(!conn || !screen || !mWindowId) {
+      E("XCB context handles are invalid during Draw");
+      return;
     }
-    xcb_connection_t *conn = mAUI->GetXcbConnection();
-    xcb_screen_t *screen = mAUI->GetXcbScreen();
-    D2("conn={}, screen={}", static_cast<void*>(conn), static_cast<void*>(screen));
-    if(!conn || !screen) {
-      DT("conn or screen null");
-      return false;
+    int32_t width = SafeINT32(SizeX());
+    int32_t height = SafeINT32(SizeY());
+    if(width <= 0 || height <= 0)
+      return;
+    int32_t idx = FindFreeBufferIndex();
+    if(idx < 0) {
+      D2("No free buffer, skipping frame");
+      return;
     }
-    mWindowId = xcb_generate_id(conn);
-    uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-    uint32_t values[2] = {
-    AUI_DEFAULT_WINDOW_BG, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_BUTTON_PRESS
-        | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE
-        | XCB_EVENT_MASK_POINTER_MOTION };
-    xcb_void_cookie_t create_cookie = xcb_create_window_checked(conn, XCB_COPY_FROM_PARENT, mWindowId, screen->root, 0, 0, static_cast<uint16_t>(width),
-        static_cast<uint16_t>(height), 0, XCB_WINDOW_CLASS_INPUT_OUTPUT, screen->root_visual, mask, values);
-    xcb_generic_error_t *err = xcb_request_check(conn, create_cookie);
-    if(err) {
-      E("xcb_create_window failed: code=%d", err->error_code);
-      free(err);
-      return false;
+    XCBBuffer* back_buf = static_cast<XCBBuffer*>(mBuffers[(size_t) idx].get());
+    back_buf->isBusy = true;
+    std::fill(back_buf->data.get(), back_buf->data.get() + (width * height), BGColor());
+    AWindow::Draw((void*) back_buf->data.get());
+    xcb_put_image(conn, XCB_IMAGE_FORMAT_Z_PIXMAP, back_buf->pixmap, mGC, static_cast<uint16_t>(width),
+        static_cast<uint16_t>(height), 0, 0, 0, 32,// Handles 16, 24, or 32-bit visual depths cleanly
+        static_cast<uint32_t>(back_buf->size), reinterpret_cast<const uint8_t*>(back_buf->data.get()));
+    xcb_copy_area(conn, back_buf->pixmap, mWindowId, mGC, 0, 0, 0, 0, static_cast<uint16_t>(width),
+        static_cast<uint16_t>(height));
+    xcb_flush(conn);
+    back_buf->isBusy = false;
+  }
+
+  void XCBWindowContext::PrepareSync() {
+    xcb_connection_t* conn = EnginePtr()->X11Connection();
+    xcb_sync_initialize_cookie_t sync_init_cookie = xcb_sync_initialize(conn, 3, 0);
+    xcb_sync_initialize_reply_t* sync_init_reply = xcb_sync_initialize_reply(conn, sync_init_cookie, NULL);
+    if(!sync_init_reply) {
+      E("Failed to initialize XSync extension on this connection");
+      return;
     }
-    SetTitle(title);
-    mGC = xcb_generate_id(conn);
-    uint32_t gc_value = 0;
-    xcb_void_cookie_t gc_cookie = xcb_create_gc_checked(conn, mGC, mWindowId, XCB_GC_FOREGROUND,
-        &gc_value);
-    err = xcb_request_check(conn, gc_cookie);
-    if(err) {
-      E("xcb_create_gc failed: code=%d", err->error_code);
-      free(err);
-      return false;
-    }
-// WM_DELETE_WINDOW protocol
+    free(sync_init_reply);
+// 1. Fetch all 4 required atoms cleanly in one place
+    xcb_intern_atom_cookie_t sync_cookie = xcb_intern_atom(conn, 0, 20, "_NET_WM_SYNC_REQUEST");
+    xcb_intern_atom_cookie_t counter_cookie = xcb_intern_atom(conn, 0, 28, "_NET_WM_SYNC_REQUEST_COUNTER");
     xcb_intern_atom_cookie_t protocols_cookie = xcb_intern_atom(conn, 0, 12, "WM_PROTOCOLS");
     xcb_intern_atom_cookie_t delete_cookie = xcb_intern_atom(conn, 0, 16, "WM_DELETE_WINDOW");
-    xcb_intern_atom_reply_t *protocols_reply = xcb_intern_atom_reply(conn, protocols_cookie, nullptr);
-    xcb_intern_atom_reply_t *delete_reply = xcb_intern_atom_reply(conn, delete_cookie, nullptr);
-    if(protocols_reply && delete_reply) {
-      mWmProtocolsAtom = protocols_reply->atom;
-      mWmDeleteWindowAtom = delete_reply->atom;
-      D2("WM_PROTOCOLS atom set to: {}", mWmProtocolsAtom);
-      D2("WM_DELETE_WINDOW atom set to: {}", mWmDeleteWindowAtom);
-      xcb_void_cookie_t prop_cookie = xcb_change_property_checked(conn, XCB_PROP_MODE_REPLACE, mWindowId, mWmProtocolsAtom, XCB_ATOM_ATOM, 32, 1,
-          &mWmDeleteWindowAtom);
-      err = xcb_request_check(conn, prop_cookie);
-      if (err) {
-        E("xcb_change_property for WM_PROTOCOLS failed: code=%d", err->error_code);
-        free(err);
-      }
+    xcb_intern_atom_reply_t* sync_reply = xcb_intern_atom_reply(conn, sync_cookie, NULL);
+    xcb_intern_atom_reply_t* counter_reply = xcb_intern_atom_reply(conn, counter_cookie, NULL);
+    xcb_intern_atom_reply_t* protocols_reply = xcb_intern_atom_reply(conn, protocols_cookie, NULL);
+    xcb_intern_atom_reply_t* delete_reply = xcb_intern_atom_reply(conn, delete_cookie, NULL);
+    if(!sync_reply || !counter_reply || !protocols_reply || !delete_reply) {
+      E("Failed to intern Sync atoms");
+      free(sync_reply);
+      free(counter_reply);
       free(protocols_reply);
       free(delete_reply);
+      return;
     }
-    else {
-      DT("Failed to intern WM_DELETE_WINDOW atom (protocols_reply={}, delete_reply={})", (void*)protocols_reply,
-          (void*)delete_reply);
-      if(protocols_reply)
-        free(protocols_reply);
-      if(delete_reply)
-        free(delete_reply);
-      E("XCB Fatal: Failed to retrieve window manager protocol atoms from server.");
+    mSyncRequestAtom = sync_reply->atom;
+    mWmProtocolsAtom = protocols_reply->atom;
+    mWmDeleteWindowAtom = delete_reply->atom;
+// 2. Create XSync counter
+    xcb_sync_int64_t initial_val { };
+    xcb_sync_counter_t counter = xcb_generate_id(conn);
+    xcb_sync_create_counter(conn, counter, initial_val);
+    mSyncCounter = counter;
+    uint32_t counter_prop[2] = { static_cast<uint32_t>(counter), 0 };
+    xcb_change_property(conn, XCB_PROP_MODE_REPLACE, mWindowId, counter_reply->atom, XCB_ATOM_CARDINAL, 32, 2,
+        counter_prop);
+// 4. Safely apply both WM_PROTOCOLS
+    xcb_atom_t protocols[2] = { mWmDeleteWindowAtom, mSyncRequestAtom };
+    xcb_change_property(conn, XCB_PROP_MODE_REPLACE, mWindowId, mWmProtocolsAtom, XCB_ATOM_ATOM, 32, 2, protocols);
+// Flush the changes to the XServer before mapping happens
+    xcb_flush(conn);
+    free(sync_reply);
+    free(counter_reply);
+    free(protocols_reply);
+    free(delete_reply);
+  }
+
+  bool XCBWindowContext::CreateFrame() {
+    D2("CreateFrame entry: width={}, height={}, title='{}'", SizeX(), SizeY(), Title());
+    CreateBuffers();
+    AUI* au = EnginePtr();
+    UNUSED xcb_connection_t* conn = au->X11Connection();
+    UNUSED xcb_screen_t* screen = au->X11Screen();
+    D2("conn={}, screen={}", static_cast<void*>(conn), static_cast<void*>(screen));
+    if(!conn || !screen) {
+      E("xcb conn or screen null");
+    }
+    mWindowId = xcb_generate_id(conn);
+// ==========================================
+// 1. Find the 32-bit (ARGB) Visual and Depth
+// ==========================================
+    xcb_visualid_t visual_id = screen->root_visual;
+    uint8_t depth = 32;// We explicitly want 32-bit depth
+    bool found_32bit = false;
+    xcb_depth_iterator_t depth_iter = xcb_screen_allowed_depths_iterator(screen);
+    for(; depth_iter.rem; xcb_depth_next(&depth_iter)) {
+      if(depth_iter.data->depth == 32) {
+        xcb_visualtype_iterator_t visual_iter = xcb_depth_visuals_iterator(depth_iter.data);
+        if(visual_iter.rem) {
+          visual_id = visual_iter.data->visual_id;
+          found_32bit = true;
+          break;
+        }
+      }
+    }
+// Fallback if the user's X server doesn't support a 32-bit depth
+    if(!found_32bit) {
+      D1("Warning: 32-bit ARGB visual not found. Falling back to default root visual.");
+      depth = XCB_COPY_FROM_PARENT;
+      visual_id = screen->root_visual;
+    }
+// ==========================================
+// 2. Create a Colormap matching the 32-bit visual
+// ==========================================
+    xcb_colormap_t colormap = XCB_NONE;
+    if(found_32bit) {
+      colormap = xcb_generate_id(conn);
+      xcb_create_colormap(conn, XCB_COLORMAP_ALLOC_NONE, colormap, screen->root, visual_id);
+    }
+// ==========================================
+// 3. Set up Window Attributes (Mask & Values)
+// ==========================================
+// Crucial: When using a non-standard visual, you MUST supply a matching colormap and border pixel.
+    uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_EVENT_MASK;
+    if(found_32bit) {
+      mask |= XCB_CW_COLORMAP;
+    }
+    uint32_t values[4];
+    int32_t val_idx = 0;
+    values[val_idx++] = AUI_DEFAULT_WINDOW_BG;// Transparent or alpha-supported background color
+    values[val_idx++] = 0;// XCB_CW_BORDER_PIXEL (Required for custom visuals)
+    values[val_idx++] = XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY
+        | XCB_EVENT_MASK_PROPERTY_CHANGE | XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE
+        | XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE | XCB_EVENT_MASK_POINTER_MOTION;
+    if(found_32bit) {
+      values[val_idx++] = colormap;// XCB_CW_COLORMAP
+    }
+// ==========================================
+// 4. Create the Window with the 32-bit Configuration
+// ==========================================
+    xcb_void_cookie_t create_cookie = xcb_create_window_checked(conn,
+        depth,// depth (32 instead of XCB_COPY_FROM_PARENT)
+        mWindowId, screen->root, 0, 0, static_cast<uint16_t>(SizeX()), static_cast<uint16_t>(SizeY()), 0,
+        XCB_WINDOW_CLASS_INPUT_OUTPUT, visual_id,// 32-bit visual_id instead of screen->root_visual
+        mask, values);
+
+    xcb_generic_error_t* err = xcb_request_check(conn, create_cookie);
+    if(err) {
+// Log the EXACT problem before E() halts execution
+      E("CRITICAL: xcb_create_window failed! Protocol Error: %d", err->error_code);
+    }
+    mGC = xcb_generate_id(conn);
+    uint32_t gc_value = 0;
+    xcb_void_cookie_t gc_cookie = xcb_create_gc_checked(conn, mGC, mWindowId, XCB_GC_FOREGROUND, &gc_value);
+    err = xcb_request_check(conn, gc_cookie);
+    if(err) {
+      E("xcb_create_gc failed: code={}", err->error_code);
+      free(err);
     }
     mKeySymbols = xcb_key_symbols_alloc(conn);
     if(!mKeySymbols) {
@@ -105,272 +196,365 @@ namespace aui {
     if(!mXkbState) {
       D1("XCB: XKB state unavailable – only keysyms will work");
     }
+
+    PrepareSync();
+    UpdateSizeHints();
     xcb_void_cookie_t map_cookie = xcb_map_window_checked(conn, mWindowId);
     err = xcb_request_check(conn, map_cookie);
-    if (err) {
+    if(err) {
       E("xcb_map_window failed: code=%d", err->error_code);
       free(err);
       return false;
     }
     D2("before xcb_flush")
-    if (xcb_connection_has_error(conn)) {
-        E("XCB connection has error before flush");
-    } else {
-        UNUSED int32_t ret = xcb_flush(conn);
-        D2("xcb_flush returned %d", ret);
+    if(xcb_connection_has_error(conn)) {
+      E("XCB connection has error before flush");
     }
-    D2("Before buffer resize: size = %zu", mSoftwareBuffer->size());
-    mSoftwareBuffer->resize(width * height, 0xFFAAAAAA);
-    D2("After buffer resize");
+    else {
+      UNUSED int32_t ret = xcb_flush(conn);
+      D2("xcb_flush returned {}", ret);
+    }
     return true;
   }
 
-  void XcbWindowContext::Move(int32_t x, int32_t y) {
-    if(!mAUI)
+  uint64_t XCBWindowContext::NativeWindowId() const {
+    return mWindowId;
+  }
+
+  void XCBWindowContext::CreateBuffers() {
+    D2("XCB buffer creation")
+    AUI* au = EnginePtr();
+    xcb_connection_t* conn = au->X11Connection();
+    xcb_screen_t* screen = au->X11Screen();
+    if(!conn || !screen) {
+      E("XCB connection or screen is null");
       return;
-    xcb_connection_t *conn = mAUI->GetXcbConnection();
-    if(!conn || !mWindowId)
-      return;
-    uint32_t values[2] = { static_cast<uint32_t>(x), static_cast<uint32_t>(y) };
-    xcb_void_cookie_t cookie = xcb_configure_window_checked(conn, mWindowId, XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, values);
-    xcb_generic_error_t *err = xcb_request_check(conn, cookie);
-    if (err) {
-      E("xcb_configure_window (Move) failed: code=%d", err->error_code);
-      free(err);
     }
-    if (mWindow) mWindow->Draw();
-    else E()
-  }
-
-  void XcbWindowContext::Resize(uint32_t width, uint32_t height) {
-    if(!mAUI)
-      return;
-    if(mSizeX == width && mSizeY == height)
-      return;
-    xcb_connection_t *conn = mAUI->GetXcbConnection();
-    if(!conn || !mWindowId)
-      return;
-    mSizeX = width;
-    mSizeY = height;
-    mSoftwareBuffer->resize(width * height, 0);
-    uint32_t values[2] = { width, height };
-    if (xcb_connection_has_error(conn)) E();
-    xcb_void_cookie_t cookie = xcb_configure_window_checked(conn, mWindowId, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
-    xcb_generic_error_t *err = xcb_request_check(conn, cookie);
-    if (err) {
-      E("xcb_configure_window (Resize) failed: code=%d", err->error_code);
-      free(err);
+    for(size_t i = 0; i < AUI_NUM_BUFFERS; ++i) {
+      if(mBuffers[i]) {
+// Cast base class pointer to backend-specific class
+        if(auto* xcbBuf = dynamic_cast<XCBBuffer*>(mBuffers[i].get())) {
+          if(xcbBuf->pixmap) {
+            xcb_free_pixmap(conn, xcbBuf->pixmap);
+            xcbBuf->pixmap = 0;
+          }
+        }
+      }
     }
-    if(mWindow && !mWindow->IsResizeEnabled()) {
-      ApplySizeHints(width, height, width, height);
-    }
-///    xcb_flush(conn);
-  }
-
-  void XcbWindowContext::SetTitle(const std::string &title) {
-    if(!mAUI)
+    int32_t width = SafeINT32(SizeX());
+    int32_t height = SafeINT32(SizeY());
+    if(width <= 0 || height <= 0) {
+      E("Invalid window size: {}x{}", width, height);
       return;
-    xcb_connection_t *conn = mAUI->GetXcbConnection();
-    if(!conn || !mWindowId)
-      return;
-    xcb_void_cookie_t cookie = xcb_change_property_checked(conn, XCB_PROP_MODE_REPLACE, mWindowId, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
-        static_cast<uint32_t>(title.size()), title.c_str());
-    xcb_generic_error_t *err = xcb_request_check(conn, cookie);
-    if (err) {
-      E("xcb_change_property (title) failed: code=%d", err->error_code);
-      free(err);
     }
+    size_t data_size = static_cast<size_t>(width) * (size_t) height * 4;// 4 bytes per pixel
+    for(size_t i = 0; i < AUI_NUM_BUFFERS; ++i) {
+      auto buf = std::make_unique<XCBBuffer>();
+// Allocate client‑side pixel memory
+      buf->data = std::make_unique<uint32_t[]>((size_t) (width * height));
+      buf->size = data_size;
+// Create a pixmap of the same size and depth as the screen
+      buf->pixmap = xcb_generate_id(conn);
+      xcb_create_pixmap(conn, 32,// depth (typically 24 or 32)
+          buf->pixmap, screen->root, static_cast<uint16_t>(width), static_cast<uint16_t>(height));
+// Initially fill with background color (optional)
+      std::fill(buf->data.get(), buf->data.get() + width * height, BGColor());
+      buf->isBusy = false;
+// Store in the buffer array
+      mBuffers[i] = std::move(buf);
+    }
+    D2("XCB buffers created: %d buffers of size %zu bytes", AUI_NUM_BUFFERS, data_size);
   }
 
-  uint32_t* XcbWindowContext::GetSoftwareBuffer() {
-    return mSoftwareBuffer->data();
+  void XCBWindowContext::UpdateDecorations() {
+    AUI* au = EnginePtr();
+    xcb_connection_t* conn = au->X11Connection();
+    if(!conn || !mWindowId) {
+      D1("Cannot update decorations: no connection or window");
+      return;
+    }
+    xcb_intern_atom_cookie_t cookie_motif = xcb_intern_atom(conn, 0, 15, "_MOTIF_WM_HINTS");
+    xcb_intern_atom_cookie_t cookie_type = xcb_intern_atom(conn, 0, 19, "_NET_WM_WINDOW_TYPE");
+    xcb_intern_atom_cookie_t cookie_normal = xcb_intern_atom(conn, 0, 24, "_NET_WM_WINDOW_TYPE_NORMAL");
+    xcb_intern_atom_cookie_t cookie_splash = xcb_intern_atom(conn, 0, 24, "_NET_WM_WINDOW_TYPE_SPLASH");
+    xcb_intern_atom_reply_t* reply_motif = xcb_intern_atom_reply(conn, cookie_motif, nullptr);
+    xcb_intern_atom_reply_t* reply_type = xcb_intern_atom_reply(conn, cookie_type, nullptr);
+    xcb_intern_atom_reply_t* reply_normal = xcb_intern_atom_reply(conn, cookie_normal, nullptr);
+    xcb_intern_atom_reply_t* reply_splash = xcb_intern_atom_reply(conn, cookie_splash, nullptr);
+    if(!reply_motif || !reply_type || !reply_normal || !reply_splash) {
+      D1("Failed to intern EWMH/Motif atoms");
+      free(reply_motif);
+      free(reply_type);
+      free(reply_normal);
+      free(reply_splash);
+      return;
+    }
+    xcb_atom_t atom_motif = reply_motif->atom;
+    xcb_atom_t atom_type = reply_type->atom;
+    xcb_atom_t atom_normal = reply_normal->atom;
+    xcb_atom_t atom_splash = reply_splash->atom;
+    free(reply_motif);
+    free(reply_type);
+    free(reply_normal);
+    free(reply_splash);
+    uint32_t hints_data[5] = { 0 };
+    hints_data[0] = static_cast<uint32_t>(MWM_HINTS_DECORATIONS);
+    hints_data[2] = mDecorations ? static_cast<uint32_t>(MWM_DECOR_ALL) : 0u;
+    xcb_change_property(conn, XCB_PROP_MODE_REPLACE, mWindowId, atom_motif, atom_motif, 32, 5, hints_data);
+    xcb_atom_t chosen_type = mDecorations ? atom_normal : atom_splash;
+    xcb_change_property(conn, XCB_PROP_MODE_REPLACE, mWindowId, atom_type, XCB_ATOM_ATOM, 32, 1, &chosen_type);
+    xcb_flush(conn);
+    D1("Decorations updated: {}", mDecorations ? "enabled" : "disabled");
   }
 
-  void XcbWindowContext::QueueFrameCommit() {
-      if (!mAUI) return;
-      // Remove any stale command for this window (ensures only one command exists)
-      mAUI->ClearDrawCommandsForWindow(mWindowId);   // <-- ADD THIS LINE
-      DrawCommand cmd;
-      cmd.type = DrawCommandType::Xcb;
-      cmd.xcb.windowId = mWindowId;
-      cmd.xcb.width = mSizeX;
-      cmd.xcb.height = mSizeY;
-      if (mSoftwareBuffer->empty()) E();
-      cmd.xcb.buffer = mSoftwareBuffer->data();
-      mAUI->EnqueueDrawCommand(cmd);
-  }
-
-  void XcbWindowContext::ProcessEvent(void *ev) {
-    xcb_generic_event_t *event = static_cast<xcb_generic_event_t*>(ev);
-    uint8_t type = event->response_type & 0x7F;
-    D3("XcbWindowContext::ProcessEvent: type={}", (int32_t)type);
-    switch (type) {
+  void XCBWindowContext::ProcessEvent(xcb_generic_event_t* ev) {
+    ST2("")
+    AUI* au = EnginePtr();
+    xcb_connection_t* conn = au->X11Connection();
+    const uint8_t type = ev->response_type & 0x7FU;
+    switch(type) {
       case XCB_EXPOSE: {
-        D2("Expose event, redrawing window");
-        if(mWindow)
-          mWindow->Draw();
+        RequestRedraw();
+        break;
+      }
+      case XCB_CLIENT_MESSAGE: {
+        auto* msg = reinterpret_cast<xcb_client_message_event_t*>(ev);
+        if(msg->data.data32[0] == mSyncRequestAtom) {// _NET_WM_SYNC_REQUEST
+// Extract the 64-bit serial number
+          uint32_t serial_low = msg->data.data32[2];
+          uint32_t serial_high = msg->data.data32[3];
+          uint64_t serial = (static_cast<uint64_t>(serial_high) << 32) | serial_low;
+          D2("Sync request received, serial=%llu", serial);
+// Store it for use after ConfigureNotify
+          mPendingSyncSerial = serial;
+          mSyncPending = true;
+        }
+        else {
+          D3("msg->data.data32[0] != mSyncRequestAtom, values {}, {}", msg->data.data32[0], mSyncRequestAtom)
+        }
+        if(msg->data.data32[0] == mWmDeleteWindowAtom) {
+          if(EnginePtr()->MainWnd() == this) {
+            EnginePtr()->ExitAUI();
+          }
+          else {
+            Close();
+          }
+        }
+        break;
+      }
+      case XCB_CONFIGURE_NOTIFY: {
+        auto* cfg = reinterpret_cast<xcb_configure_notify_event_t*>(ev);
+        if(cfg->width != SizeX() || cfg->height != SizeY()) {
+          SizeX(cfg->width);
+          SizeY(cfg->height);
+          CreateBuffers();// Recreate at new size
+          Draw();// Draw the new content
+// If this ConfigureNotify was preceded by a sync request, acknowledge it
+          if(mSyncPending) {
+// Set counter to the serial number (even value = "drawing complete")
+            xcb_sync_int64_t sync_val;
+            sync_val.hi = static_cast<int32_t>(mPendingSyncSerial >> 32);
+            sync_val.lo = static_cast<uint32_t>(mPendingSyncSerial & 0xFFFFFFFF);
+// 2. Pass the struct to the function
+            xcb_sync_set_counter(conn, mSyncCounter, sync_val);
+            xcb_flush(conn);
+            mSyncPending = false;
+          }
+        }
         break;
       }
       case XCB_MOTION_NOTIFY: {
-        auto *motion = reinterpret_cast<xcb_motion_notify_event_t*>(event);
-        D2("Mouse motion at ({},{})", motion->event_x, motion->event_y);
-        if(mWindow)
-          mWindow->OnMouseMove(motion->event_x, motion->event_y);
+        auto* motion = reinterpret_cast<xcb_motion_notify_event_t*>(ev);
+        D4("Mouse motion at ({},{})", motion->event_x, motion->event_y);
+        OnMouseMove(motion->event_x, motion->event_y);
         break;
       }
       case XCB_BUTTON_PRESS: {
-        auto *btn = reinterpret_cast<xcb_button_press_event_t*>(event);
-        if(mWindow) {
-          if(btn->detail == 4) {// scroll up
-            mWindow->OnMouseWheel(1);
-          }
-          else if(btn->detail == 5) {// scroll down
-            mWindow->OnMouseWheel(-1);
-          }
-          else {
-            mWindow->OnMousePress(btn->event_x, btn->event_y, btn->detail);
-          }
+        D4("XCB_BUTTON_PRESS");
+        UNUSED auto* btn = reinterpret_cast<xcb_button_press_event_t*>(ev);
+        switch(btn->detail) {
+          case 1:
+            OnMousePress(btn->event_x, btn->event_y, BTN_LEFT);
+            break;
+          default:
+            D("unhandled button {} press", btn->detail)
         }
-        break;
       }
+        break;
       case XCB_BUTTON_RELEASE: {
-        auto *btn = reinterpret_cast<xcb_button_release_event_t*>(event);
-        D2("Button release {} at ({},{})", (int32_t)btn->detail, btn->event_x, btn->event_y);
-        if(mWindow) {
-          mWindow->OnMouseRelease(btn->event_x, btn->event_y, btn->detail);
+        D4("XCB_BUTTON_RELEASE");
+//        E("unimplemented")
+        auto* btn = reinterpret_cast<xcb_button_release_event_t*>(ev);
+        switch(btn->detail) {
+          case 1:
+            OnMouseRelease(btn->event_x, btn->event_y, BTN_LEFT);
+            break;
+          default:
+            D("unhandled button {} release", btn->detail)
         }
-        break;
       }
+        break;
       case XCB_KEY_PRESS:
       case XCB_KEY_RELEASE: {
-        auto *key = reinterpret_cast<xcb_key_press_event_t*>(event);
+        auto* key = reinterpret_cast<xcb_key_press_event_t*>(ev);
         if(!key)
           break;
         if(key->detail < 8) {
           D1("XCB: low keycode {}", key->detail);
         }
-        if(!mKeySymbols || !mXkbState) {
+        if(!mKeySymbols) {
           D1("XCB: key translation not initialized");
           break;
         }
-        xcb_keysym_t keysym = xcb_key_symbols_get_keysym(mKeySymbols, key->detail, 0);
-        if(keysym == XCB_NO_SYMBOL) {
-          D1("XCB: no keysym for keycode {}", key->detail);
-          break;
-        }
+// 1. Get keysyms (base for code mapping, active for printable)
+        xcb_keysym_t base_keysym = xcb_key_symbols_get_keysym(mKeySymbols, key->detail, 0);
+        int32_t col = (key->state & XCB_MOD_MASK_SHIFT) ? 1 : 0;
+        xcb_keysym_t active_keysym = xcb_key_symbols_get_keysym(mKeySymbols, key->detail, col);
+// 2. Map to internal key code (for control keys)
+        AUIKeyCode code = translate_keysym_to_keycode(base_keysym);
+// 3. Build the event
         AUIKeyEvent keyEvent;
         keyEvent.pressed = (type == XCB_KEY_PRESS);
         keyEvent.modifiers = translate_modifiers(key->state);
-// *** PRIORITY: Check for known non‑printable key codes FIRST ***
-        AUIKeyCode code = translate_keysym_to_keycode(keysym);
-        if(code != AUIKeyCode::None) {
-          keyEvent.code = code;
-          keyEvent.unicode = 0;
+        keyEvent.code = code;
+// 4. Compute Unicode from the active keysym (ONCE, no arithmetic!)
+        uint32_t unicode = 0;
+        if(active_keysym >= 0x20 && active_keysym <= 0x7E) {
+// ASCII: keysym is the Unicode codepoint
+          unicode = static_cast<uint32_t>(active_keysym);
         }
-        else {
-// Not a known control key – treat as printable (if any)
-          char utf8[8] = { 0 };
-          int32_t len = xkb_keysym_to_utf8(keysym, utf8, sizeof(utf8));
-          if (len > 0) {
-            // Decode up to 4 bytes into a single UTF-32 character scalar
-            uint32_t cp = 0;
-            auto* u = reinterpret_cast<uint8_t*>(utf8);
-            if (len == 1)      cp = u[0];
-            else if (len == 2) cp = ((u[0] & 0x1F) << 6)  | (u[1] & 0x3F);
-            else if (len == 3) cp = ((u[0] & 0x0F) << 12) | ((u[1] & 0x3F) << 6)  | (u[2] & 0x3F);
-            else if (len == 4) cp = ((u[0] & 0x07) << 18) | ((u[1] & 0x3F) << 12) | ((u[2] & 0x3F) << 6) | (u[3] & 0x3F);
-            keyEvent.unicode = cp;
-            keyEvent.code = AUIKeyCode::None;
+        else
+          if((active_keysym & 0xFF000000) == 0x01000000) {
+// Extended Unicode (X11 stores in lower 24 bits)
+            unicode = active_keysym & 0x00FFFFFF;
           }
           else {
-// No printable representation – ignore
-            keyEvent.unicode = 0;
-            keyEvent.code = AUIKeyCode::None;
+// For non‑ASCII (e.g., Cyrillic, Greek) use xkbcommon as fallback
+            char utf8[8] = { 0 };
+            int32_t len = xkb_keysym_to_utf8(active_keysym, utf8, sizeof(utf8));
+            if(len > 0) {
+              auto* u = reinterpret_cast<uint8_t*>(utf8);
+              if(len == 1)
+                unicode = u[0];
+              else
+                if(len == 2)
+                  unicode = ((u[0] & 0x1F) << 6) | (u[1] & 0x3F);
+                else
+                  if(len == 3)
+                    unicode = ((u[0] & 0x0F) << 12) | ((u[1] & 0x3F) << 6) | (u[2] & 0x3F);
+                  else
+                    if(len == 4)
+                      unicode = ((u[0] & 0x07) << 18) | ((u[1] & 0x3F) << 12) | ((u[2] & 0x3F) << 6) | (u[3] & 0x3F);
+            }
+// If all else fails, unicode stays 0 (non‑printable)
           }
-        }
-        if(mWindow) {
-          mWindow->OnKeyEvent(keyEvent);
-        }
-        break;
-      }
-      case XCB_LEAVE_NOTIFY: {
-        if(mWindow)
-          mWindow->ClearHover();
-        break;
-      }
-      case XCB_CLIENT_MESSAGE: {
-        auto *msg = reinterpret_cast<xcb_client_message_event_t*>(event);
-        D2("Client message atom: {}", msg->type);
-        D2("mWmProtocolsAtom: {}", mWmProtocolsAtom);
-        D2("mWmDeleteWindowAtom: {}", mWmDeleteWindowAtom);
-        if(msg->type == mWmProtocolsAtom && static_cast<uint32_t>(msg->data.data32[0]) == mWmDeleteWindowAtom) {
-          D2("WM_DELETE_WINDOW received, calling ExitAUI");
-          if(mWindow)
-            mWindow->Close();
-        }
-        else {
-          DT("Atom mismatch, ignoring");
-        }
+        keyEvent.unicode = unicode;
+        D1("sending event: code {}, unicode {:x}", static_cast<int32_t>(keyEvent.code), keyEvent.unicode);
+        OnKeyEvent(keyEvent);
         break;
       }
       case XCB_MAP_NOTIFY:
-        mMapped = true;
-        if(mWindow) {
-          mWindow->OnMap();// resets pending and schedules a fresh draw
-        }
+        D3("XCB_MAP_NOTIFY not implemented")
         break;
-      case XCB_UNMAP_NOTIFY:
-        mMapped = false;
-        break;
-      case XCB_CONFIGURE_NOTIFY: {
-        auto* cfg = reinterpret_cast<xcb_configure_notify_event_t*>(event);
-        mSizeX = cfg->width;
-        mSizeY = cfg->height;
-        uint32_t new_size = static_cast<uint32_t>(cfg->width) * static_cast<uint32_t>(cfg->height);
-        if(mSoftwareBuffer->size() != new_size) {
-          if(mAUI) {
-                std::lock_guard<std::recursive_mutex> lock(mAUI->GetCommandMutex());
-                auto &commands = mAUI->GetDrawCommands();
-                uint64_t nativeId = mWindowId;
-                commands.erase(std::remove_if(commands.begin(), commands.end(), [nativeId](const DrawCommand &cmd) {
-                  return cmd.type == DrawCommandType::Xcb && cmd.xcb.windowId == nativeId;
-                }), commands.end());
-              }
-          mSoftwareBuffer->resize(new_size, 0xFFAAAAAA);
-        }
-        if(mWindow && mWindow->IsResizeEnabled()) {
-          mWindow->Resize(cfg->width, cfg->height);
-        }
-        break;
-      }
       default:
-        D2("Unhandled event type: {}", (int32_t)type)
-        ;
+        D("Unknown event type: {} ({})", static_cast<int32_t>(type), XCB_EventTypeToString(type))
         break;
     }
   }
 
-  void XcbWindowContext::ApplySizeHints(uint32_t min_w, uint32_t min_h, uint32_t max_w, uint32_t max_h) {
-    D2("minw {} minh {}", min_w, min_h);
-    if(!mAUI || !mWindowId) E()
-    xcb_connection_t *conn = mAUI->GetXcbConnection();
-    if(!conn) E()
+  void XCBWindowContext::BackendResize(uint32_t width, uint32_t height) {
+    if(width == 0 || height == 0) {
+      D1("Invalid resize dimensions: {}x{}", width, height);
+      return;
+    }
+    if(width == SizeX() && height == SizeY()) {
+      D2("Resize skipped – size already {}x{}", width, height);
+      return;
+    }
+    SizeX(width);
+    SizeY(height);
+    CreateBuffers();
+    AUI* au = EnginePtr();
+    xcb_connection_t* conn = au->X11Connection();
+    if(!conn || !mWindowId) {
+      E("XCB connection or window invalid");
+      return;
+    }
+    uint32_t values[2] = { width, height };
+    xcb_configure_window(conn, mWindowId, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
+    UpdateSizeHints();
+    xcb_flush(conn);
+    D4("Resize requested: {}x{}", width, height);
+  }
+
+  void XCBWindowContext::BackendMove(int32_t x, int32_t y) {
+    AUI* au = EnginePtr();
+    xcb_connection_t* conn = au->X11Connection();
+    if(!conn || !mWindowId) {
+      E("XCB connection or window invalid");
+      return;
+    }
+    uint32_t values[2] = { static_cast<uint32_t>(x), static_cast<uint32_t>(y) };
+    xcb_configure_window(conn, mWindowId, XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, values);
+    xcb_flush(conn);
+    D1("Window moved to ({}, {})", x, y);
+  }
+
+  void XCBWindowContext::BackendTitle(UNUSED std::string title) {
+    AUI* au = EnginePtr();
+    if(!au) return;
+    xcb_connection_t *conn = au->X11Connection();
+    if(!conn || !mWindowId) {E("not initialized")}
+    xcb_void_cookie_t cookie = xcb_change_property_checked(conn, XCB_PROP_MODE_REPLACE,
+      mWindowId, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
+      static_cast<uint32_t>(title.size()), title.c_str());
+    xcb_generic_error_t *err = xcb_request_check(conn, cookie);
+    if (err) {
+      E("xcb_change_property (title) failed: code={}", err->error_code);
+    }
+  }
+
+  void XCBWindowContext::UpdateSizeHints() {
+    if(!mWindowId)
+      return;
+    AUI* au = EnginePtr();
+    xcb_connection_t* conn = au->X11Connection();
+    if(!conn) {
+      E("XCB connection is null");
+      return;
+    }
+// Intern WM_NORMAL_HINTS (cache if desired)
     xcb_intern_atom_cookie_t hints_cookie = xcb_intern_atom(conn, 0, 15, "WM_NORMAL_HINTS");
-    xcb_intern_atom_reply_t *hints_reply = xcb_intern_atom_reply(conn, hints_cookie, nullptr);
+    xcb_intern_atom_reply_t* hints_reply = xcb_intern_atom_reply(conn, hints_cookie, nullptr);
     if(!hints_reply) {
       E("Failed to intern WM_NORMAL_HINTS");
       return;
     }
+    uint32_t min_w, min_h, max_w, max_h;
+    if(mResizeEnabled) {
+// Allow resizing within a large range
+      min_w = 1;
+      min_h = 1;
+      max_w = 0x7fffffff;
+      max_h = 0x7fffffff;
+    }
+    else {
+// Lock to current size
+      min_w = max_w = static_cast<uint32_t>(SizeX());
+      min_h = max_h = static_cast<uint32_t>(SizeY());
+    }
+// Build hints array (18 x uint32_t as per ICCCM)
     uint32_t hints[18] = { 0 };
-    hints[0] = 48U;
+    hints[0] = 48U;// PMinSize | PMaxSize
     hints[5] = min_w;
     hints[6] = min_h;
     hints[7] = max_w;
     hints[8] = max_h;
-    xcb_void_cookie_t cookie = xcb_change_property_checked(conn, XCB_PROP_MODE_REPLACE, mWindowId, hints_reply->atom, XCB_ATOM_WM_SIZE_HINTS, 32, 18,
-        hints);
-    xcb_generic_error_t *err = xcb_request_check(conn, cookie);
-    if (err) {
+    xcb_void_cookie_t cookie = xcb_change_property_checked(conn, XCB_PROP_MODE_REPLACE, mWindowId, hints_reply->atom,
+        XCB_ATOM_WM_SIZE_HINTS,// correct type
+        32, 18, hints);
+    xcb_generic_error_t* err = xcb_request_check(conn, cookie);
+    if(err) {
       E("xcb_change_property (size hints) failed: code=%d", err->error_code);
       free(err);
     }
@@ -378,43 +562,25 @@ namespace aui {
     xcb_flush(conn);
   }
 
-  void XcbWindowContext::EnableResize() {
-    ApplySizeHints(1, 1, 65535, 65535);
+  void XCBWindowContext::BackendDisableResize() {
+    D()
+    mResizeEnabled = false;
+    UpdateSizeHints();
   }
 
-  bool XcbWindowContext::EnsureBuffer(uint32_t width, uint32_t height) {
-    size_t needed = static_cast<size_t>(width) * height;
-    if(mSoftwareBuffer->size() != needed) {
-      mSoftwareBuffer->resize(needed, 0xFFAAAAAA);
-    }
-    return true;
+  void XCBWindowContext::BackendEnableResize() {
+    mResizeEnabled = true;
+    UpdateSizeHints();
   }
 
-  void XcbWindowContext::DisableResize() {
-    if (!mWindow) E();
-    uint32_t w = mWindow->SizeX();
-    uint32_t h = mWindow->SizeY();
-    ApplySizeHints(w, h, w, h);
-  }
-
-  void XcbWindowContext::SetCursor(AUICursorType type) {
-// 1. Validate the overall state
-    if(!mAUI) {
-      D1("XcbWindowContext::SetCursor: mAUI is null");
-      return;
-    }
-    xcb_connection_t* conn = mAUI->GetXcbConnection();
-    if(!conn || xcb_connection_has_error(conn)) {
-      D1("XcbWindowContext::SetCursor: invalid or errored connection");
-      return;
-    }
-    if(!mWindowId) {
-      D1("XcbWindowContext::SetCursor: window already destroyed");
-      return;
-    }
-// 2. Create cursor context if needed (still uses the validated connection)
+  void XCBWindowContext::BackendCursor(UNUSED AUICursorType type) {
+    AUI* au;
+    if(!(au = EnginePtr())) {E("engine ptr is null");}
+    xcb_connection_t* conn = au->X11Connection();
+    if(!conn || xcb_connection_has_error(conn)) { E("invalid or errored connection");}
+    if(!mWindowId) {E("window already destroyed");}
     if(!mCursorContext) {
-      xcb_screen_t* screen = mAUI->GetXcbScreen();
+      xcb_screen_t* screen = au->X11Screen();
       if(!screen) {
         D1("XcbWindowContext::SetCursor: no screen");
         return;
@@ -425,88 +591,52 @@ namespace aui {
         return;
       }
     }
-// 3. Load the requested cursor
     const char* name = "left_ptr";
     switch (type) {
-      case AUICursorType::HResize:
-        name = "ew-resize";
-        break;
-      case AUICursorType::VResize:
-        name = "ns-resize";
-        break;
-      default:
-        name = "left_ptr";
-        break;
+      case AUICursorType::HResize: name = "ew-resize"; break;
+      case AUICursorType::VResize: name = "ns-resize"; break;
+      default: name = "left_ptr"; break;
     }
     xcb_cursor_t new_cursor = xcb_cursor_load_cursor(mCursorContext, name);
     if(!new_cursor) {
       D1("XcbWindowContext::SetCursor: failed to load cursor '%s'", name);
       return;
     }
-// 4. Apply the new cursor to the window
     xcb_void_cookie_t cookie = xcb_change_window_attributes_checked(conn, mWindowId, XCB_CW_CURSOR, &new_cursor);
     xcb_generic_error_t* err = xcb_request_check(conn, cookie);
     if(err) {
       E("xcb_change_window_attributes (cursor) failed: code=%d", err->error_code);
       free(err);
-      xcb_free_cursor(conn, new_cursor);// free new cursor on failure
+      xcb_free_cursor(conn, new_cursor);
       return;
     }
-// 5. Free the old cursor (only if still valid and not the same as new_cursor)
     if(mCurrentCursor != 0 && mCurrentCursor != new_cursor) {
-// Double-check connection before freeing
       if(!xcb_connection_has_error(conn)) {
         xcb_free_cursor(conn, mCurrentCursor);
-      }
-      else {
+      } else {
         D1("XcbWindowContext::SetCursor: connection error, cannot free old cursor");
       }
     }
-// 6. Store the new cursor
     mCurrentCursor = new_cursor;
-// 7. Redraw (only if the window still exists)
-    if(mWindow) {
-      mWindow->Draw();
-    }
+    RequestRedraw();
   }
 
-  void XcbWindowContext::DestroyFrame() {
-    D2("DestroyFrame called, mWindowId={}", mWindowId);
-    if(!mAUI) E()
-    xcb_connection_t *conn = mAUI->GetXcbConnection();
-    if(!conn)
-      return;
-    if(mWindowId) {
-      if(mGC) {
-        xcb_void_cookie_t cookie = xcb_free_gc_checked(conn, mGC);
-        xcb_request_check(conn, cookie); // ignore error
-        mGC = 0;
-      }
-// Free the active cursor resource before the window context is eliminated
-      if(mCurrentCursor != 0) {
-        xcb_void_cookie_t cookie = xcb_free_cursor_checked(conn, mCurrentCursor);
-        xcb_request_check(conn, cookie);
-        mCurrentCursor = 0;
-      }
-      xcb_void_cookie_t cookie = xcb_destroy_window_checked(conn, mWindowId);
-      xcb_generic_error_t *err = xcb_request_check(conn, cookie);
-      if (err) {
-        D1("xcb_destroy_window failed: code=%d", err->error_code);
-        free(err);
-      }
-      xcb_flush(conn);
-      mWindowId = 0;
-      mGC = 0;
-    }
-    mSoftwareBuffer->clear();
-    D2("DestroyFrame done");
-  }
-
-  XcbWindowContext::~XcbWindowContext() {
-    D2("XcbWindowContext destructor");
+  XCBWindowContext::~XCBWindowContext() {
     if(mCursorContext) {
       xcb_cursor_context_free(mCursorContext);
       mCursorContext = nullptr;
+    }
+    if(mWindowId) {
+      xcb_connection_t* conn = EnginePtr()->X11Connection();
+      xcb_destroy_window(conn, mWindowId);
+      xcb_flush(conn);
+    }
+    else {
+      E("mWindowId unkn1own")
+    }
+    if(mSyncCounter) {
+      xcb_sync_destroy_counter(EnginePtr()->X11Connection(), mSyncCounter);
+      mSyncCounter = 0;
     }
     if(mKeySymbols) {
       xcb_key_symbols_free(mKeySymbols);
@@ -524,6 +654,5 @@ namespace aui {
       xkb_context_unref(mXkbCtx);
       mXkbCtx = nullptr;
     }
-    DestroyFrame();
   }
-}// namespace aui
+}

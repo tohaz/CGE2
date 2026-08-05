@@ -1,386 +1,648 @@
 #include "AUILib.h"
 
 namespace aui {
+  class AWidget;
 
-  AWindow::AWindow(std::unique_ptr<IWindowContext> backend) :
-      mBackend(std::move(backend)), mBGColor(AUI_DEFAULT_WINDOW_BG) {// add this line
-// The backend already has a pointer to this AWindow (set during construction).
-// No additional initialization needed.
-  }
-
-  AWindow* AWindow::AttachTo(AUI *engine, const std::string &title) {
-    return AttachTo(engine, title, engine->GetWindowType());
-  }
-
-  AWindow* AWindow::AttachTo(AUI *engine, const std::string &title, AUIWindowType type) {
-    if(!engine)
-      E("AWindow::AttachTo: engine is null");
-    std::unique_ptr<IWindowContext> backend;
-// Create backend according to type
-    if(type == AUIWindowType::XCB) {
-      backend = std::make_unique<XcbWindowContext>(engine, nullptr);
+  void AWindow::RemoveModal(AWidget* widget) {
+    auto it = std::find(mModalStack.begin(), mModalStack.end(), widget);
+    if(it != mModalStack.end()) {
+      (*it)->mIsModal = false;
+      mModalStack.erase(it);
+// Optionally restore focus if this was the top
+      if(mModalStack.empty()) {
+        FocusedWidget(nullptr);
+      }
+      else {
+// Similar focus restoration as in PopModal
+        AWidget* newTop = mModalStack.back();
+        if(newTop->Focusable())
+          FocusedWidget(newTop);
+        else {
+          AWidget* focusable = newTop->FindFirstFocusable();
+          if(focusable)
+            FocusedWidget(focusable);
+          else
+            FocusedWidget(newTop);
+        }
+      }
+      RequestRedraw();
     }
-    else if(type == AUIWindowType::Wayland) {
-      backend = std::make_unique<WaylandWindowContext>(engine, nullptr);
+  }
+
+  void AWindow::PopModal() {
+    if(mModalStack.empty())
+      return;
+    AWidget* top = mModalStack.back();
+    top->mIsModal = false;
+    mModalStack.pop_back();
+// Restore focus
+    if(!mModalStack.empty()) {
+      AWidget* newTop = mModalStack.back();
+      if(newTop->Focusable()) {
+        FocusedWidget(newTop);
+      }
+      else {
+        AWidget* focusable = newTop->FindFirstFocusable();
+        if(focusable)
+          FocusedWidget(focusable);
+        else
+          FocusedWidget(newTop);
+      }
     }
     else {
-      E("AWindow::AttachTo: invalid window type");
+      FocusedWidget(nullptr);// no modal, focus goes to nothing (or a default widget)
     }
-    AWindow *win = new AWindow(std::move(backend));
-    win->mBackend->SetWindow(win);
-    win->SetTitle(title);
-    if(!win->mBackend->CreateFrame(500, 300, title)) {
-      delete win;
-      E("AWindow::AttachTo: CreateFrame failed for window '{}'", title);
-    }
-    win->mSizeX = 500;
-    win->mSizeY = 300;
-    win->mX = 0;
-    win->mY = 0;
-    win->mNativeId = win->mBackend->GetNativeWindowId();
-    win->mWindowType = type;
-    win->DisableResize();
-    engine->RegisterWindow(win->mNativeId, std::unique_ptr<AWindow>(win));
-    win->Draw();
-    return win;
+    RequestRedraw();
   }
 
-  void AWindow::Resize(uint32_t w, uint32_t h) {
-    D3("AWindow::Resize: called with {}x{}, resizeEnabled={}", w, h, mResizeEnabled);
-    if(!mResizeEnabled) {
-      E("window resize is disabled. call window->EnableResize() before resize on windows");
+  void AWindow::PushModal(AWidget* widget) {
+      if (!widget) return;
+      // Ensure widget is attached to this window
+      if (widget->Wnd() != this) {
+          E("Cannot push modal: widget not attached to this window");
+          return;
+      }
+      // Remove if already in stack (so it moves to top)
+      auto it = std::find(mModalStack.begin(), mModalStack.end(), widget);
+      if (it != mModalStack.end()) mModalStack.erase(it);
+      widget->mIsModal = true;
+      mModalStack.push_back(widget);
+      // Transfer focus to the new modal
+      if (widget->Focusable()) {
+          FocusedWidget(widget);
+      } else {
+          AWidget* focusable = widget->FindFirstFocusable();
+          if (focusable) FocusedWidget(focusable);
+          else FocusedWidget(widget); // fallback
+      }
+      RequestRedraw();
+  }
+
+  std::pair<int32_t, int32_t> CalculateCoordsRotatedFull(int32_t x, int32_t y, uint32_t sizeX, uint32_t sizeY, double angle) {
+    if(std::abs(angle) < 1e-9) {
+      return {static_cast<int32_t>(x), static_cast<int32_t>(y)};
     }
-    AUI *au = mBackend ? mBackend->GetEnginePtr() : nullptr;
-    if(!au || !au->IsProcessingMessages()) {
-// Defer the resize until the event loop is active
-      mResizePending = true;
-      mPendingWidth = w;
-      mPendingHeight = h;
-      D3("Resize deferred");
+    double halfW = static_cast<double>(sizeX) / 2.0;
+    double halfH = static_cast<double>(sizeY) / 2.0;
+    double dx = x - halfW;
+    double dy = y - halfH;
+    double radians = -angle * (M_PI / 180.0);
+    double cosA = std::cos(radians);
+    double sinA = std::sin(radians);
+    double rx = dx * cosA - dy * sinA + halfW;
+    double ry = dx * sinA + dy * cosA + halfH;
+    return {static_cast<int32_t>(std::round(rx)), static_cast<int32_t>(std::round(ry))};
+  }
+
+  AWindow::AWindow() {
+    D2()
+    mSizeX = AUI_DEFAULT_WINDOW_SZX;
+    mSizeY = AUI_DEFAULT_WINDOW_SZY;
+    mAUI = nullptr;
+  }
+
+  AWindow* AWindow::AttachTo(UNUSED AUI* au, UNUSED const std::string& title) {
+    return AttachTo(au, title, au->MainBackendType());
+  }
+
+  AWindow* AWindow::AttachTo(UNUSED AUI* au, UNUSED const std::string& title, UNUSED AUIWindowType type) {
+    D2("starts")
+    AWindow* w = nullptr;
+    switch(type) {
+      case AUIWindowType::Wayland:
+        D2("creating Wayland main window")
+        w = new WaylandWindowContext(au);
+        w->Type(AUIWindowType::Wayland);
+        break;
+      case AUIWindowType::X11:
+        w = new XCBWindowContext(au);
+        w->Type(AUIWindowType::X11);
+        break;
+      default:
+        E("invalid window type")
+        break;
+    }
+    au->RegisterWindow(w->NativeWindowId(), std::unique_ptr<AWindow>(w));
+    w->Title(title);
+    w->BackendCursor(AUICursorType::Default);
+    return w;
+  }
+
+  void AWindow::Draw(UNUSED void* buf) {
+    mRedrawCounterDone++;
+    if(std::this_thread::get_id() != mAUI->MainThreadId()) {
+      if(mAUI->mSelfPipeFDs[1] >= 0) {
+        char token = 2;
+        write(mAUI->mSelfPipeFDs[1], &token, 1);
+      }
       return;
     }
-// Apply immediately (event loop is already running)
-    if(mBackend)
-      mBackend->Resize(w, h);
-    mSizeX = w;
-    mSizeY = h;
-// Clear stale draw commands (same as before)
-    uint64_t nativeId = mBackend->GetNativeWindowId();
-    {
-      std::lock_guard<std::recursive_mutex> lock(au->GetCommandMutex());
-      auto &commands = au->GetDrawCommands();
-      commands.erase(std::remove_if(commands.begin(), commands.end(), [nativeId](const DrawCommand &cmd) {
-        return cmd.type == DrawCommandType::Xcb && cmd.xcb.windowId == nativeId;
-      }),
-      commands.end());
+    for(const auto& widget : mWidg) {
+      if(widget->Visible() && !widget->Modal()) {
+        widget->Draw((uint32_t*) buf, mSizeX, mSizeY, 0, 0, 0, 0, SafeINT32(mSizeX), SafeINT32(mSizeY));
+      }
     }
-// Notify child widgets
-    for(auto &widget : mWidg) {
-      widget->OnParentResize(w, h);
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-  }
-
-  void AWindow::Close() {
-    D2("AWindow::Close entered, nativeId={}", mNativeId);
-    if (mClosed) return;
-    mClosed = true;
-    AUI *ep = mBackend ? mBackend->GetEnginePtr() : nullptr;
-    bool isMain = (ep && ep->MainWnd() == this);
-    if(isMain) {
-// Do NOT unregister/destroy the main window now.
-// Just break the event loop; the window will be destroyed
-// when the AUI is deleted in main() after the worker thread joins.
-
-    }
-    else {
-// For non‑main windows, immediate destruction is acceptable.
-      if(ep)
-        ep->UnregisterWindow(mNativeId);
+// 2. Draw modal stack (bottom to top)
+    for(AWidget* modal : mModalStack) {
+      if(modal->Visible()) {
+// Compute absolute offset (the parent offset for drawing)
+// We want the origin of the modal's coordinate system in buffer space.
+// Because modal's AbsX/Y already account for all parents.
+        int32_t offsetX = modal->AbsX() - modal->X();
+        int32_t offsetY = modal->AbsY() - modal->Y();
+        modal->Draw((uint32_t*) buf, mSizeX, mSizeY, offsetX, offsetY, 0, 0, SafeINT32(mSizeX), SafeINT32(mSizeY));
+      }
     }
   }
 
-  void AWindow::SetTitle(const std::string &title) {
-    mWindowTitle = title;
-    if(mBackend)
-      mBackend->SetTitle(title);
+  void AWindow::AddWidget(UNUSED std::unique_ptr<AWidget> widg) {
+    if(widg) {
+      widg.get()->Wnd(this);
+      mWidg.push_back(std::move(widg));
+    }
     else {
-      E("set title with no backend present")
+      E("Attempted to add a null widget to the window");
+    }
+  }
+
+  void AWindow::Title(const std::string& title) {
+    mTitle = title;
+    BackendTitle(title);
+  }
+
+  bool AWindow::Close() {
+    mClosing = true;
+    if(mType == AUIWindowType::Wayland) {
+      D1("closing Wayland window")
+      WaylandWindowContext* ctx = static_cast<WaylandWindowContext*>(this);
+      uint64_t windowId = ctx->NativeWindowId();
+      return mAUI->WaylandUnregisterWindow(windowId);
+    }
+    if(mType == AUIWindowType::X11) {
+      D1("closing XCB window")
+      XCBWindowContext* ctx = static_cast<XCBWindowContext*>(this);
+      uint64_t windowId = ctx->NativeWindowId();
+      return mAUI->XCBUnregisterWindow(windowId);
+    }
+    else {
+      E("unknown window type")
+    }
+    return false;
+  }
+
+  int32_t AWindow::FindFreeBufferIndex() const {
+    for(size_t i = 0; i < AUI_NUM_BUFFERS; ++i) {
+      if(!mBuffers[i]->isBusy) {
+        D3("found free buffer{}", i)
+        return SafeINT32(i);
+      }
+    }
+    D2("all buffers busy")
+    return -1;
+  }
+
+  void AWindow::EnginePtr(AUI* au) {
+    if(au != nullptr) {
+      mAUI = au;
+    }
+    else {
+      E("null reference passed")
+    }
+  }
+
+  void AWindow::Type(AUIWindowType t) {
+    mType = t;
+  }
+
+  AUI* AWindow::EnginePtr() {
+    if(mAUI != nullptr)
+      return mAUI;
+    else {
+      E("null reference")
     }
   }
 
   void AWindow::EnableResize() {
-    mResizeEnabled = true;
-    if(mBackend) {
-      mBackend->EnableResize();
+    if(mResize) {
+      E("resize is already enabled")
     }
-    else {
-      E("enabling resize with no backend present")
-    }
+    mResize = true;
+    BackendEnableResize();
   }
 
   void AWindow::DisableResize() {
-    mResizeEnabled = false;
-    if(mBackend)
-      mBackend->DisableResize();
-    else {
-      E("disabling resize with no backend present")
+    D2()
+    if(!mResize) {
+      E("resize is already disabled")
+    }
+    mResize = false;
+    BackendDisableResize();
+  }
+
+  void AWindow::Resize(uint32_t x, uint32_t y) {
+    if(!mResize) {
+      E("Window resizing is disabled by default. Call EnableResize()")
+    }
+    BackendResize(x, y);
+    LayoutUpdate();
+  }
+
+  void AWindow::Move(int32_t x, int32_t y) {
+    BackendMove(x, y);
+  }
+
+  void AWindow::OnMousePress(int32_t x, int32_t y, UNUSED uint32_t button) {
+    D1("===incoming x {} y {} button {}", x, y, button);
+    if(mMousePressCallback) {
+      mMousePressCallback(this, mMousePressCallbackData, x, y, button);
+    }
+    if (mActiveDropDown && ProcessDropdown(x, y)) {
+        return;  // event consumed by closing dropdown
+    }
+    if(!mModalStack.empty()) {
+      AWidget* top = mModalStack.back();
+      if(top->Visible() && top->Enabled()) {
+// Convert to top‑modal local coords
+        auto [localX, localY] = top->ToLocalCoords(x, y);
+        AWidget* consumed = nullptr;
+        switch(button) {
+          case BTN_LEFT:
+            consumed = top->OnMouseDownLeft(localX, localY);
+            break;
+          case BTN_RIGHT:
+            consumed = top->OnMouseDownRight(localX, localY);
+            break;
+          case BTN_MIDDLE:
+            consumed = top->OnMouseDownMiddle(localX, localY);
+            break;
+          default:
+            consumed = top->OnMouseDownOther(localX, localY, button);
+            break;
+        }
+        if(consumed) {
+          if(consumed->Focusable())
+            FocusedWidget(consumed);
+          else
+            if(top->Focusable())
+              FocusedWidget(top);
+          if(consumed->MouseLeftReleaseRequired() || consumed->IsPressedLeft())
+            mCapturedWidgetLeft = consumed;
+        }
+      }
+      return;// block normal widgets
+    }
+    switch(button) {
+      case BTN_LEFT:
+        D2("BTN_LEFT press")
+        for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+          AWidget* wid = it->get();
+          if(!wid->Visible() || !wid->Enabled())
+            continue;
+          D1("trying widget {}", wid->Text());
+          int32_t relX = x - wid->X();
+          int32_t relY = y - wid->Y();
+          auto [localX, localY] = CalculateCoordsRotatedFull(relX, relY, wid->SizeX(), wid->SizeY(), wid->Angle());
+          bool inBounds = (localX >= 0 && localX < SafeINT32(wid->SizeX()) && localY >= 0
+              && localY < SafeINT32(wid->SizeY()));
+          if(inBounds || !wid->ClipChildrenHitbox()) {
+// Dispatch down into tree
+            AWidget* cons = wid->OnMouseDownLeft(localX, localY);
+            if(cons != nullptr) {
+              D1("widget consumed event: {}", cons->Text());
+// 1. Set Focus to the actual consumer (or fallback to top-level widget)
+              if(cons->Focusable()) {
+                FocusedWidget(cons);
+              }
+              else
+                if(wid->Focusable()) {
+                  FocusedWidget(wid);
+                }
+// 2. Set Mouse Capture on Window if the consumed widget requires it
+              if(cons->MouseLeftReleaseRequired() || cons->IsPressedLeft()) {
+                D2("capturing w {}", cons->Text());
+                mCapturedWidgetLeft = cons;
+              }
+              break;// Stop Z-order iteration
+            }
+// Fallback if top-level widget consumes mouse events
+            if(inBounds && wid->ConsumesMouseEvents()) {
+              D1("widget consumes mouse events over its geometry, stop");
+              if(wid->Focusable()) {
+                FocusedWidget(wid);
+              }
+              if(wid->MouseLeftReleaseRequired() || wid->IsPressedLeft()) {
+                mCapturedWidgetLeft = wid;
+              }
+              break;
+            }
+          }
+        }
+        D1("loop through widgets ends")
+        break;
+      default:
+        D1("unhandled button press")
+        break;
     }
   }
 
-  void AWindow::OnMousePress(int32_t x, int32_t y, uint32_t button) {
-      // --- Menu handling (unchanged) ---
-      if (AMenu::IsActiveMenuVisible() && !AMenu::IsPointInsideActiveMenu(x, y))
-          AMenu::DismissActiveMenu();
-      AMenu *perm = AMenu::GetPermanentMenu();
-      if (perm) {
-          AMenu *sub = perm->GetActiveSubMenu();
-          if (sub && sub->IsVisible() && !AMenu::IsPointInsideMenuHierarchy(sub, x, y))
-              perm->CloseSubMenu();
+  void AWindow::OnMouseRelease(UNUSED int32_t x, UNUSED int32_t y, UNUSED uint32_t button) {
+    D2("x {} y {} button {}", x, y, button);
+    if (mMouseReleaseCallback) {
+      mMouseReleaseCallback(this, mMouseReleaseCallbackData, x, y, button);
+    }
+    if(!mModalStack.empty()) {
+      AWidget* target = nullptr;
+      if(mCapturedWidgetLeft) {
+// Ensure the captured widget is still valid and part of the modal hierarchy
+        if(mCapturedWidgetLeft->IsDescendantOf(mModalStack.back())) {
+          target = mCapturedWidgetLeft;
+        }
+        mCapturedWidgetLeft = nullptr;// clear capture before dispatch
       }
-      uint32_t normalized = button;
-      if (button == 272) normalized = 1;
-      else if (button == 273) normalized = 3;
-      else if (button == 274) normalized = 2;
-      if (normalized != 1) return;  // only left button for now
-      // --- If we are already dragging a widget, forward directly ---
-      if (mDragWidget) {
-          int32_t localX = x - mDragWidget->X();
-          int32_t localY = y - mDragWidget->Y();
-          if (localX >= 0 && localX < (int32_t)mDragWidget->SizeX() &&
-              localY >= 0 && localY < (int32_t)mDragWidget->SizeY()) {
-              mDragWidget->OnMouseClick(localX, localY, true);
+      if(!target) {
+        target = mModalStack.back();
+      }
+      if(target && target->Visible() && target->Enabled()) {
+        auto [localX, localY] = target->ToLocalCoords(x, y);
+        switch(button) {
+          case BTN_LEFT:
+            target->OnMouseUpLeft(localX, localY);
+            break;
+          case BTN_RIGHT:
+            target->OnMouseUpRight(localX, localY);
+            break;
+          case BTN_MIDDLE:
+            target->OnMouseUpMiddle(localX, localY);
+            break;
+          default:
+            target->OnMouseUpOther(localX, localY, button);
+            break;
+        }
+      }
+      return;// block normal widgets
+    }
+    AWidget* consumed = nullptr;
+    switch (button) {
+      case BTN_LEFT: {
+        D2("BTN_LEFT release");
+        // 1. CAPTURED ROUTING
+        if (mCapturedWidgetLeft != nullptr) {
+          AWidget* target = mCapturedWidgetLeft;
+          mCapturedWidgetLeft = nullptr; // Clear capture before dispatch to prevent re-entrancy bugs
+          // IMPORTANT: Calculate coordinates in TARGET'S PARENT space,
+          // because target->OnMouseUpLeft expects parent-relative coordinates!
+          int32_t parentRelX = x;
+          int32_t parentRelY = y;
+          if (target->Parent() != nullptr) {
+            auto [pX, pY] = target->Parent()->ToLocalCoords(x, y);
+            parentRelX = pX - target->X();
+            parentRelY = pY - target->Y();
+          } else {
+            // Target is a root-level widget directly attached to AWindow
+            parentRelX = x - target->X();
+            parentRelY = y - target->Y();
           }
-          ForceDraw();
-          return;
-      }
-      // --- Forward to children (topmost first) ---
-      for (auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
-          AWidget *widget = it->get();
-          if (!widget->IsVisible()) continue;
-          // DispatchClick will convert coordinates and propagate to grandchildren
-          bool consumed = widget->DispatchClick(x, y, true);
-          if (consumed) {
-              // If the widget is not a menu and we don't have a drag widget yet,
-              // set it as the drag target (so subsequent moves are sent directly)
-              bool isMenu = dynamic_cast<AMenu*>(widget) != nullptr;
-              if (!mDragWidget && !isMenu)
-                  SetDragWidget(widget);
-              break;  // stop processing further widgets
+          D2("Dispatching captured release to '[{}]' with coords ({}, {})",
+              target->Text(), parentRelX, parentRelY);
+          consumed = target->OnMouseUpLeft(parentRelX, parentRelY);
+          if (consumed != nullptr) {
+            D2("Release consumed by captured widget '[{}]'", consumed->Text());
           }
-      }
-
-      // --- Focus management ---
-      if (mDragWidget && mDragWidget->IsFocusable())
-          SetFocus(mDragWidget);
-      else if (!mDragWidget)
-          ClearFocus();
-  }
-
-  void AWindow::OnMouseRelease(int32_t x, int32_t y, uint32_t button) {
-      // --- If dragging, forward the release to the drag widget ---
-      if (mDragWidget) {
-          int32_t localX = x - mDragWidget->X();
-          int32_t localY = y - mDragWidget->Y();
-          mDragWidget->OnMouseClick(localX, localY, false);
-          SetDragWidget(nullptr);  // release the drag
-          return;
-      }
-      // --- Otherwise, let children handle the release ---
-      uint32_t normalized = (button == 272) ? 1 : (button == 273) ? 3 : (button == 274) ? 2 : button;
-      if (normalized == 1) {  // only left button for now
+        }
+        // 2. FALLBACK ROUTING (No Captured Widget)
+        else {
           for (auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
-              AWidget *widget = it->get();
-              if (!widget->IsVisible()) continue;
-              bool consumed = widget->DispatchClick(x, y, false);
-              if (consumed)
-                  break;  // stop at first consumer
+            AWidget* widget = it->get();
+            if (!widget->Visible() || !widget->Enabled())
+              continue;
+            // Pass window-relative offset to root widget
+            int32_t localX = x - widget->X();
+            int32_t localY = y - widget->Y();
+            // Check clipping on root container before recursing
+            if (widget->ClipChildren()) {
+              bool inBounds = (localX >= 0 && localX < SafeINT32(widget->SizeX()) &&
+                               localY >= 0 && localY < SafeINT32(widget->SizeY()));
+              if (!inBounds) {
+                continue; // Skip root widget if mouse release is outside clipped container
+              }
+            }
+            consumed = widget->OnMouseUpLeft(localX, localY);
+            if (consumed != nullptr) {
+              D2("Release consumed by '[{}]'", consumed->Text());
+              break;
+            }
           }
+        }
+        if (consumed == nullptr) {
+          D2("Release not consumed");
+        }
+        break;
       }
-  }
-
-  void AWindow::Draw() {
-    D3("[WIN] Draw() called, mDrawPending={}", mDrawPending);
-    if(mClosed)
-      return;
-    if(mDrawPending)
-      return;// already pending, no need
-    if(mIsDrawing)
-      return;// currently inside DoDraw → don't schedule recursively
-    mDrawPending = true;
-    if(mBackend) {
-      AUI* aui = mBackend->GetEnginePtr();
-      if(aui) {
-        D3("[WIN] Scheduling draw");
-        aui->ScheduleDraw(this);
-      }
+      default:
+        D2("Unhandled button release");
+        break;
     }
-  }
-
-  void AWindow::ForceDraw() {
-      D3("[WIN] ForceDraw() called, mDrawPending={}", mDrawPending);
-      if (mClosed) return;
-      mIsDrawing = true;          // mark that we are inside the drawing phase
-      mDrawPending = false;       // clear the pending flag before drawing
-      DoDraw();                   // performs the actual rendering and commits
-      mIsDrawing = false;         // release the guard
-  }
-
-  void AWindow::AddWidget(std::unique_ptr<AWidget> widg) {
-    AUI *engine = mBackend ? mBackend->GetEnginePtr() : nullptr;
-    widg->InitWidgetProperties(0, engine, this, nullptr, widg->mWidgetType);
-    mWidg.push_back(std::move(widg));
-    Draw();
   }
 
   void AWindow::OnMouseMove(int32_t x, int32_t y) {
-    m_lastMouseX = x;
-    m_lastMouseY = y;
-// If dragging, bypass hover tracking
-    if(mDragWidget) {
-      D1("we are dragging widget")
-      int32_t localX = x - mDragWidget->X();
-      int32_t localY = y - mDragWidget->Y();
-      mDragWidget->OnMouseMove(localX, localY);
+    D2("mouse move global coords {} {}", x, y);
+    if(!mModalStack.empty()) {
+// If capture exists, route to that widget (must be within modal)
+      if(mCapturedWidgetLeft) {
+// Ensure captured widget is still valid and inside modal
+        if(mCapturedWidgetLeft->IsDescendantOf(mModalStack.back())) {
+          int32_t localX = x - mCapturedWidgetLeft->AbsX();
+          int32_t localY = y - mCapturedWidgetLeft->AbsY();
+          mCapturedWidgetLeft->OnMouseMove(localX, localY);
+        }
+        else {
+// capture widget no longer in modal, clear it
+          mCapturedWidgetLeft = nullptr;
+        }
+        return;
+      }
+      AWidget* top = mModalStack.back();
+      auto [localX, localY] = top->ToLocalCoords(x, y);
+      AWidget* hit = top->HitTestLocal(localX, localY);
+      if(hit) {
+        auto [hitLocalX, hitLocalY] = hit->ToLocalCoords(x, y);
+        hit->OnMouseMove(hitLocalX, hitLocalY);
+        if(!mHLWidget && hit->mHLEnabled) {
+          mHLWidget = hit;
+          mHLWidget->HL(true);
+        }
+      }
+      else {
+        if(mHLWidget) {
+          mHLWidget->HL(false);
+          mHLWidget = nullptr;
+        }
+      }
       return;
     }
-    AWidget *hit = FindWidgetAt(x, y);
-// If the widget under cursor changed
-    if(hit != mHoverWidget) {
-// Notify old widget it lost hover
-      if(mHoverWidget) {
-        mHoverWidget->OnMouseLeave();
-      }
-      mHoverWidget = hit;
-// If new widget is valid, send enter event (OnMouseMove with local coords)
-      if(mHoverWidget) {
-        int32_t localX = x - mHoverWidget->X();
-        int32_t localY = y - mHoverWidget->Y();
-        mHoverWidget->OnMouseMove(localX, localY);
-      }
+// If a left‑button capture exists, route all moves to that widget
+    if(mCapturedWidgetLeft) {
+// Convert window coords to local coords relative to the captured widget
+      int32_t absX = mCapturedWidgetLeft->AbsX();
+      int32_t absY = mCapturedWidgetLeft->AbsY();
+      int32_t localX = x - absX;
+      int32_t localY = y - absY;
+      mCapturedWidgetLeft->OnMouseMove(localX, localY);
+      return;// don't also send to hovered widget
     }
-    else if(mHoverWidget) {
-// Same widget, just forward motion
-      int32_t localX = x - mHoverWidget->X();
-      int32_t localY = y - mHoverWidget->Y();
-      mHoverWidget->OnMouseMove(localX, localY);
-    }
-  }
-
-  AWidget* AWindow::FindWidgetAt(int32_t x, int32_t y) const {
-// Iterate top‑down (reverse order)
-    for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
-      AWidget *w = it->get();
-      if(w->IsVisible() && w->IsEnabled() && x >= w->X() && x < w->X() + static_cast<int32_t>(w->SizeX()) && y >= w->Y()
-          && y < w->Y() + static_cast<int32_t>(w->SizeY())) {
-        return w;
+// Normal hit‑test path (no capture)
+    AWidget* hit = FindWidgetAt(x, y);
+    if(hit) {
+      hit->OnMouseMove(x - hit->AbsX(), y - hit->AbsY());
+      if(!mHLWidget && hit->mHLEnabled) {
+        mHLWidget = hit;
+        mHLWidget->HL(true);
       }
     }
-    return nullptr;
-  }
-
-  void AWindow::ClearHover() {
-    if(mHoverWidget) {
-      mHoverWidget->OnMouseLeave();
-      mHoverWidget = nullptr;
+    else {
+      if(mHLWidget) {
+        mHLWidget->HL(false);
+        mHLWidget = nullptr;
+      }
     }
   }
 
-  void AWindow::SetDragWidget(AWidget *widget) {
-    D2("SetDragWidget: {} -> {}", (UINT64)mDragWidget, (UINT64)widget);
-    mDragWidget = widget;
+  void AWindow::OnMouseEnter(UNUSED int32_t x, UNUSED int32_t y) {
+    D2("mouse enter {} {}", x, y)
+    BackendCursor(AUICursorType::Default);
   }
 
-  void AWindow::OnMouseWheel(int32_t delta) {
-// If dragging, forward directly to the drag widget
-    if(mDragWidget) {
-      mDragWidget->OnMouseWheel(delta);
+  void AWindow::OnMouseLeave(UNUSED int32_t x, UNUSED int32_t y) {
+    D2("mouse leave {} {}", x, y)
+    if(mHLWidget) {
+      mHLWidget->HL(false);
+      mHLWidget = nullptr;
+    }
+  }
+
+  void AWindow::RequestRedraw() {
+    mNeedsRepaint = true;
+    D4("Window redraw request: {} done: {} wakeups {}", mRedrawCounter, mRedrawCounterDone, mAUI->WakeupCounter())
+    mRedrawCounter++;
+    mAUI->RequestRedraw();
+  }
+
+  void AWindow::OnMouseWheel(int32_t x, int32_t y, int32_t delta) {
+    D2("mouse wheel {} {} delta {}", x, y, delta)
+    if(!mModalStack.empty()) {
+      AWidget* top = mModalStack.back();
+      auto [localX, localY] = top->ToLocalCoords(x, y);
+      top->DispatchMouseWheel(localX, localY, delta);
       return;
     }
 // Otherwise, forward to children using the last known mouse position
     for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
       AWidget* widget = it->get();
-      if(!widget->IsVisible())
-        continue;
-      if(widget->DispatchMouseWheel(m_lastMouseX, m_lastMouseY, delta))
-        return;// stop at first consumer
-    }
-  }
-
-  void AWindow::OnMouseWheel(int32_t x, int32_t y, int32_t delta) {
-// If dragging, forward directly to the drag widget
-    if(mDragWidget) {
-      mDragWidget->OnMouseWheel(delta);
-      return;
-    }
-// Otherwise, forward to children (topmost first)
-    for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
-      AWidget* widget = it->get();
-      if(!widget->IsVisible())
+      if(!widget->Visible())
         continue;
       if(widget->DispatchMouseWheel(x, y, delta))
         return;// stop at first consumer
     }
   }
 
-  void AWindow::DoDraw() {
-    D3("AWindow::DoDraw: start");
-    if(mClosed) return;
-    if(!mBackend->EnsureBuffer(mSizeX, mSizeY)) {
-      E("Failed to allocate buffer for window")
-    }
-    if(!mBackend) {
-      DT("no backend");
-      return;
-    }
-    uint32_t *buffer = mBackend->GetSoftwareBuffer();
-    if(!buffer) {
-      D2("no software buffer");
-      return;
-    }
-    uint32_t bg = mBGColor & 0x00FFFFFF;
-    for(size_t i = 0; i < static_cast<size_t>(mSizeX) * mSizeY; ++i)
-      buffer[i] = bg;
-    for(const auto &widget : mWidg) {
-      if(widget->IsVisible()) {
-        widget->Draw(buffer, mSizeX, mSizeY, 0, 0);
+  AWidget* AWindow::FindWidgetAt(int32_t x, int32_t y) {
+// Iterate front-to-back (topmost rendered widgets first)
+    for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+      AWidget* widget = it->get();
+// Ignore hidden or disabled branches
+      if(!widget->Visible() || !widget->Enabled()) {
+        continue;
+      }
+// Convert Window Coords -> Root Widget Local Coords
+      int32_t localX = x - widget->X();
+      int32_t localY = y - widget->Y();
+// Ask the root widget to search itself and its subtree using local space
+      AWidget* found = widget->HitTestLocal(localX, localY);
+      if(found != nullptr) {
+        return found;// Found the deepest targeted widget under the cursor
       }
     }
-    mBackend->QueueFrameCommit();
+    return nullptr;// Hovering over empty window space
   }
 
-  void AWindow::SetFocus(AWidget *widget) {
-    if(mFocusedWidget == widget)
-      return;
-    if(mFocusedWidget) {
-      mFocusedWidget->OnFocusLost();
-    }
-    mFocusedWidget = widget;
-    if(mFocusedWidget) {
-      mFocusedWidget->OnFocusGained();
-    }
-    Draw();
+  void AWindow::BGColor(uint32_t v) {
+    mBGColor = v;
+    RequestRedraw();
   }
 
-  void AWindow::ClearFocus() {
-    SetFocus(nullptr);
+  void AWindow::SetMousePressCallback(WndMouseButtonCallback3 callback, void* anyData = nullptr) {
+    mMousePressCallback = std::move(callback);
+    mMousePressCallbackData = anyData;
+    D1("userData={}", (uint64_t)anyData)
+  }
+
+  void AWindow::SetMouseReleaseCallback(WndMouseButtonCallback3 callback, void* anyData = nullptr) {
+    mMouseReleaseCallback = std::move(callback);
+    mMouseReleaseCallbackData = anyData;
+    D1("userData={}", (uint64_t)anyData)
+  }
+
+  void AWindow::MouseClick(int32_t x, int32_t y) {
+    OnMousePress(x, y, BTN_LEFT);
+    OnMouseRelease(x, y, BTN_LEFT);
+  }
+
+  void AWindow::LayoutUpdate() {
+    D2()
+    for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+      AWidget* widget = it->get();
+      widget->LayoutDirty();
+      widget->LayoutUpdate();
+    }
   }
 
   void AWindow::OnKeyEvent(const AUIKeyEvent &event) {
-    if(mFocusedWidget && mFocusedWidget->IsEnabled()) {
+    if(!mModalStack.empty()) {
+      AWidget* top = mModalStack.back();
+// If focused widget exists and is inside the modal, use it
+      if(mFocusedWidget && mFocusedWidget->IsDescendantOf(top)) {
+        mFocusedWidget->OnKeyEvent(event);
+      }
+      else {
+// Move focus to the modal (or its first focusable child)
+        if(top->Focusable()) {
+          FocusedWidget(top);
+        }
+        else {
+          AWidget* focusable = top->FindFirstFocusable();
+          if(focusable)
+            FocusedWidget(focusable);
+          else
+            FocusedWidget(top);
+        }
+        if(mFocusedWidget) {
+          mFocusedWidget->OnKeyEvent(event);
+        }
+      }
+      return;
+    }
+    if(mFocusedWidget && mFocusedWidget->Enabled()) {
       mFocusedWidget->OnKeyEvent(event);
     }
   }
 
-  void AWindow::SetCursor(AUICursorType type) {
-    if(mBackend) {
-      mBackend->SetCursor(type);
+  void AWindow::FocusedWidget(AWidget* v) {
+    if (mFocusedWidget == v)
+      return;
+    AWidget* oldFocused = mFocusedWidget;
+    mFocusedWidget = v;
+    if (oldFocused) {
+      oldFocused->OnFocusLost();
     }
-    else
-      E()
+    // Ensure mFocusedWidget wasn't reassigned inside OnFocusLost()
+    if (mFocusedWidget == v && mFocusedWidget) {
+      mFocusedWidget->OnFocusGained();
+    }
+    RequestRedraw();
   }
 
-  void AWindow::BringChildToFront(AWidget *child) {
+  void AWindow::BringToFront(AWidget *child) {
+    D1("widget {}", child->Text())
     auto it = std::find_if(mWidg.begin(), mWidg.end(), [child](const std::unique_ptr<AWidget> &ptr) {
       return ptr.get() == child;
     });
@@ -391,77 +653,29 @@ namespace aui {
     }
   }
 
-  void AWindow::Move(int32_t x, int32_t y) {
-    if(mBackend) {
-      mBackend->Move(x, y);
-    }
-    else {
-      E("backend is 0")
-    }
+  void AWindow::MouseDown(int32_t x, int32_t y) {
+    OnMousePress(x, y, BTN_LEFT);
   }
 
-  void AWindow::RemoveWidget(AWidget *widget) {
-    if(!widget)
-      return;
-    auto it = std::find_if(mWidg.begin(), mWidg.end(), [widget](const std::unique_ptr<AWidget> &ptr) {
-      return ptr.get() == widget;
-    });
-    if(it == mWidg.end())
-      return;// not found
-// Clear any internal references to this widget
-    if(mDragWidget == widget)
-      mDragWidget = nullptr;
-    if(mHoverWidget == widget)
-      mHoverWidget = nullptr;
-    if(mFocusedWidget == widget)
-      mFocusedWidget = nullptr;
-    mWidg.erase(it);// widget is destroyed via unique_ptr
-    ForceDraw();// redraw immediately
+  void AWindow::MouseUp(int32_t x, int32_t y) {
+    OnMouseRelease(x, y, BTN_LEFT);
   }
 
-  void AWindow::ApplyPendingResize() {
-    if(!mResizePending)
-      return;
-    if(mPendingWidth == mSizeX && mPendingHeight == mSizeY) {
-      mResizePending = false;
-      return;
-    }
-    if(!mResizeEnabled) {
-// Optionally handle the case where resize is now disabled.
-// You might want to still apply it, or ignore. We'll apply anyway.
-      D3("Applying pending resize while resize is disabled – proceed anyway");
-    }
-    if(mBackend) {
-      mBackend->Resize(mPendingWidth, mPendingHeight);
-    }
-    mSizeX = mPendingWidth;
-    mSizeY = mPendingHeight;
-// Clear stale draw commands (same as in Resize)
-    AUI *au = mBackend ? mBackend->GetEnginePtr() : nullptr;
-    if(au) {
-      uint64_t nativeId = mBackend->GetNativeWindowId();
-      {
-        std::lock_guard<std::recursive_mutex> lock(au->GetCommandMutex());
-        auto &commands = au->GetDrawCommands();
-        commands.erase(std::remove_if(commands.begin(), commands.end(), [nativeId](const DrawCommand &cmd) {
-          return cmd.type == DrawCommandType::Xcb && cmd.xcb.windowId == nativeId;
-        }),
-        commands.end());
+  bool AWindow::ProcessDropdown(int32_t x, int32_t y) {
+    if(!mActiveDropDown)
+      return false;
+    AWidget* list = mActiveDropDown->DropList();
+    if(list) {
+      int32_t lx = list->AbsX();
+      int32_t ly = list->AbsY();
+      int32_t lr = lx + static_cast<int32_t>(list->SizeX());
+      int32_t lb = ly + static_cast<int32_t>(list->SizeY());
+// If outside, close and return true
+      if(x < lx || x >= lr || y < ly || y >= lb) {
+        mActiveDropDown->CloseDropDown();
+        return true;
       }
     }
-// Notify child widgets
-    for(auto &widget : mWidg) {
-      widget->OnParentResize(mSizeX, mSizeY);
-    }
-    mResizePending = false;
-    if (au && !mClosed) {
-        au->ScheduleDraw(this);   // <-- ADD THIS LINE
-    }
+    return false;// click inside list, keep dropdown open
   }
-
-  AWindow::~AWindow() {
-    D3()
-  }
-
-}// namespace aui
-
+}

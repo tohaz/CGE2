@@ -43,7 +43,6 @@ int32_t test_combobox_add_remove(AUI* au) {
   D1("test_combobox_add_remove passed");
   return 0;
 }
-
 // ------------------------------------------------------------------
 // Selection
 // ------------------------------------------------------------------
@@ -63,7 +62,6 @@ int32_t test_combobox_selection(AUI* au) {
   D1("test_combobox_selection passed");
   return 0;
 }
-
 // ------------------------------------------------------------------
 // Editable state
 // ------------------------------------------------------------------
@@ -81,7 +79,6 @@ int32_t test_combobox_editable(AUI* au) {
   D1("test_combobox_editable passed");
   return 0;
 }
-
 // ------------------------------------------------------------------
 // Dropdown open/close (direct API)
 // ------------------------------------------------------------------
@@ -105,21 +102,20 @@ int32_t test_combobox_dropdown_toggle(AUI* au) {
   cb->ToggleDropDown();
   TEST_ASSERT_EQ(cb->IsDropDownOpen(), false, 5);
   // Mouse simulation on button (should toggle)
-  bool handled = cb->OnMouseClick(190, 14, true);
-  TEST_ASSERT(handled, 6);
-  handled = cb->OnMouseClick(190, 14, false);
+  AWidget* handled = cb->MouseDown(190, 14);
+  TEST_ASSERT_NE(handled, nullptr, 6);
+  handled = cb->MouseUp(190, 14);
   TEST_ASSERT_EQ(cb->IsDropDownOpen(), true, 7);
   // Click on input area (localX=50) – should open on release
-  handled = cb->OnMouseClick(50, 14, true);
-  TEST_ASSERT(handled, 8);
-  handled = cb->OnMouseClick(50, 14, false);
+  handled = cb->MouseDown(50, 14);
+  TEST_ASSERT_NE(handled, nullptr, 8);
+  handled = cb->MouseUp(50, 14);
   TEST_ASSERT_EQ(cb->IsDropDownOpen(), true, 9);
   cb->CloseDropDown();
   TEST_ASSERT_EQ(cb->IsDropDownOpen(), false, 10);
   D1("test_combobox_dropdown_toggle passed");
   return 0;
 }
-
 // ------------------------------------------------------------------
 // Selection via dropdown (keyboard navigation after programmatic open)
 // ------------------------------------------------------------------
@@ -152,7 +148,6 @@ int32_t test_combobox_select_from_dropdown(AUI* au) {
   D1("test_combobox_select_from_dropdown passed");
   return 0;
 }
-
 // ------------------------------------------------------------------
 // Keyboard navigation (with programmatic open)
 // ------------------------------------------------------------------
@@ -188,7 +183,6 @@ int32_t test_combobox_keyboard_navigation(AUI* au) {
   D1("test_combobox_keyboard_navigation passed");
   return 0;
 }
-
 // ------------------------------------------------------------------
 // Styling setters
 // ------------------------------------------------------------------
@@ -196,19 +190,17 @@ int32_t test_combobox_styling(AUI* au) {
   D1("test_combobox_styling start");
   AWindow* win = au->MainWnd();
   AComboBox* cb = AComboBox::AttachTo(win);
-  cb->SetInputBoxBGColor(0xFF0000FF);
-  cb->SetButtonBGColor(0xFFFF0000);
-  cb->SetListBGColor(0xFF00FF00);
-  cb->SetInputBoxTextColor(0xFF00FFFF);
-  cb->SetButtonTextColor(0xFF00FF00);
-  cb->SetListTextColor(0xFFFF00FF);
-  cb->SetFontSize(16);
-  TEST_ASSERT_EQ(cb->GetFontSize(), 16U, 2);
-  // We can't easily verify colors, but we can ensure no crash.
+  cb->InputBoxBGColor(0xFF0000FF);
+  cb->ButtonBGColor(0xFFFF0000);
+  cb->ListBGColor(0xFF00FF00);
+  cb->InputBoxTextColor(0xFF00FFFF);
+  cb->ButtonTextColor(0xFF00FF00);
+  cb->ListTextColor(0xFFFF00FF);
+  cb->FontSize(16);
+  TEST_ASSERT_EQ(cb->AWidget::FontSize(), 16U, 2);
   D1("test_combobox_styling passed");
   return 0;
 }
-
 // ------------------------------------------------------------------
 // Scrollbars visibility (when many items)
 // ------------------------------------------------------------------
@@ -228,32 +220,33 @@ int32_t test_combobox_scrollbars(AUI* au) {
   D1("test_combobox_scrollbars passed");
   return 0;
 }
-
 // ------------------------------------------------------------------
 // main
 // ------------------------------------------------------------------
 int main() {
   int32_t testsfailed = 0;
-  testsfailed += runTimedTest("test_combobox_attachment", test_combobox_attachment, 1);
-  testsfailed += runTimedTest("test_combobox_add_remove", test_combobox_add_remove, 1);
-  testsfailed += runTimedTest("test_combobox_selection", test_combobox_selection, 1);
-  testsfailed += runTimedTest("test_combobox_editable", test_combobox_editable, 1);
-  testsfailed += runTimedTest("test_combobox_dropdown_toggle", test_combobox_dropdown_toggle, 1);
-  testsfailed += runTimedTest("test_combobox_select_from_dropdown", test_combobox_select_from_dropdown, 1);
-  testsfailed += runTimedTest("test_combobox_keyboard_navigation", test_combobox_keyboard_navigation, 1);
-  testsfailed += runTimedTest("test_combobox_styling", test_combobox_styling, 1);
-  testsfailed += runTimedTest("test_combobox_scrollbars", test_combobox_scrollbars, 1);
 
-  testsfailed += runTimedTest("test_combobox_attachment", test_combobox_attachment, 200);
-  testsfailed += runTimedTest("test_combobox_add_remove", test_combobox_add_remove, 200);
-  testsfailed += runTimedTest("test_combobox_selection", test_combobox_selection, 200);
-  testsfailed += runTimedTest("test_combobox_editable", test_combobox_editable, 200);
-  testsfailed += runTimedTest("test_combobox_dropdown_toggle", test_combobox_dropdown_toggle, 200);
-  testsfailed += runTimedTest("test_combobox_select_from_dropdown", test_combobox_select_from_dropdown, 200);
-  testsfailed += runTimedTest("test_combobox_keyboard_navigation", test_combobox_keyboard_navigation, 200);
-  testsfailed += runTimedTest("test_combobox_styling", test_combobox_styling, 200);
-  testsfailed += runTimedTest("test_combobox_scrollbars", test_combobox_scrollbars, 200);
+  testsfailed += runTimedTest(test_combobox_attachment, 1);
+  testsfailed += runTimedTest(test_combobox_add_remove, 1);
+  testsfailed += runTimedTest(test_combobox_selection, 1);
+  testsfailed += runTimedTest(test_combobox_editable, 1);
+  testsfailed += runTimedTest(test_combobox_dropdown_toggle, 1);
+  testsfailed += runTimedTest(test_combobox_select_from_dropdown, 1);
+  testsfailed += runTimedTest(test_combobox_keyboard_navigation, 1);
+  testsfailed += runTimedTest(test_combobox_styling, 1);
+  testsfailed += runTimedTest(test_combobox_scrollbars, 1);
+
+  testsfailed += runTimedTest(test_combobox_attachment, 200);
+  testsfailed += runTimedTest(test_combobox_add_remove, 200);
+  testsfailed += runTimedTest(test_combobox_selection, 200);
+  testsfailed += runTimedTest(test_combobox_editable, 200);
+  testsfailed += runTimedTest(test_combobox_dropdown_toggle, 200);
+  testsfailed += runTimedTest(test_combobox_select_from_dropdown, 200);
+  testsfailed += runTimedTest(test_combobox_keyboard_navigation, 200);
+  testsfailed += runTimedTest(test_combobox_styling, 200);
+  testsfailed += runTimedTest(test_combobox_scrollbars, 200);
 
   D("test suite complete");
   return testsfailed;
 }
+
