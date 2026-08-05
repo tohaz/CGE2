@@ -1,11 +1,9 @@
-// AMenu.h
 #ifndef AMENU_H_
 #define AMENU_H_
 
 namespace aui {
 
-// Forward declarations
-class AMenu;
+// Forward declaration
 class AMenuItemWidget;
 
 // -----------------------------------------------------------------------------
@@ -33,23 +31,23 @@ struct AMenuItem {
 };
 
 // -----------------------------------------------------------------------------
-// AMenu – main menu container (can be used as a popup or a permanent menu bar)
+// AMenu – a container that manages a list of menu items as child widgets.
+// Derived from AWidgetFactory so it can be attached via the static AttachTo.
 // -----------------------------------------------------------------------------
-class AMenu : public AWidgetFactory<AMenu>{
-    friend class AMenuItemWidget;
+class AMenu : public AWidgetFactory<AMenu> {
     friend class AWidgetFactory<AMenu>;
+    friend class AMenuItemWidget;
 
 public:
+    // Constructors – used by the factory
     AMenu();
     explicit AMenu(const std::vector<AMenuItem>& items,
                    AUIOrientation orient = AUIOrientation::vertical);
-    ~AMenu() override;
+    AMenu(const std::vector<AMenuItem>& items,
+          int32_t x, int32_t y, uint32_t w, uint32_t h,
+          AUIOrientation orient = AUIOrientation::vertical);
 
-    // -------------------------------------------------------------------------
-    // Factory methods (attach to a window or widget)
-    // -------------------------------------------------------------------------
-    static AMenu* AttachTo(AWindow* parent, const std::vector<AMenuItem>& items = {});
-    static AMenu* AttachTo(AWidget* parent, const std::vector<AMenuItem>& items = {});
+    ~AMenu() override;
 
     // -------------------------------------------------------------------------
     // Content management
@@ -95,7 +93,6 @@ public:
     // -------------------------------------------------------------------------
     void SetPermanent(bool permanent);
     bool IsPermanent() const { return mIsPermanent; }
-    static AMenu* GetPermanentMenu() { return sPermanentMenu; }
 
     // -------------------------------------------------------------------------
     // Submenu hierarchy
@@ -103,14 +100,6 @@ public:
     AMenu* ParentMenu() const { return mParentMenu; }
     AMenu* ActiveSubMenu() const { return mActiveSubMenu; }
     void CloseSubMenu();
-
-    // -------------------------------------------------------------------------
-    // Static active‑menu management (for click‑outside dismissal)
-    // -------------------------------------------------------------------------
-    static void DismissActiveMenu();
-    static bool IsActiveMenuVisible();
-    static bool IsPointInsideActiveMenu(int32_t x, int32_t y);
-    static bool IsPointInsideMenuHierarchy(const AMenu* menu, int32_t x, int32_t y);
 
     // -------------------------------------------------------------------------
     // Overrides from AWidget
@@ -139,8 +128,9 @@ private:
     int32_t ComputeTextWidth(const std::string& text) const;
     int32_t MaxTextWidth() const;
 
-    // Called by AMenuItemWidget when an item is clicked
+    // Called by AMenuItemWidget when an item is clicked or hovered
     void OnItemClicked(size_t index, int32_t localX, int32_t localY);
+    void OnItemHovered(size_t index);
 
     // -------------------------------------------------------------------------
     // Member variables
@@ -173,15 +163,20 @@ private:
     AMenu* mParentMenu = nullptr;
     int32_t mActiveSubMenuOwnerIndex = -1;
 
-    // Static active‑menu pointers
-    static AMenu* sActiveTopMenu;
-    static AMenu* sPermanentMenu;
+    // Layout cache
+    mutable bool mLayoutDirty = true;
+    mutable int32_t mCachedWidth = 0;
+    mutable int32_t mCachedHeight = 0;
+    mutable std::vector<int32_t> mItemX;
+    mutable std::vector<int32_t> mItemY;
+    mutable std::vector<int32_t> mItemW;
+    mutable std::vector<int32_t> mItemH;
 };
 
 // -----------------------------------------------------------------------------
-// Internal widget representing a single menu item
+// Internal widget representing a single menu item (a child of AMenu)
 // -----------------------------------------------------------------------------
-class AMenuItemWidget : public AWidgetFactory<AMenu>{
+class AMenuItemWidget : public AWidget {
 public:
     AMenuItemWidget(AMenu* parentMenu, size_t index);
     void UpdateFromItem(const AMenuItem& item);
@@ -198,6 +193,7 @@ private:
     size_t mIndex = 0;
     bool mHovered = false;
     bool mPressed = false;
+    AMenuItem mItemData; // copy of the item data for drawing
 };
 
 } // namespace aui

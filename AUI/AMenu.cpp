@@ -141,13 +141,13 @@ AMenu::AMenu(const std::vector<AMenuItem>& items, AUIOrientation orient)
     LayoutDirty();
 }
 
-//AMenu::AMenu(const std::vector<AMenuItem>& items,
-//             int32_t x, int32_t y, uint32_t w, uint32_t h,
-//             AUIOrientation orient)
-//    : AMenu(items, orient) {
-//    Move(x, y);
-//    Resize(w, h);
-//}
+AMenu::AMenu(const std::vector<AMenuItem>& items,
+             int32_t x, int32_t y, uint32_t w, uint32_t h,
+             AUIOrientation orient)
+    : AMenu(items, orient) {
+    Move(x, y);
+    Resize(w, h);
+}
 
 AMenu::~AMenu() {
     CloseSubMenu();
