@@ -16,6 +16,7 @@ int32_t main() {
   label->FontSize(24);
   label->BGColor(0xFFEEEEEE);
   label->Border(1);
+  
   au->ProcessMessages();
   delete au;
   return 0;

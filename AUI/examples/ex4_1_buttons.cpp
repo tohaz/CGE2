@@ -3,13 +3,14 @@
 using namespace aui;
 
 static AWidget* OnClick(AWidget* wi, void*, int32_t, int32_t) {
-  D1("callback fired")
+  D("callback fired")
   return wi;
 }
 
 int32_t main() {
-  AUI* au = AUI::Create("Table Demo2", AUIWindowType::X11);
-  //  AUI* au = AUI::Create("Table Demo2", AUIWindowType::Wayland);
+  AUI* au = AUI::Create("Simple Buttons Demo");
+//  AUI* au = AUI::Create("Simple Buttons Demo", AUIWindowType::X11);
+  //  AUI* au = AUI::Create("Simple Buttons Demo", AUIWindowType::Wayland);
   AWindow *w = au->MainWnd();
   w->EnableResize();
   w->Resize(200, 50);
@@ -19,14 +20,14 @@ int32_t main() {
   bt->Move(10, 10);
   bt->Pressed(true);
   bt->Angle(6);
+  // Different callbacks for buttons. This one is click callback
   bt->SetMouseClickCallback(OnClick, nullptr);
 
   AButton* btx = AButton::AttachTo(w, "Released");
   btx->Move(110, 10);
   btx->Pressed(false);
   btx->Angle(-8);
-  btx->SetMouseClickCallback(OnClick, nullptr);
-  bt->SetMousePressLeftCallback(OnClick, nullptr);
+  btx->SetMousePressLeftCallback(OnClick, nullptr);
 
   au->ProcessMessages();
   delete au;

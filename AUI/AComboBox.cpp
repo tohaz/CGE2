@@ -243,7 +243,7 @@ namespace aui {
     mButton->Text("v");
     mButton->HAlign(AUIHAlign::center);
     mButton->VAlign(AUIVAlign::center);
-    mButton->SetMousePressLeftCallback(OnCBButton, this);
+    mButton->SetMouseClickCallback(OnCBButton, this);
 
     LayoutDirty();
     LayoutUpdate();

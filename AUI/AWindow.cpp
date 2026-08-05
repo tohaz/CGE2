@@ -252,7 +252,7 @@ namespace aui {
   }
 
   void AWindow::OnMousePress(int32_t x, int32_t y, UNUSED uint32_t button) {
-    D1("===incoming x {} y {} button {}", x, y, button);
+    D2("===incoming x {} y {} button {}", x, y, button);
     if(mMousePressCallback) {
       mMousePressCallback(this, mMousePressCallbackData, x, y, button);
     }
@@ -298,7 +298,7 @@ namespace aui {
           AWidget* wid = it->get();
           if(!wid->Visible() || !wid->Enabled())
             continue;
-          D1("trying widget {}", wid->Text());
+          D2("trying widget {}", wid->Text());
           int32_t relX = x - wid->X();
           int32_t relY = y - wid->Y();
           auto [localX, localY] = CalculateCoordsRotatedFull(relX, relY, wid->SizeX(), wid->SizeY(), wid->Angle());
@@ -308,7 +308,7 @@ namespace aui {
 // Dispatch down into tree
             AWidget* cons = wid->OnMouseDownLeft(localX, localY);
             if(cons != nullptr) {
-              D1("widget consumed event: {}", cons->Text());
+              D2("widget consumed event: {}", cons->Text());
 // 1. Set Focus to the actual consumer (or fallback to top-level widget)
               if(cons->Focusable()) {
                 FocusedWidget(cons);
@@ -337,10 +337,10 @@ namespace aui {
             }
           }
         }
-        D1("loop through widgets ends")
+        D2("loop through widgets ends")
         break;
       default:
-        D1("unhandled button press")
+        D("unhandled button press")
         break;
     }
   }

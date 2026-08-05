@@ -42,7 +42,7 @@ UNUSED static AWidget* OnReleaseDetector(AWidget* wid, void* data, int32_t x, in
 // Released on empty background
       D("Released on empty space");
     }
-  return underCursor;
+  return wid;
 }
 
 
@@ -221,7 +221,6 @@ int32_t main() {
   b3->SetMouseReleaseLeftCallback(OnReleaseDetector, nullptr);
   //
   b3->MouseLeftReleaseRequired(true);
-  D("label disabled because broken")
   ALabel* ld = ALabel::AttachTo(b3, "Detector");
   ld->BGColor(0xFFFFFFFF);
   ld->Move(0, 0);
@@ -249,7 +248,7 @@ int32_t main() {
   // Intentionally not adding callback. This box is transparent to mouse events, default behaviour
 
   AButton* bt = AButton::AttachTo(w);
-  bt->Text("Close");
+  bt->Text("👍Close");
   bt->Move(400, 10);
   bt->SetMouseClickCallback(OnClose, bt);
 
@@ -278,3 +277,4 @@ int32_t main() {
   delete au;
   return 0;
 }
+

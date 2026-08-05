@@ -41,7 +41,7 @@ namespace aui {
   }
 
   AWidget* AWidget::OnMouseDownLeft(int32_t x, int32_t y) {
-    D1("incoming {} {}", x, y);
+    D2("incoming {} {}", x, y);
     if (!mVisible || !mEnabled) {
       return nullptr;
     }
@@ -75,7 +75,7 @@ namespace aui {
       mMousePressedLeft = true;
       OnMouseDownLeftInternal(x, y);
       if (mMousePressLeftCallback) {
-        D1("Firing mMousePressLeftCallback for '[{}]'", mText.c_str());
+        D2("Firing mMousePressLeftCallback for '[{}]'", mText.c_str());
         AWidget* handled = mMousePressLeftCallback(this, mMousePressLeftCallbackData, x, y);
         if (handled != nullptr) {
           return handled;
@@ -1041,7 +1041,7 @@ namespace aui {
       newWidth = 1;
     if(newHeight < 1)
       newHeight = 1;
-    D1("TrimToText: resizing from {}x{} to {}x{} (text size {}x{}, border {})", mSizeX, mSizeY, newWidth, newHeight,
+    D2("TrimToText: resizing from {}x{} to {}x{} (text size {}x{}, border {})", mSizeX, mSizeY, newWidth, newHeight,
         textWidth, textHeight, mBorderThick);
 // 6. Apply the new size.
     Resize(newWidth, newHeight);
@@ -1195,7 +1195,7 @@ namespace aui {
   }
 
   void AWidget::OnMouseUpLeftInternal(UNUSED int32_t localX, UNUSED int32_t localY) {
-    D("placeholder method")
+    D4("placeholder method")
   }
 
   void AWidget::BringToFront(AWidget *child) {
@@ -1210,7 +1210,7 @@ namespace aui {
   }
 
   void AWidget::Pressed(bool v) {
-    D1("v {}", v)
+    D2("v {}", v)
     mPressed = v;
     if(mWnd) {
       mWnd->RequestRedraw();

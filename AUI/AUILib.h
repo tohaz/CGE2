@@ -3,31 +3,25 @@
 
 #define FT_CONFIG_OPTION_CACHE
 
-
 #include "Custom/obj/xdg-shell-client-protocol.h"
 #include "Custom/obj/xdg-decoration-unstable-v1-client-protocol.h"
 #include <X11/keysym.h>
 #include <freetype/config/ftheader.h>
 #include <freetype/freetype.h>
 #include <freetype/ftmm.h>
-//#include <sys/types.h>
 #include <linux/input.h>
 #include <sys/mman.h>
 #include <xcb/sync.h>
 #include <xcb/xcb.h>
 #include <xcb/xcb_image.h>
 #include <xcb/xcb_cursor.h>
-//#include <xcb/xkb.h>
 #include <xkbcommon/xkbcommon.h>
 #include <xkbcommon/xkbcommon-x11.h>
 #include <xcb/xcb_keysyms.h>
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
-//#include <charconv>
 #include <concepts>
-//#include <condition_variable>
-//#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -36,15 +30,11 @@
 #include <dlfcn.h>
 #include <execinfo.h>
 #include <fcntl.h>
-//#include <flat_map>
-//#include <format>
 #include <functional>
 #include <future>
-//#include <dirent.h>
-//#include <iomanip>
 #include <iostream>
-//#include <limits>
 #include <map>
+#include <memory>
 #include <poll.h>
 #include <print>
 #include <random>
@@ -66,7 +56,7 @@
 #include "AInputBox.h"
 #include "ATable.h"
 #include "AComboBox.h"
-//#include "AMenu.h"
+#include "AMenu.h"
 #include "AProgressBar.h"
 #include "XcbWindowContext.h"
 #include "WaylandWindowContext.h"

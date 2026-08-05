@@ -21,7 +21,7 @@ namespace aui {
     DefaultDrawBorder(false);
     HLToggle(true);
     BGColor2(DarkenColor(BGColor()));
-    D1("bgcolor {:x} bgcolor2 {:x}", BGColor(),BGColor2())
+    D2("bgcolor {:x} bgcolor2 {:x}", BGColor(), BGColor2())
   }
 
   AButton::AButton(std::string text) :
@@ -102,16 +102,14 @@ namespace aui {
   }
 
   void AButton::OnMouseDownLeftInternal(UNUSED int32_t localX, UNUSED int32_t localY) {
-    D1()
+    D2()
     Pressed(true);
   }
 
   void AButton::OnMouseUpLeftInternal(UNUSED int32_t localX, UNUSED int32_t localY) {
-    D1()
+    D2()
     Pressed(false);
   }
-
-
 
 }// namespace aui
 

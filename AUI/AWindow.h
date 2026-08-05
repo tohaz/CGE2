@@ -11,6 +11,7 @@ namespace aui {
   class WaylandWindowContext;
   class AUI;
   class AComboBox;
+  class AMenu;
   using WndMouseButtonCallback3 = std::function<void(AWindow*, void* anyData, int32_t x, int32_t y, uint32_t button)>;
 
   std::pair<int32_t, int32_t> CalculateCoordsRotatedFull(int32_t x, int32_t y, uint32_t sizeX, uint32_t sizeY, double angle);
@@ -44,6 +45,8 @@ namespace aui {
       AWidget* mFocusedWidget = nullptr;
       AComboBox* mActiveDropDown = nullptr;
       std::vector<AWidget*> mModalStack;
+      AMenu* mActiveMenu = nullptr;
+      AMenu* mPermanentMenu = nullptr;
     protected:
       AWindow();
       void Type(AUIWindowType);
@@ -119,9 +122,10 @@ namespace aui {
       AWidget* TopModal() const { return mModalStack.empty() ? nullptr : mModalStack.back();}
       void RemoveModal(AWidget* widget);
       bool ProcessDropdown(int32_t x, int32_t y);
-
-
-
+      AMenu* ActiveMenu() const { return mActiveMenu; }
+      void ActiveMenu(AMenu* v) { mActiveMenu = v; }
+      AMenu* PermanentMenu() const { return mPermanentMenu; }
+      void PermanentMenu(AMenu* v) { mPermanentMenu = v; }
   };
 
 }
