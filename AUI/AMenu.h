@@ -1,12 +1,6 @@
 #ifndef AMENU_H_
 #define AMENU_H_
 
-#include "AUILib.h"
-#include <vector>
-#include <functional>
-#include <chrono>
-#include <memory>
-
 namespace aui {
 
 struct AMenuItem {

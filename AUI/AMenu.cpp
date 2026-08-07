@@ -1,5 +1,4 @@
-#include "AMenu.h"
-#include <algorithm>
+#include "AUILib.h"
 
 namespace aui {
 
@@ -401,18 +400,17 @@ namespace aui {
   }
 
   void AMenu::CloseSubMenu() {
-    D4()
     if(mActiveSubMenu) {
-      mActiveSubMenu->mVisible = false;
-      mActiveSubMenu->mHoveredIndex = -1;
+      AMenu* subToDestroy = mActiveSubMenu;
       mActiveSubMenu = nullptr;
       mActiveSubMenuOwnerIndex = -1;
-      mHoveredIndex = -1;// <-- add this
-      if(Wnd())
+      mHoveredIndex = -1;
+      if(Wnd()) {
+        RemoveWidget(subToDestroy);
         Wnd()->RequestRedraw();
+      }
     }
   }
-
   void AMenu::OnResize(uint32_t w, uint32_t h) {
     AWidget::OnResize(w, h);
     LayoutDirty();

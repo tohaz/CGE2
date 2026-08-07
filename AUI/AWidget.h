@@ -309,6 +309,8 @@ namespace aui {
       bool DefaultDrawBorder() {return mDefaultDrawBorder;}
       void DefaultDrawBorder(bool v) {mDefaultDrawBorder = v;}
       int32_t ComputeTextWidth(const std::string& text) const;
+      void RemoveWidget(AWidget* v);
+
 
   };
 

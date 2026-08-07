@@ -42,51 +42,49 @@ namespace aui {
 
   AWidget* AWidget::OnMouseDownLeft(int32_t x, int32_t y) {
     D2("incoming {} {}", x, y);
-    if (!mVisible || !mEnabled) {
+    if(!mVisible || !mEnabled) {
       return nullptr;
     }
-    bool selfInBounds = (x >= 0 && x < SafeINT32(mSizeX) &&
-                         y >= 0 && y < SafeINT32(mSizeY));
-    // 1. CHILD PASS (Z-Order Reverse Traversal)
-    for (auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+    bool selfInBounds = (x >= 0 && x < SafeINT32(mSizeX) && y >= 0 && y < SafeINT32(mSizeY));
+// 1. CHILD PASS (Z-Order Reverse Traversal)
+    for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
       AWidget* wid = it->get();
-      if (!wid->Visible() || !wid->Enabled())
+      if(!wid->Visible() || !wid->Enabled())
         continue;
       int32_t relX = x - wid->X();
       int32_t relY = y - wid->Y();
-      auto [localX, localY] = CalculateCoordsRotatedFull(
-          relX, relY, wid->SizeX(), wid->SizeY(), wid->Angle());
-      bool childInBounds = (localX >= 0 && localX < SafeINT32(wid->SizeX()) &&
-                            localY >= 0 && localY < SafeINT32(wid->SizeY()));
-      if (childInBounds || !wid->ClipChildrenHitbox()) {
+      auto [localX, localY] = CalculateCoordsRotatedFull(relX, relY, wid->SizeX(), wid->SizeY(), wid->Angle());
+      bool childInBounds = (localX >= 0 && localX < SafeINT32(wid->SizeX()) && localY >= 0
+          && localY < SafeINT32(wid->SizeY()));
+      if(childInBounds || !wid->ClipChildrenHitbox()) {
         AWidget* cons = wid->OnMouseDownLeft(localX, localY);
-        if (cons != nullptr) {
-          return cons; // Descendant consumed the press
+        if(cons != nullptr) {
+          return cons;// Descendant consumed the press
         }
-        if (childInBounds && wid->ConsumesMouseEvents()) {
+        if(childInBounds && wid->ConsumesMouseEvents()) {
           wid->mMousePressedLeft = true;
           return wid;
         }
       }
     }
-    // 2. SELF PASS
-    if (selfInBounds) {
-      // Set pressed state BEFORE firing callback so wid->MousePressedLeft() is true!
+// 2. SELF PASS
+    if(selfInBounds) {
+// Set pressed state BEFORE firing callback so wid->MousePressedLeft() is true!
       mMousePressedLeft = true;
       OnMouseDownLeftInternal(x, y);
-      if (mMousePressLeftCallback) {
+      if(mMousePressLeftCallback) {
         D2("Firing mMousePressLeftCallback for '[{}]'", mText.c_str());
         AWidget* handled = mMousePressLeftCallback(this, mMousePressLeftCallbackData, x, y);
-        if (handled != nullptr) {
+        if(handled != nullptr) {
           return handled;
         }
-        // If callback explicitly returned nullptr, clear press state unless consuming events
-        if (!mMouseClickCallback && !ConsumesMouseEvents()) {
+// If callback explicitly returned nullptr, clear press state unless consuming events
+        if(!mMouseClickCallback && !ConsumesMouseEvents()) {
           mMousePressedLeft = false;
           return nullptr;
         }
       }
-      if (mMouseClickCallback || ConsumesMouseEvents()) {
+      if(mMouseClickCallback || ConsumesMouseEvents()) {
         return this;
       }
     }
@@ -96,48 +94,48 @@ namespace aui {
 
   AWidget* AWidget::OnMouseUpLeft(int32_t x, int32_t y) {
     auto [localX, localY] = CalculateCoordsRotated(x, y);
-    bool isInside = (localX >= 0 && localX < static_cast<int32_t>(mSizeX) &&
-                     localY >= 0 && localY < static_cast<int32_t>(mSizeY));
+    bool isInside = (localX >= 0 && localX < static_cast<int32_t>(mSizeX) && localY >= 0
+        && localY < static_cast<int32_t>(mSizeY));
     bool wasPressed = mMousePressedLeft;
-    mMousePressedLeft = false; // Always clear pressed state on release
+    mMousePressedLeft = false;// Always clear pressed state on release
     OnMouseUpLeftInternal(x, y);
     AWidget* consumedWidget = nullptr;
-    // 1. SELF PASS (Captured Widget Release Processing)
-    if (wasPressed) {
-      // FIX: Always fire release callback if the widget was captured!
-      // This allows UI elements to reset visual states (e.g., button un-push).
-      if (mMouseReleaseLeftCallback) {
+// 1. SELF PASS (Captured Widget Release Processing)
+    if(wasPressed) {
+// FIX: Always fire release callback if the widget was captured!
+// This allows UI elements to reset visual states (e.g., button un-push).
+      if(mMouseReleaseLeftCallback) {
         D2("Firing release callback for '{}' at local ({}, {})", mText.c_str(), localX, localY);
         mMouseReleaseLeftCallback(this, mMouseReleaseLeftCallbackData, localX, localY);
         consumedWidget = this;
       }
-      // Click callback ONLY fires if inside OR if explicit release-outside is required
-      if (mMouseLeftRequireRelese || isInside) {
-        if (mMouseClickCallback) {
+// Click callback ONLY fires if inside OR if explicit release-outside is required
+      if(mMouseLeftRequireRelese || isInside) {
+        if(mMouseClickCallback) {
           D2("Firing click callback on release for '{}'", mText.c_str());
           mMouseClickCallback(this, mMouseClickCallbackData, localX, localY);
           consumedWidget = this;
         }
       }
     }
-    // 2. CHILD PASS
-    for (auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+// 2. CHILD PASS
+    for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
       AWidget* child = it->get();
-      if (!child->Visible() || !child->Enabled())
+      if(!child->Visible() || !child->Enabled())
         continue;
       int32_t relX = localX - child->X();
       int32_t relY = localY - child->Y();
-      auto [childLocalX, childLocalY] = CalculateCoordsRotatedFull(
-          relX, relY, child->SizeX(), child->SizeY(), child->Angle());
+      auto [childLocalX, childLocalY] = CalculateCoordsRotatedFull(relX, relY, child->SizeX(), child->SizeY(),
+          child->Angle());
       AWidget* childCons = child->OnMouseUpLeft(childLocalX, childLocalY);
-      if (childCons != nullptr) {
+      if(childCons != nullptr) {
         consumedWidget = childCons;
       }
     }
-    if (consumedWidget != nullptr) {
+    if(consumedWidget != nullptr) {
       return consumedWidget;
     }
-    if (isInside && ConsumesMouseEvents()) {
+    if(isInside && ConsumesMouseEvents()) {
       return this;
     }
     return nullptr;
@@ -241,7 +239,8 @@ namespace aui {
     int32_t innerBottom = offsetY + Y() + static_cast<int32_t>(mSizeY) - static_cast<int32_t>(mBorderThick);
     D2("    Parent inner rect (if clipping): (%d,%d)-(%d,%d)", innerLeft, innerTop, innerRight, innerBottom);
     for(const auto& child : mWidg) {
-      if (child->Modal()) continue;
+      if(child->Modal())
+        continue;
       if(!child->Visible()) {
         D2("    Child 0x{:x} invisible, skipping", reinterpret_cast<uintptr_t>(child.get()));
         continue;
@@ -379,7 +378,8 @@ namespace aui {
     D3()
     mX = x;
     mY = y;
-    if(Wnd()) Wnd()->RequestRedraw();
+    if(Wnd())
+      Wnd()->RequestRedraw();
   }
 
   void AWidget::Resize(uint32_t szx, uint32_t szy) {
@@ -398,7 +398,8 @@ namespace aui {
       mTextMetricsValid = false;
     }
     OnResize(szx, szy);
-    if(Wnd()) Wnd()->RequestRedraw();
+    if(Wnd())
+      Wnd()->RequestRedraw();
   }
 
   void AWidget::CapSizeToParent() {
@@ -690,8 +691,8 @@ namespace aui {
       AWidget* child = it->get();
       if(!child->Visible() || !child->Enabled())
         continue;
-      if(x >= child->mX && x < child->mX + static_cast<int32_t>(child->mSizeX)
-          && y >= child->mY && y < child->mY + static_cast<int32_t>(child->mSizeY)) {
+      if(x >= child->mX && x < child->mX + static_cast<int32_t>(child->mSizeX) && y >= child->mY
+          && y < child->mY + static_cast<int32_t>(child->mSizeY)) {
         if(child->OnMouseMove(x, y))
           return true;// child consumed the event
       }
@@ -1129,17 +1130,20 @@ namespace aui {
 
   void AWidget::Show() {
     mVisible = true;
-    if(mWnd) mWnd->RequestRedraw();
+    if(mWnd)
+      mWnd->RequestRedraw();
   }
 
   void AWidget::Hide() {
     mVisible = false;
-    if(mWnd) mWnd->RequestRedraw();
+    if(mWnd)
+      mWnd->RequestRedraw();
   }
 
   void AWidget::Visible(bool v) {
     mVisible = v;
-    if(mWnd) mWnd->RequestRedraw();
+    if(mWnd)
+      mWnd->RequestRedraw();
   }
 
   void AWidget::LayoutUpdate() {
@@ -1151,7 +1155,8 @@ namespace aui {
   }
 
   bool AWidget::Focused() const {
-    if(!Wnd()) return false;
+    if(!Wnd())
+      return false;
     return Wnd()->FocusedWidget() == this;
   }
 
@@ -1198,8 +1203,8 @@ namespace aui {
     D4("placeholder method")
   }
 
-  void AWidget::BringToFront(AWidget *child) {
-    auto it = std::find_if(mWidg.begin(), mWidg.end(), [child](const std::unique_ptr<AWidget> &ptr) {
+  void AWidget::BringToFront(AWidget* child) {
+    auto it = std::find_if(mWidg.begin(), mWidg.end(), [child](const std::unique_ptr<AWidget>& ptr) {
       return ptr.get() == child;
     });
     if(it != mWidg.end() && it != mWidg.end() - 1) {
@@ -1218,18 +1223,39 @@ namespace aui {
   }
 
   int32_t AWidget::ComputeTextWidth(const std::string& text) const {
-      AUI* engine = Wnd() ? Wnd()->EnginePtr() : nullptr;
-      if (!engine) return 0;
-      FT_Face face = engine->DefaultFontFace();
-      if (!face) return 0;
-      FT_Set_Pixel_Sizes(face, 0, mFontSize);
-      int32_t width = 0;
-      for (char c : text) {
-          if (FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_COLOR) == 0) {
-              width += static_cast<int32_t>(face->glyph->advance.x >> 6);
-          }
+    AUI* engine = Wnd() ? Wnd()->EnginePtr() : nullptr;
+    if(!engine)
+      return 0;
+    FT_Face face = engine->DefaultFontFace();
+    if(!face)
+      return 0;
+    FT_Set_Pixel_Sizes(face, 0, mFontSize);
+    int32_t width = 0;
+    for(char c : text) {
+      if(FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_COLOR) == 0) {
+        width += static_cast<int32_t>(face->glyph->advance.x >> 6);
       }
-      return width;
+    }
+    return width;
+  }
+
+  void AWidget::RemoveWidget(AWidget* v) {
+    AWindow* wndp = Wnd();
+    if (!wndp) E("attempt to remove widget with no window");
+    std::unique_ptr<AWidget> deadWidget;
+    const auto erasedCount = std::erase_if(mWidg, [v, &deadWidget](auto& up) noexcept {
+      if (up.get() == v) {
+        deadWidget = std::move(up);
+        return true;
+      }
+      return false;
+    });
+    if (erasedCount > 0) {
+      D2("widget deleted");
+      wndp->RequestRedraw();
+    } else {
+      D2("widget not deleted");
+    }
   }
 
 }// namespace aui

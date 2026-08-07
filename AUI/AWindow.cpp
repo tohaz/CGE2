@@ -692,13 +692,18 @@ namespace aui {
 
   void AWindow::RemoveWidget(AWidget* v) {
     std::unique_ptr<AWidget> deadWidget;
-    std::erase_if(mWidg, [v, &deadWidget](auto& up) noexcept {
-      if(up.get() == v) {
+    const auto erasedCount = std::erase_if(mWidg, [v, &deadWidget](auto& up) noexcept {
+      if (up.get() == v) {
         deadWidget = std::move(up);
         return true;
       }
       return false;
     });
+    if (erasedCount > 0) {
+      D2("widget deleted");
+    } else {
+      D2("widget not deleted");
+    }
   }
 
   void AWindow::CapturedWidgetLeft(AWidget* v) {
