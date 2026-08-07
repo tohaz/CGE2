@@ -272,6 +272,28 @@ int32_t main() {
   ls->TrimToText();
   ls->Angle(90);
 
+  ALabel* la1 = ALabel::AttachTo(w, "Different layout edge cases");
+  la1->BGColor(w->BGColor());
+  la1->Move(100, 10);
+  la1->TextColor(0xFFFFFFFF);
+  la1->Border(0);
+  la1->FontSize(17);
+  la1->HAlign(AUIHAlign::left);
+  la1->VAlign(AUIVAlign::top);
+  la1->TrimToText();
+  la1->Angle(-5);
+
+  ALabel* la2 = ALabel::AttachTo(w, "(clickable)");
+  la2->BGColor(w->BGColor());
+  la2->Move(250, 30);
+  la2->TextColor(0xFFFFFFFF);
+  la2->Border(0);
+  la2->FontSize(17);
+  la2->HAlign(AUIHAlign::left);
+  la2->VAlign(AUIVAlign::top);
+  la2->TrimToText();
+  la2->Angle(5);
+
   au->ProcessMessages();
 
   delete au;

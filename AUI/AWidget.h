@@ -141,6 +141,13 @@ namespace aui {
       MouseMoveCallback mMouseMoveCallback = nullptr;
       void* mMouseMoveUserData = nullptr;
       virtual void OnKeyEvent(const AUIKeyEvent&) {E("void filler")}
+      template<typename Func>
+      void ForEachChild(Func&& fn) {
+        for(auto& child : mWidg) {
+          fn(child);
+        }
+      }
+
     public:
       virtual ~AWidget() = default;
       void DrawChildren(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
@@ -301,6 +308,7 @@ namespace aui {
       bool IsDescendantOf(const AWidget* ancestor) const;
       bool DefaultDrawBorder() {return mDefaultDrawBorder;}
       void DefaultDrawBorder(bool v) {mDefaultDrawBorder = v;}
+      int32_t ComputeTextWidth(const std::string& text) const;
 
   };
 

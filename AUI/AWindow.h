@@ -32,7 +32,7 @@ namespace aui {
       uint32_t mTargetFPS = 20;
       bool mResize = false;
       std::atomic<bool> mNeedsRepaint{false};
-      AWidget *mHLWidget = nullptr;
+      AWidget* mHLWidget = nullptr;
       WndMouseButtonCallback3 mMousePressCallback = nullptr;
       void* mMousePressCallbackData = nullptr;
       WndMouseButtonCallback3 mMouseReleaseCallback = nullptr;
@@ -126,6 +126,8 @@ namespace aui {
       void ActiveMenu(AMenu* v) { mActiveMenu = v; }
       AMenu* PermanentMenu() const { return mPermanentMenu; }
       void PermanentMenu(AMenu* v) { mPermanentMenu = v; }
+      void RemoveWidget(AWidget* v);
+      void CapturedWidgetLeft(AWidget* v);
   };
 
 }

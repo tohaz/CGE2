@@ -244,8 +244,8 @@ namespace aui {
         break;// exit immediately
       }
     }
-    D2("ends");
     mProcessingMessages = false;
+    D2("ends");
   }
 
   void AUI::CreateFrame(std::string title) {

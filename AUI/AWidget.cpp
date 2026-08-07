@@ -1217,5 +1217,20 @@ namespace aui {
     }
   }
 
+  int32_t AWidget::ComputeTextWidth(const std::string& text) const {
+      AUI* engine = Wnd() ? Wnd()->EnginePtr() : nullptr;
+      if (!engine) return 0;
+      FT_Face face = engine->DefaultFontFace();
+      if (!face) return 0;
+      FT_Set_Pixel_Sizes(face, 0, mFontSize);
+      int32_t width = 0;
+      for (char c : text) {
+          if (FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_COLOR) == 0) {
+              width += static_cast<int32_t>(face->glyph->advance.x >> 6);
+          }
+      }
+      return width;
+  }
+
 }// namespace aui
 

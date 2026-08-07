@@ -56,29 +56,35 @@ namespace aui {
   }
 
   void AWindow::PushModal(AWidget* widget) {
-      if (!widget) return;
-      // Ensure widget is attached to this window
-      if (widget->Wnd() != this) {
-          E("Cannot push modal: widget not attached to this window");
-          return;
-      }
-      // Remove if already in stack (so it moves to top)
-      auto it = std::find(mModalStack.begin(), mModalStack.end(), widget);
-      if (it != mModalStack.end()) mModalStack.erase(it);
-      widget->mIsModal = true;
-      mModalStack.push_back(widget);
-      // Transfer focus to the new modal
-      if (widget->Focusable()) {
-          FocusedWidget(widget);
-      } else {
-          AWidget* focusable = widget->FindFirstFocusable();
-          if (focusable) FocusedWidget(focusable);
-          else FocusedWidget(widget); // fallback
-      }
-      RequestRedraw();
+    if(!widget)
+      return;
+// Ensure widget is attached to this window
+    if(widget->Wnd() != this) {
+      E("Cannot push modal: widget not attached to this window");
+      return;
+    }
+// Remove if already in stack (so it moves to top)
+    auto it = std::find(mModalStack.begin(), mModalStack.end(), widget);
+    if(it != mModalStack.end())
+      mModalStack.erase(it);
+    widget->mIsModal = true;
+    mModalStack.push_back(widget);
+// Transfer focus to the new modal
+    if(widget->Focusable()) {
+      FocusedWidget(widget);
+    }
+    else {
+      AWidget* focusable = widget->FindFirstFocusable();
+      if(focusable)
+        FocusedWidget(focusable);
+      else
+        FocusedWidget(widget);// fallback
+    }
+    RequestRedraw();
   }
 
-  std::pair<int32_t, int32_t> CalculateCoordsRotatedFull(int32_t x, int32_t y, uint32_t sizeX, uint32_t sizeY, double angle) {
+  std::pair<int32_t, int32_t> CalculateCoordsRotatedFull(int32_t x, int32_t y, uint32_t sizeX, uint32_t sizeY,
+      double angle) {
     if(std::abs(angle) < 1e-9) {
       return {static_cast<int32_t>(x), static_cast<int32_t>(y)};
     }
@@ -172,6 +178,10 @@ namespace aui {
 
   bool AWindow::Close() {
     mClosing = true;
+    if(mAUI->MainWnd() == this) {
+      mAUI->ExitAUI();
+      return true;
+    }
     if(mType == AUIWindowType::Wayland) {
       D1("closing Wayland window")
       WaylandWindowContext* ctx = static_cast<WaylandWindowContext*>(this);
@@ -256,8 +266,8 @@ namespace aui {
     if(mMousePressCallback) {
       mMousePressCallback(this, mMousePressCallbackData, x, y, button);
     }
-    if (mActiveDropDown && ProcessDropdown(x, y)) {
-        return;  // event consumed by closing dropdown
+    if(mActiveDropDown && ProcessDropdown(x, y)) {
+      return;// event consumed by closing dropdown
     }
     if(!mModalStack.empty()) {
       AWidget* top = mModalStack.back();
@@ -347,7 +357,7 @@ namespace aui {
 
   void AWindow::OnMouseRelease(UNUSED int32_t x, UNUSED int32_t y, UNUSED uint32_t button) {
     D2("x {} y {} button {}", x, y, button);
-    if (mMouseReleaseCallback) {
+    if(mMouseReleaseCallback) {
       mMouseReleaseCallback(this, mMouseReleaseCallbackData, x, y, button);
     }
     if(!mModalStack.empty()) {
@@ -382,70 +392,71 @@ namespace aui {
       return;// block normal widgets
     }
     AWidget* consumed = nullptr;
-    switch (button) {
+    switch(button) {
       case BTN_LEFT: {
         D2("BTN_LEFT release");
-        // 1. CAPTURED ROUTING
-        if (mCapturedWidgetLeft != nullptr) {
+// 1. CAPTURED ROUTING
+        if(mCapturedWidgetLeft != nullptr) {
           AWidget* target = mCapturedWidgetLeft;
-          mCapturedWidgetLeft = nullptr; // Clear capture before dispatch to prevent re-entrancy bugs
-          // IMPORTANT: Calculate coordinates in TARGET'S PARENT space,
-          // because target->OnMouseUpLeft expects parent-relative coordinates!
+          mCapturedWidgetLeft = nullptr;// Clear capture before dispatch to prevent re-entrancy bugs
+// IMPORTANT: Calculate coordinates in TARGET'S PARENT space,
+// because target->OnMouseUpLeft expects parent-relative coordinates!
           int32_t parentRelX = x;
           int32_t parentRelY = y;
-          if (target->Parent() != nullptr) {
+          if(target->Parent() != nullptr) {
             auto [pX, pY] = target->Parent()->ToLocalCoords(x, y);
             parentRelX = pX - target->X();
             parentRelY = pY - target->Y();
-          } else {
-            // Target is a root-level widget directly attached to AWindow
+          }
+          else {
+// Target is a root-level widget directly attached to AWindow
             parentRelX = x - target->X();
             parentRelY = y - target->Y();
           }
-          D2("Dispatching captured release to '[{}]' with coords ({}, {})",
-              target->Text(), parentRelX, parentRelY);
+          D2("Dispatching captured release to '[{}]' with coords ({}, {})", target->Text(), parentRelX, parentRelY);
           consumed = target->OnMouseUpLeft(parentRelX, parentRelY);
-          if (consumed != nullptr) {
+          if(consumed != nullptr) {
             D2("Release consumed by captured widget '[{}]'", consumed->Text());
           }
         }
-        // 2. FALLBACK ROUTING (No Captured Widget)
+// 2. FALLBACK ROUTING (No Captured Widget)
         else {
-          for (auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+          for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
             AWidget* widget = it->get();
-            if (!widget->Visible() || !widget->Enabled())
+            if(!widget->Visible() || !widget->Enabled())
               continue;
-            // Pass window-relative offset to root widget
+// Pass window-relative offset to root widget
             int32_t localX = x - widget->X();
             int32_t localY = y - widget->Y();
-            // Check clipping on root container before recursing
-            if (widget->ClipChildren()) {
-              bool inBounds = (localX >= 0 && localX < SafeINT32(widget->SizeX()) &&
-                               localY >= 0 && localY < SafeINT32(widget->SizeY()));
-              if (!inBounds) {
-                continue; // Skip root widget if mouse release is outside clipped container
+// Check clipping on root container before recursing
+            if(widget->ClipChildren()) {
+              bool inBounds = (localX >= 0 && localX < SafeINT32(widget->SizeX()) && localY >= 0
+                  && localY < SafeINT32(widget->SizeY()));
+              if(!inBounds) {
+                continue;// Skip root widget if mouse release is outside clipped container
               }
             }
             consumed = widget->OnMouseUpLeft(localX, localY);
-            if (consumed != nullptr) {
+            if(consumed != nullptr) {
               D2("Release consumed by '[{}]'", consumed->Text());
               break;
             }
           }
         }
-        if (consumed == nullptr) {
+        if(consumed == nullptr) {
           D2("Release not consumed");
         }
         break;
       }
       default:
-        D2("Unhandled button release");
+        D2("Unhandled button release")
+        ;
         break;
     }
   }
 
   void AWindow::OnMouseMove(int32_t x, int32_t y) {
-    D2("mouse move global coords {} {}", x, y);
+    D3("mouse move global coords {} {}", x, y);
     if(!mModalStack.empty()) {
 // If capture exists, route to that widget (must be within modal)
       if(mCapturedWidgetLeft) {
@@ -596,7 +607,7 @@ namespace aui {
     }
   }
 
-  void AWindow::OnKeyEvent(const AUIKeyEvent &event) {
+  void AWindow::OnKeyEvent(const AUIKeyEvent& event) {
     if(!mModalStack.empty()) {
       AWidget* top = mModalStack.back();
 // If focused widget exists and is inside the modal, use it
@@ -627,23 +638,23 @@ namespace aui {
   }
 
   void AWindow::FocusedWidget(AWidget* v) {
-    if (mFocusedWidget == v)
+    if(mFocusedWidget == v)
       return;
     AWidget* oldFocused = mFocusedWidget;
     mFocusedWidget = v;
-    if (oldFocused) {
+    if(oldFocused) {
       oldFocused->OnFocusLost();
     }
-    // Ensure mFocusedWidget wasn't reassigned inside OnFocusLost()
-    if (mFocusedWidget == v && mFocusedWidget) {
+// Ensure mFocusedWidget wasn't reassigned inside OnFocusLost()
+    if(mFocusedWidget == v && mFocusedWidget) {
       mFocusedWidget->OnFocusGained();
     }
     RequestRedraw();
   }
 
-  void AWindow::BringToFront(AWidget *child) {
+  void AWindow::BringToFront(AWidget* child) {
     D1("widget {}", child->Text())
-    auto it = std::find_if(mWidg.begin(), mWidg.end(), [child](const std::unique_ptr<AWidget> &ptr) {
+    auto it = std::find_if(mWidg.begin(), mWidg.end(), [child](const std::unique_ptr<AWidget>& ptr) {
       return ptr.get() == child;
     });
     if(it != mWidg.end() && it != mWidg.end() - 1) {
@@ -678,4 +689,20 @@ namespace aui {
     }
     return false;// click inside list, keep dropdown open
   }
+
+  void AWindow::RemoveWidget(AWidget* v) {
+    std::unique_ptr<AWidget> deadWidget;
+    std::erase_if(mWidg, [v, &deadWidget](auto& up) noexcept {
+      if(up.get() == v) {
+        deadWidget = std::move(up);
+        return true;
+      }
+      return false;
+    });
+  }
+
+  void AWindow::CapturedWidgetLeft(AWidget* v) {
+    mCapturedWidgetLeft = v;
+  }
+
 }

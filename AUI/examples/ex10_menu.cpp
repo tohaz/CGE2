@@ -28,6 +28,7 @@ int main() {
   fileItems.emplace_back("Exit", [win]() {
     win->Close();
   });
+
 // Build submenu items for "Edit"
   std::vector<AMenuItem> editItems;
   editItems.emplace_back("Undo", []() {
