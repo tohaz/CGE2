@@ -96,9 +96,9 @@ namespace aui {
     mItemH.resize(n);
     int32_t maxTextW = 0;
     for(const auto& it : mItems) {
-      if(it.isSeparator || !it.isVisible)
+      if(it.mSeparator || !it.mVisible)
         continue;
-      int32_t tw = ComputeTextWidth(it.text);
+      int32_t tw = ComputeTextWidth(it.mText);
       if(tw > maxTextW)
         maxTextW = tw;
     }
@@ -106,7 +106,7 @@ namespace aui {
     if(mOrientation == AUIOrientation::vertical) {
       int32_t y = 0;
       for(size_t i = 0; i < n; ++i) {
-        int32_t h = mItems[i].isSeparator ? mSeparatorSize : mItemHeight;
+        int32_t h = mItems[i].mSeparator ? mSeparatorSize : mItemHeight;
         mItemX[i] = 0;
         mItemY[i] = y;
         mItemW[i] = itemW;
@@ -120,11 +120,11 @@ namespace aui {
       int32_t x = 0;
       for(size_t i = 0; i < n; ++i) {
         int32_t w;
-        if(mItems[i].isSeparator) {
+        if(mItems[i].mSeparator) {
           w = 2;
         }
         else {
-          int32_t tw = ComputeTextWidth(mItems[i].text);
+          int32_t tw = ComputeTextWidth(mItems[i].mText);
           w = tw + 2 * mPadding;
           if(w < 20)
             w = 20;
@@ -144,7 +144,7 @@ namespace aui {
   int32_t AMenu::HitTest(int32_t x, int32_t y) const {
     RecalcLayout();
     for(size_t i = 0; i < mItems.size(); ++i) {
-      if(!mItems[i].isVisible)
+      if(!mItems[i].mVisible)
         continue;
       if(x >= mItemX[i] && x < mItemX[i] + mItemW[i] && y >= mItemY[i] && y < mItemY[i] + mItemH[i]) {
         return static_cast<int32_t>(i);
@@ -168,13 +168,13 @@ namespace aui {
 // Draw own items
     for(size_t i = 0; i < mItems.size(); ++i) {
       const auto& item = mItems[i];
-      if(!item.isVisible)
+      if(!item.mVisible)
         continue;
       int32_t x = absX + mItemX[i];
       int32_t y = absY + mItemY[i];
       int32_t w = mItemW[i];
       int32_t h = mItemH[i];
-      if(item.isSeparator) {
+      if(item.mSeparator) {
         uint32_t color = 0xFF666666;
         if(mOrientation == AUIOrientation::vertical) {
           int32_t lineY = y + h / 2;
@@ -188,12 +188,12 @@ namespace aui {
       }
       if(mHoveredIndex == static_cast<int32_t>(i))
         FillRect(buffer, bufferW, x, y, w, h, mHoverBg);
-      uint32_t color = item.isEnabled ? mTextColor : mDisabledColor;
+      uint32_t color = item.mEnabled ? mTextColor : mDisabledColor;
       FT_Face face = Wnd()->EnginePtr()->DefaultFontFace();
       if(face) {
         ARect bounds { x + mPadding, y, static_cast<uint32_t>(w - 2 * mPadding), static_cast<uint32_t>(h) };
         ATextStyle style { color, mFontSize, AUIHAlign::left, AUIVAlign::center, 0.0 };
-        DrawTextEx(buffer, bufferW, bufferH, bounds, item.text, face, style, nullptr);
+        DrawTextEx(buffer, bufferW, bufferH, bounds, item.mText, face, style, nullptr);
       }
     }
 // Draw active submenu (if any)
@@ -227,7 +227,7 @@ namespace aui {
     if(idx < 0)
       return nullptr;
     const auto& item = mItems[static_cast<size_t>(idx)];
-    if(!item.isEnabled || item.isSeparator)
+    if(!item.mEnabled || item.mSeparator)
       return nullptr;
 // Toggle submenu
     if(!item.subItems.empty()) {
@@ -241,10 +241,13 @@ namespace aui {
       return this;
     }
 // Execute action and dismiss (if not permanent)
-    if(item.action)
+    if (item.actionWithData) {
+        item.actionWithData(this, item.userData);
+    } else if(item.action)
       item.action();
-    if(!mIsPermanent)
+    if(!mIsPermanent) {
       Dismiss();
+    }
     return nullptr;
   }
 
@@ -277,7 +280,7 @@ namespace aui {
 // Open new submenu after delay if applicable
     if(mHoveredIndex >= 0 && mHoveredIndex < static_cast<int32_t>(mItems.size())) {
       const auto& item = mItems[static_cast<size_t>(mHoveredIndex)];
-      if(!item.subItems.empty() && item.isEnabled && !mActiveSubMenu) {
+      if(!item.subItems.empty() && item.mEnabled && !mActiveSubMenu) {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - mLastHoverTime).count();
         if(elapsed >= mSubmenuDelayMs) {
@@ -398,7 +401,7 @@ namespace aui {
   }
 
   void AMenu::CloseSubMenu() {
-    D()
+    D4()
     if(mActiveSubMenu) {
       mActiveSubMenu->mVisible = false;
       mActiveSubMenu->mHoveredIndex = -1;

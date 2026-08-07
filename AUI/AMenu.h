@@ -10,19 +10,20 @@
 namespace aui {
 
 struct AMenuItem {
-    std::string text;
+    std::string mText;
     std::function<void()> action;
     std::vector<AMenuItem> subItems;
-    bool isSeparator = false;
-    bool isEnabled = true;
-    bool isVisible = true;
-
+    bool mSeparator = false;
+    bool mEnabled = true;
+    bool mVisible = true;
+    void (*actionWithData)(AMenu* menu, void* userData) = nullptr;
+    void* userData = nullptr;
     AMenuItem() = default;
     AMenuItem(const std::string& t, std::function<void()> a = nullptr)
-        : text(t), action(std::move(a)) {}
+        : mText(t), action(std::move(a)) {}
     AMenuItem(const std::string& t, std::vector<AMenuItem> subs)
-        : text(t), subItems(std::move(subs)) {}
-    static AMenuItem Separator() { AMenuItem it; it.isSeparator = true; return it; }
+        : mText(t), subItems(std::move(subs)) {}
+    static AMenuItem Separator() { AMenuItem it; it.mSeparator = true; return it; }
 };
 
 class AMenu : public AWidgetFactory<AMenu> {
