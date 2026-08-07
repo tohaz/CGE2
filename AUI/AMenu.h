@@ -27,47 +27,13 @@ struct AMenuItem {
 
 class AMenu : public AWidgetFactory<AMenu> {
     friend class AWidgetFactory<AMenu>;
-public:
-    AMenu();
-    explicit AMenu(std::vector<AMenuItem>&& items,
-                   AUIOrientation orient = AUIOrientation::vertical);
-    ~AMenu() override;
-
-    // Content
-    void SetItems(std::vector<AMenuItem>&& items);
-    void AddItem(AMenuItem item);
-    void ClearItems();
-
-    // Appearance
-    void Orientation(AUIOrientation o);
-    void ItemHeight(int32_t h);
-    void Padding(int32_t p) { mPadding = p; LayoutDirty(); }
-    void SetColors(uint32_t bg, uint32_t hoverBg, uint32_t text, uint32_t disabled);
-
-    // Show / Dismiss / Permanent
-    void Show();
-    void Popup(int32_t x, int32_t y);
-    void Dismiss();
-    bool IsVisible() const { return mVisible; }
-    void SetPermanent(bool p) { mIsPermanent = p; }
-
-    // Overrides
-    void OnDraw(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH,
-                int32_t offsetX, int32_t offsetY,
-                int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB) const override;
-    AWidget* OnMouseDownLeft(int32_t localX, int32_t localY) override;
-    bool OnMouseMove(int32_t localX, int32_t localY) override;
-    void OnResize(uint32_t w, uint32_t h) override;
-
 private:
+    AMenu();
     void LayoutDirty() { mLayoutDirty = true; }
     void RecalcLayout() const;
     int32_t HitTest(int32_t x, int32_t y) const;
-    int32_t ComputeTextWidth(const std::string& text) const;
-
     void OpenSubMenu(size_t index);
     void CloseSubMenu();
-
     std::vector<AMenuItem> mItems;
     AUIOrientation mOrientation = AUIOrientation::vertical;
     int32_t mItemHeight = 24;
@@ -78,17 +44,39 @@ private:
     bool mVisible = false;
     bool mIsPermanent = false;
     int32_t mHoveredIndex = -1;
-
     // Submenu state
     AMenu* mActiveSubMenu = nullptr;          // child submenu (owned by this)
     int32_t mActiveSubMenuOwnerIndex = -1;
     AMenu* mParentMenu = nullptr;             // set if this is a submenu
     int32_t mSubmenuDelayMs = 200;
     std::chrono::steady_clock::time_point mLastHoverTime;
-
     mutable bool mLayoutDirty = true;
     mutable int32_t mCachedWidth = 0, mCachedHeight = 0;
     mutable std::vector<int32_t> mItemX, mItemY, mItemW, mItemH;
+public:
+    explicit AMenu(std::vector<AMenuItem>&& items,
+                   AUIOrientation orient = AUIOrientation::vertical);
+    ~AMenu() override;
+    void SetItems(std::vector<AMenuItem>&& items);
+    void AddItem(AMenuItem item);
+    void ClearItems();
+    void Orientation(AUIOrientation o);
+    void ItemHeight(int32_t h);
+    void Padding(int32_t p) { mPadding = p; LayoutDirty(); }
+    void SetColors(uint32_t bg, uint32_t hoverBg, uint32_t text, uint32_t disabled);
+    void Show();
+    void Popup(int32_t x, int32_t y);
+    void Dismiss();
+    bool IsVisible() const { return mVisible; }
+    void SetPermanent(bool p) { mIsPermanent = p; }
+    void OnDraw(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH,
+                int32_t offsetX, int32_t offsetY,
+                int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB) const override;
+    AWidget* OnMouseDownLeft(int32_t localX, int32_t localY) override;
+    bool OnMouseMove(int32_t localX, int32_t localY) override;
+    void OnResize(uint32_t w, uint32_t h) override;
+    void OnSubmenuDismissed(AMenu* submenu);
+
 };
 
 } // namespace aui

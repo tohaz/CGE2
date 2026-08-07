@@ -26,13 +26,10 @@ namespace aui {
   }
 
   AMenu::~AMenu() {
-// Children (submenus) are automatically deleted because they are in mWidg.
-// We also need to clear the parent's pointer if this was a submenu.
     if(mParentMenu && mParentMenu->mActiveSubMenu == this) {
       mParentMenu->mActiveSubMenu = nullptr;
       mParentMenu->mActiveSubMenuOwnerIndex = -1;
     }
-// Clean up window pointers if this is the active menu.
     if(Wnd()) {
       if(Wnd()->ActiveMenu() == this)
         Wnd()->ActiveMenu(nullptr);
@@ -41,9 +38,6 @@ namespace aui {
     }
   }
 
-// -------------------------------------------------------------------------
-// Content
-// -------------------------------------------------------------------------
   void AMenu::SetItems(std::vector<AMenuItem>&& items) {
     mItems = std::move(items);
     LayoutDirty();
@@ -65,9 +59,6 @@ namespace aui {
       Wnd()->RequestRedraw();
   }
 
-// -------------------------------------------------------------------------
-// Appearance
-// -------------------------------------------------------------------------
   void AMenu::Orientation(AUIOrientation o) {
     if(mOrientation == o)
       return;
@@ -95,29 +86,6 @@ namespace aui {
       Wnd()->RequestRedraw();
   }
 
-// -------------------------------------------------------------------------
-// Text measurement
-// -------------------------------------------------------------------------
-  int32_t AMenu::ComputeTextWidth(const std::string& text) const {
-    AUI* engine = Wnd() ? Wnd()->EnginePtr() : nullptr;
-    if(!engine)
-      return 0;
-    FT_Face face = engine->DefaultFontFace();
-    if(!face)
-      return 0;
-    FT_Set_Pixel_Sizes(face, 0, mFontSize);
-    int32_t width = 0;
-    for(char c : text) {
-      if(FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_COLOR) == 0) {
-        width += static_cast<int32_t>(face->glyph->advance.x >> 6);
-      }
-    }
-    return width;
-  }
-
-// -------------------------------------------------------------------------
-// Layout
-// -------------------------------------------------------------------------
   void AMenu::RecalcLayout() const {
     if(!mLayoutDirty)
       return;
@@ -126,7 +94,6 @@ namespace aui {
     mItemY.resize(n);
     mItemW.resize(n);
     mItemH.resize(n);
-
     int32_t maxTextW = 0;
     for(const auto& it : mItems) {
       if(it.isSeparator || !it.isVisible)
@@ -136,7 +103,6 @@ namespace aui {
         maxTextW = tw;
     }
     int32_t itemW = maxTextW + 2 * mPadding;
-
     if(mOrientation == AUIOrientation::vertical) {
       int32_t y = 0;
       for(size_t i = 0; i < n; ++i) {
@@ -187,9 +153,6 @@ namespace aui {
     return -1;
   }
 
-// -------------------------------------------------------------------------
-// Drawing
-// -------------------------------------------------------------------------
   void AMenu::OnDraw(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
       int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB) const {
     (void) clipL;
@@ -242,9 +205,6 @@ namespace aui {
     }
   }
 
-// -------------------------------------------------------------------------
-// Events
-// -------------------------------------------------------------------------
   AWidget* AMenu::OnMouseDownLeft(int32_t localX, int32_t localY) {
 // If we have an active submenu, forward the event to it first.
     if(mActiveSubMenu && mActiveSubMenu->IsVisible()) {
@@ -328,9 +288,6 @@ namespace aui {
     return true;
   }
 
-// -------------------------------------------------------------------------
-// Show / Popup / Dismiss
-// -------------------------------------------------------------------------
   void AMenu::Show() {
     if(mVisible)
       return;
@@ -375,13 +332,12 @@ namespace aui {
   }
 
   void AMenu::Dismiss() {
+    if (mParentMenu) {
+        mParentMenu->OnSubmenuDismissed(this);
+    }
     if(!mVisible)
       return;
-
-// Close submenu (just hide it, it will be deleted when this parent is destroyed)
     CloseSubMenu();
-
-// Clear any window references
     if(Wnd()) {
       Wnd()->CapturedWidgetLeft(nullptr);
       if(Wnd()->FocusedWidget() == this)
@@ -389,20 +345,14 @@ namespace aui {
       if(Wnd()->ActiveMenu() == this)
         Wnd()->ActiveMenu(nullptr);
     }
-
-// Remove modal only for top-level popups
     if(!mIsPermanent && !mParentMenu && Wnd()) {
       Wnd()->RemoveModal(this);
     }
-
     mVisible = false;
     if(Wnd())
       Wnd()->RequestRedraw();
   }
 
-// -------------------------------------------------------------------------
-// Submenu management (ownership: parent owns child)
-// -------------------------------------------------------------------------
   void AMenu::OpenSubMenu(size_t index) {
     if(index >= mItems.size())
       return;
@@ -448,19 +398,31 @@ namespace aui {
   }
 
   void AMenu::CloseSubMenu() {
+    D()
     if(mActiveSubMenu) {
       mActiveSubMenu->mVisible = false;
       mActiveSubMenu->mHoveredIndex = -1;
       mActiveSubMenu = nullptr;
       mActiveSubMenuOwnerIndex = -1;
+      mHoveredIndex = -1;// <-- add this
+      if(Wnd())
+        Wnd()->RequestRedraw();
     }
-    if(Wnd())
-      Wnd()->RequestRedraw();
   }
 
   void AMenu::OnResize(uint32_t w, uint32_t h) {
     AWidget::OnResize(w, h);
     LayoutDirty();
+  }
+
+  void AMenu::OnSubmenuDismissed(AMenu* submenu) {
+    if(submenu == mActiveSubMenu) {
+      mActiveSubMenu = nullptr;
+      mActiveSubMenuOwnerIndex = -1;
+      mHoveredIndex = -1;// clear the highlight on the root item
+      if(Wnd())
+        Wnd()->RequestRedraw();
+    }
   }
 
 }// namespace aui
