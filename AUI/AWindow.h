@@ -47,6 +47,7 @@ namespace aui {
       std::vector<AWidget*> mModalStack;
       AMenu* mActiveMenu = nullptr;
       AMenu* mPermanentMenu = nullptr;
+      bool mHidden = false;
     protected:
       AWindow();
       void Type(AUIWindowType);
@@ -57,6 +58,8 @@ namespace aui {
       virtual void BackendResize(uint32_t x, uint32_t y) = 0;
       virtual void BackendTitle(std::string title) = 0;
       virtual void BackendDisableResize() = 0;
+      virtual void BackendShow() = 0;
+      virtual void BackendHide() = 0;
       virtual void BackendEnableResize() = 0;
       virtual void BackendMove(int32_t x, int32_t y) = 0;
       virtual bool CreateFrame() = 0;
@@ -122,12 +125,16 @@ namespace aui {
       AWidget* TopModal() const { return mModalStack.empty() ? nullptr : mModalStack.back();}
       void RemoveModal(AWidget* widget);
       bool ProcessDropdown(int32_t x, int32_t y);
-      AMenu* ActiveMenu() const { return mActiveMenu; }
+      AMenu* ActiveMenu() const {return mActiveMenu; }
       void ActiveMenu(AMenu* v) { mActiveMenu = v; }
-      AMenu* PermanentMenu() const { return mPermanentMenu; }
-      void PermanentMenu(AMenu* v) { mPermanentMenu = v; }
+      AMenu* PermanentMenu() const {return mPermanentMenu;}
+      void PermanentMenu(AMenu* v) {mPermanentMenu = v;}
       void RemoveWidget(AWidget* v);
       void CapturedWidgetLeft(AWidget* v);
+      void Show();
+      void Hide();
+      bool Hiddem() {return mHidden;}
+      bool Visible() {return !mHidden;}
   };
 
 }

@@ -710,4 +710,18 @@ namespace aui {
     mCapturedWidgetLeft = v;
   }
 
+  void AWindow::Show() {
+    if(mHidden) {
+      BackendShow();
+      mHidden = false;
+    }
+  }
+
+  void AWindow::Hide() {
+    if(!mHidden) {
+      BackendHide();
+      mHidden = true;
+    }
+  }
+
 }

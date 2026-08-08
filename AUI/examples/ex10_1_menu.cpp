@@ -53,7 +53,7 @@ int main() {
   mainItems.emplace_back("File", std::move(fileItems));
   mainItems.emplace_back("Edit", std::move(editItems));
   mainItems.emplace_back("Help", []() {
-    std::cout << "About\n";
+    std::cout << "About";
   });// simple item, no submenu
 // Attach the menu as a permanent horizontal bar
   AMenu* menu = AMenu::AttachTo(win, std::move(mainItems));
@@ -63,8 +63,8 @@ int main() {
   menu->Resize(win->SizeX(), 28);
   menu->SetColors(0xFFDDDDDD, 0xFFAAAAAA, 0xFF000000, 0xFF888888);
   menu->Show();
+
   au->ProcessMessages();
   delete au;
   return 0;
 }
-

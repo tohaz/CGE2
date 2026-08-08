@@ -164,6 +164,7 @@ int32_t main() {
   bol15->Resize(25, 25);
   bol15->BGColor(0xFFFF0000);
   bol15->Border(1);
+  bol15->Angle(-5);
   bol15->SetMousePressLeftCallback(OnClick, nullptr);
   bol15->Text("bol15");
 

@@ -141,24 +141,25 @@ namespace aui {
   void AInputBox::BlinkThreadFunc() {
     std::unique_lock<std::mutex> lock(mBlinkMutex);
     while(!mStopBlinkThread) {
-// Wait for BLINK_INTERVAL_MS or until stop requested
       mBlinkCV.wait_for(lock, std::chrono::milliseconds(BLINK_INTERVAL_MS), [this] {
         return mStopBlinkThread.load();
       });
       if(mStopBlinkThread)
         break;
-// Toggle cursor visibility when conditions are met
-      if(mBlinkingEnabled && Focused() && mEnabled) {
-        mCursorVisible = !mCursorVisible;
-        if(Wnd())
-          Wnd()->RequestRedraw();
-      }
-      else
-        if(mCursorVisible) {
-          mCursorVisible = false;
+      if(mBlinkingEnabled) {
+        if(Focused() && mEnabled) {
+          mCursorVisible = !mCursorVisible;
           if(Wnd())
             Wnd()->RequestRedraw();
         }
+        else {
+          if(mCursorVisible) {
+            mCursorVisible = false;
+            if(Wnd())
+              Wnd()->RequestRedraw();
+          }
+        }
+      }
     }
   }
 

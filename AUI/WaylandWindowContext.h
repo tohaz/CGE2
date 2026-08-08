@@ -67,13 +67,14 @@ namespace aui {
       virtual void BackendTitle(UNUSED std::string title) override;
       virtual void BackendDisableResize() override;
       virtual void BackendEnableResize() override;
+      virtual void BackendShow() override;
+      virtual void BackendHide() override;
       virtual void BackendCursor(AUICursorType type) override;
       WaylandBuffer* Buffers();
       void Configured();
       bool IsConfigured();
       AUICursorType CurrentCursorType() {return mCurrentCursorType;}
       bool CursorNeedsApply();
-
       ~WaylandWindowContext();
   };
 }

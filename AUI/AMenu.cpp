@@ -24,19 +24,6 @@ namespace aui {
     LayoutDirty();
   }
 
-  AMenu::~AMenu() {
-    if(mParentMenu && mParentMenu->mActiveSubMenu == this) {
-      mParentMenu->mActiveSubMenu = nullptr;
-      mParentMenu->mActiveSubMenuOwnerIndex = -1;
-    }
-    if(Wnd()) {
-      if(Wnd()->ActiveMenu() == this)
-        Wnd()->ActiveMenu(nullptr);
-      if(Wnd()->PermanentMenu() == this)
-        Wnd()->PermanentMenu(nullptr);
-    }
-  }
-
   void AMenu::SetItems(std::vector<AMenuItem>&& items) {
     mItems = std::move(items);
     LayoutDirty();
@@ -423,6 +410,22 @@ namespace aui {
       mHoveredIndex = -1;// clear the highlight on the root item
       if(Wnd())
         Wnd()->RequestRedraw();
+    }
+  }
+
+  AMenu::~AMenu() {
+    if(mActiveSubMenu) {
+      mActiveSubMenu->mParentMenu = nullptr;
+    }
+    if(mParentMenu && mParentMenu->mActiveSubMenu == this) {
+      mParentMenu->mActiveSubMenu = nullptr;
+      mParentMenu->mActiveSubMenuOwnerIndex = -1;
+    }
+    if(Wnd()) {
+      if(Wnd()->ActiveMenu() == this)
+        Wnd()->ActiveMenu(nullptr);
+      if(Wnd()->PermanentMenu() == this)
+        Wnd()->PermanentMenu(nullptr);
     }
   }
 

@@ -18,6 +18,10 @@ struct AMenuItem {
     AMenuItem(const std::string& t, std::vector<AMenuItem> subs)
         : mText(t), subItems(std::move(subs)) {}
     static AMenuItem Separator() { AMenuItem it; it.mSeparator = true; return it; }
+    template <typename Callable,
+              typename = std::enable_if_t<!std::is_same_v<std::decay_t<Callable>, std::vector<AMenuItem>>>>
+    AMenuItem(const std::string& t, Callable&& a)
+        : mText(t), action(std::forward<Callable>(a)) {}
 };
 
 class AMenu : public AWidgetFactory<AMenu> {
@@ -71,6 +75,8 @@ public:
     bool OnMouseMove(int32_t localX, int32_t localY) override;
     void OnResize(uint32_t w, uint32_t h) override;
     void OnSubmenuDismissed(AMenu* submenu);
+    int32_t HoveredIndex() const { return mHoveredIndex; }
+    bool SubMenuOpen() const { return mActiveSubMenu != nullptr; }
 
 };
 

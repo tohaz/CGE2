@@ -655,4 +655,25 @@ namespace aui {
       mXkbCtx = nullptr;
     }
   }
+
+  void XCBWindowContext::BackendShow() {
+    if(!EnginePtr()) {E("window not initialized")}
+    xcb_connection_t* conn = EnginePtr()->X11Connection();
+    if(!Visible()) {
+      D("mapping window")
+      xcb_map_window(conn, mWindowId);
+      xcb_flush(conn);
+    }
+  }
+
+  void XCBWindowContext::BackendHide() {
+    if(!EnginePtr()) {E("window not initialized")}
+    xcb_connection_t* conn = EnginePtr()->X11Connection();
+    if(Visible()) {
+      D("unmapping window")
+      xcb_unmap_window(conn, mWindowId);
+      xcb_flush(conn);
+    }
+  }
+
 }

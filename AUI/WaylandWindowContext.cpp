@@ -78,15 +78,21 @@ namespace aui {
     }
   }
 
-  static void xdg_surface_handle_configure(UNUSED void* data, UNUSED struct xdg_surface* xdg_surf,
-  UNUSED uint32_t serial) {
-    D2("serial {}", serial)
-    UNUSED auto* ctx = static_cast<WaylandWindowContext*>(data);
+  static void xdg_surface_handle_configure(void* data, struct xdg_surface* xdg_surf, uint32_t serial) {
+    D2("serial {}", serial);
+    auto* ctx = static_cast<WaylandWindowContext*>(data);
+    if(!ctx)
+      return;
+// 1. Always acknowledge the compositor's serial first
     xdg_surface_ack_configure(xdg_surf, serial);
+// 2. Mark configured state
     if(!ctx->IsConfigured()) {
       ctx->Configured();
     }
-    ctx->Draw();
+// 3. ONLY draw if the window is currently set to be visible
+    if(ctx->Visible()) {
+      ctx->Draw();
+    }
   }
 
   static void xdg_toplevel_handle_configure(UNUSED void* data, UNUSED struct xdg_toplevel* toplevel,
@@ -672,5 +678,30 @@ namespace aui {
     }
   }
 
+  void WaylandWindowContext::BackendShow() {
+    if(!EnginePtr()) {
+      E("window not initialized");
+      return;
+    }
+    if(mConfigured) {
+      Draw();
+    }
+    else {
+// Kickstart the configure cycle: commit empty surface so compositor responds with xdg_surface.configure
+      wl_surface_commit(mSurface);
+      wl_display_flush(EnginePtr()->WaylandDisplay());
+    }
+  }
 
+  void WaylandWindowContext::BackendHide() {
+    if(!EnginePtr()) {
+      E("window not initialized");
+      return;
+    }
+    mConfigured = false;
+// Unmap surface
+    wl_surface_attach(mSurface, nullptr, 0, 0);
+    wl_surface_commit(mSurface);
+    wl_display_flush(EnginePtr()->WaylandDisplay());
+  }
 }

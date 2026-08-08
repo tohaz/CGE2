@@ -61,6 +61,8 @@ namespace aui {
       virtual void BackendEnableResize() override;
       virtual void BackendCursor(AUICursorType type) override;
       virtual void BackendMove(int32_t x, int32_t y) override;
+      virtual void BackendShow() override;
+      virtual void BackendHide() override;
       xcb_atom_t mWmNormalHintsAtom = XCB_ATOM_NONE;
       void UpdateSizeHints();
     public:
