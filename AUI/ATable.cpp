@@ -235,6 +235,7 @@ namespace aui {
     mTotalContentWidth = 0;
     mCursorRow = mCursorCol = -1;
     mSelectedRow = -1;
+    MarkContentDirty();
     Wnd()->RequestRedraw();
   }
 
@@ -290,6 +291,7 @@ namespace aui {
     auto it = mColumnW.find(col);
     if(it != mColumnW.end()) {
       it->second.second = label;
+      MarkContentDirty();
       Wnd()->RequestRedraw();
     }
   }
@@ -298,6 +300,7 @@ namespace aui {
     auto it = mRowH.find(row);
     if(it != mRowH.end()) {
       it->second.second = label;
+      MarkContentDirty();
       Wnd()->RequestRedraw();
     }
   }
@@ -514,6 +517,7 @@ namespace aui {
           }
         }
       mRowPrefixDirty = true;
+      MarkContentDirty();
       Wnd()->RequestRedraw();
     }
   }
@@ -538,6 +542,7 @@ namespace aui {
           }
         }
       mColPrefixDirty = true;
+      MarkContentDirty();
       Wnd()->RequestRedraw();
     }
   }
@@ -674,6 +679,7 @@ namespace aui {
     if(mAutoWiden) {
       AutoWidenColumn(col);
     }
+    MarkContentDirty();
     Wnd()->RequestRedraw();
   }
 
@@ -881,6 +887,7 @@ namespace aui {
       }
       D2("Cell selected: row=%lld col=%lld", static_cast<int64_t>(cell.first), static_cast<int64_t>(cell.second));
       AWidget* ret = AWidget::OnMouseDownLeft(localX, localY);
+      MarkContentDirty();
       Wnd()->RequestRedraw();
       return ret ? ret : this;
     }
@@ -895,6 +902,7 @@ namespace aui {
     if(mResizing) {
       mResizing = false;
       mResizeTargetId = -1;
+      MarkContentDirty();
       Wnd()->RequestRedraw();
       return this;
     }
@@ -925,6 +933,7 @@ namespace aui {
         mResizeStartMouse = localY;
         mResizeStartSize = newSize;
       }
+      MarkContentDirty();
       Wnd()->RequestRedraw();
       return true;
     }
@@ -959,6 +968,7 @@ namespace aui {
     if(!enable) {
       mVScrollBar.reset();
       mHScrollBar.reset();
+      MarkContentDirty();
       Wnd()->RequestRedraw();
       return;
     }
@@ -984,6 +994,7 @@ namespace aui {
     mHScrollBar->SetScrollCallback([this](AWidget*, void*, int32_t val) {
       ScrollTo(val, static_cast<int32_t>(mVOffset));
     }, nullptr);
+    MarkContentDirty();
     Wnd()->RequestRedraw();
   }
 
@@ -1193,12 +1204,11 @@ namespace aui {
         if(!label.empty()) {
           ARect textBounds { static_cast<int32_t>(colLeft), headerAbsY, static_cast<uint32_t>(colW),
               static_cast<uint32_t>(headerH) };
-          ARect clipBounds { drawL, drawT, static_cast<uint32_t>(drawR - drawL), static_cast<uint32_t>(drawB - drawT) };
+          ARect cellClipBounds { cellL, cellT, static_cast<uint32_t>(cellR - cellL), static_cast<uint32_t>(cellB - cellT) };
           ATextStyle style { mHeaderTextColor, mFontSize, AUIHAlign::center, AUIVAlign::center, 0.0 };
-          DrawTextEx(buffer, bufferW, bufferH, textBounds, label, face, style, &clipBounds);
+          DrawTextEx(buffer, bufferW, bufferH, textBounds, label, face, style, &cellClipBounds);
         }
       }
-
       xPos += colW;
     }
   }

@@ -194,8 +194,6 @@ namespace aui {
       uint32_t RowHeaderWidth() {return mRowHeaderWidth;}
       uint32_t ColumnHeaderHeight() {return mColumnHeaderHeight;}
       void OnResize(uint32_t newWidth, uint32_t newHeight);
-
-
   };
 
 }// namespace aui

@@ -15,6 +15,8 @@ namespace aui {
   using WndMouseButtonCallback3 = std::function<void(AWindow*, void* anyData, int32_t x, int32_t y, uint32_t button)>;
 
   std::pair<int32_t, int32_t> CalculateCoordsRotatedFull(int32_t x, int32_t y, uint32_t sizeX, uint32_t sizeY, double angle);
+  void BlitRotated(const uint32_t* src, uint32_t srcW, uint32_t srcH, uint32_t* dst, uint32_t dstW, uint32_t dstH,
+      int32_t dstX, int32_t dstY, double angleDeg, int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB);
 
   class AWindow {
       friend class WaylandWindowContext;

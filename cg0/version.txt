@@ -13,4 +13,4 @@ gcc version 15.3.0 (Debian 15.3.0-2)
 
 'uname' output:
 
-Linux 7.1.3+deb14-amd64 #1 SMP PREEMPT_DYNAMIC Debian 7.1.3-1 (2026-07-04) x86_64 GNU/Linux
+Linux 7.1.7+deb14-amd64 #1 SMP PREEMPT_DYNAMIC Debian 7.1.7-1 (2026-08-07) x86_64 GNU/Linux

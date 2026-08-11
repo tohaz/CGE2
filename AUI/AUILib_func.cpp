@@ -3,7 +3,7 @@
 namespace aui {
 
   AUIKeyCode translate_keysym_to_keycode(xcb_keysym_t sym) {
-    D1("Keysym Hex: {:#06x} | Dec: {}", sym, sym);
+    D4("Keysym Hex: {:#06x} | Dec: {}", sym, sym);
     switch (sym) {
       case XK_Return:
         return AUIKeyCode::Enter;
@@ -32,7 +32,7 @@ namespace aui {
       case XK_space:
         return AUIKeyCode::Space;
       default:
-        D("unable to translate X11 keycode")
+        D2("unable to translate X11 keycode")
         return AUIKeyCode::None;
     }
   }

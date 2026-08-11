@@ -134,30 +134,25 @@ namespace aui {
     return w;
   }
 
-  void AWindow::Draw(UNUSED void* buf) {
-    mRedrawCounterDone++;
-    if(std::this_thread::get_id() != mAUI->MainThreadId()) {
-      if(mAUI->mSelfPipeFDs[1] >= 0) {
-        char token = 2;
-        write(mAUI->mSelfPipeFDs[1], &token, 1);
-      }
-      return;
+  void AWindow::Draw(void* buf) {
+    uint32_t* buffer = static_cast<uint32_t*>(buf);
+//    FillRect(buffer, mSizeX, 0, 0, mSizeX, mSizeY, mBGColor);
+    for(auto& widget : mWidg) {
+      if(!widget->Visible() || widget->Modal())
+        continue;
+      widget->EnsureContentUpToDate();
+      widget->EnsureOverlayUpToDate();
+      widget->Composite(buffer, mSizeX, mSizeY, widget->X(), widget->Y(), widget->Angle(), 0, 0,
+          static_cast<int32_t>(mSizeX), static_cast<int32_t>(mSizeY));
     }
-    for(const auto& widget : mWidg) {
-      if(widget->Visible() && !widget->Modal()) {
-        widget->Draw((uint32_t*) buf, mSizeX, mSizeY, 0, 0, 0, 0, SafeINT32(mSizeX), SafeINT32(mSizeY));
-      }
-    }
-// 2. Draw modal stack (bottom to top)
-    for(AWidget* modal : mModalStack) {
-      if(modal->Visible()) {
-// Compute absolute offset (the parent offset for drawing)
-// We want the origin of the modal's coordinate system in buffer space.
-// Because modal's AbsX/Y already account for all parents.
-        int32_t offsetX = modal->AbsX() - modal->X();
-        int32_t offsetY = modal->AbsY() - modal->Y();
-        modal->Draw((uint32_t*) buf, mSizeX, mSizeY, offsetX, offsetY, 0, 0, SafeINT32(mSizeX), SafeINT32(mSizeY));
-      }
+    for(auto* modal : mModalStack) {
+      if(!modal->Visible())
+        continue;
+      modal->EnsureContentUpToDate();
+      modal->EnsureOverlayUpToDate();
+// Use absolute position for modal (it may be nested)
+      modal->Composite(buffer, mSizeX, mSizeY, modal->AbsX(), modal->AbsY(), modal->Angle(), 0, 0,
+          static_cast<int32_t>(mSizeX), static_cast<int32_t>(mSizeY));
     }
   }
 
@@ -532,8 +527,8 @@ namespace aui {
   }
 
   void AWindow::RequestRedraw() {
-    mNeedsRepaint = true;
     D4("Window redraw request: {} done: {} wakeups {}", mRedrawCounter, mRedrawCounterDone, mAUI->WakeupCounter())
+    mNeedsRepaint = true;
     mRedrawCounter++;
     mAUI->RequestRedraw();
   }

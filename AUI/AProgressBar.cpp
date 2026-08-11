@@ -79,6 +79,7 @@ namespace aui {
     }
     if(changed) {
       FireCallbacks(old, newP);
+      MarkContentDirty();
       if(Wnd())
         Wnd()->RequestRedraw();
     }
@@ -100,6 +101,7 @@ namespace aui {
     mMin = min;
     mMax = max;
     UpdateTextCache();
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -109,12 +111,14 @@ namespace aui {
     if(enable)
       mIndeterminatePhase = 0.0;
     UpdateTextCache();
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
 
   void AProgressBar::ShowText(bool show) {
     mShowText = show;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -122,18 +126,21 @@ namespace aui {
   void AProgressBar::TextFormat(const std::string& format) {
     mTextFormat = format;
     UpdateTextCache();
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
 
   void AProgressBar::Stripe(bool enable) {
     mStripe = enable;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
 
   void AProgressBar::StripeColor(uint32_t color) {
     mStripeColor = color;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -142,6 +149,7 @@ namespace aui {
     if(pixels < 1)
       pixels = 1;
     mStripeWidth = pixels;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -153,6 +161,7 @@ namespace aui {
   void AProgressBar::RoundedCorners(bool enable, uint32_t radius) {
     mRoundedCorners = enable;
     mCornerRadius = (radius > 0) ? radius : 8;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -296,6 +305,7 @@ namespace aui {
 // ---- Trigger redraw ----
       if(needRedraw && Wnd()) {
         D2("ThreadFunction: requesting redraw");
+        MarkContentDirty();
         Wnd()->RequestRedraw();
       }
     }

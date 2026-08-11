@@ -336,6 +336,7 @@ namespace aui {
       D("Droplist not initialized")
       return;
     }
+    UpdateListGeometry();
 // Bring the list to the front so it draws above other widgets
     if(Wnd()) {
 //      Wnd()->BringToFront(mDropList);
@@ -387,8 +388,6 @@ namespace aui {
     LayoutUpdate();
     PopulateList();
     ShowList();
-    //Wnd()->BringToFront(mDropList);
-    BringToFront(mDropList);
     Wnd()->RequestRedraw();
     D1("OpenDropDown ends");
   }

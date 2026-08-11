@@ -55,6 +55,12 @@ namespace aui {
       int32_t clipMaxY, int32_t rectX, int32_t rectY, uint32_t rectW, uint32_t rectH, double angleDeg, int32_t parentX,
       int32_t parentY, uint32_t parentW, uint32_t parentH, double parentAngleDeg, uint32_t color);
 
+  void BlitRotated(const uint32_t* src, uint32_t srcW, uint32_t srcH,
+                   uint32_t* dst, uint32_t dstW, uint32_t dstH,
+                   int32_t dstX, int32_t dstY, double angleDeg,
+                   int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB,
+                   bool skipZero);
+
   class AWidget {
       template<typename T> friend class AWidgetFactory;
       friend class AWindow;
@@ -62,7 +68,6 @@ namespace aui {
       std::vector<std::unique_ptr<AWidget>> mWidg;
       AWindow *mWnd = nullptr;
       bool mClipChildren = true;
-      // TODO bug in hitbox clipping in extended box example
       bool mClipChildrenHitbox = true;
       AWidget *mParent = nullptr;
       bool mTextMetricsValid = false;
@@ -133,6 +138,15 @@ namespace aui {
       bool mDefaultFillBG = true;
       bool mDefaultDrawBorder = true;
       bool mCapSizeToParent = false;
+      std::vector<uint32_t> mContentBuffer;   // unrotated content (background + children)
+      std::vector<uint32_t> mOverlayBuffer;   // unrotated overlay (border, etc.)
+      bool mContentDirty = true;
+      bool mOverlayDirty = true;
+      // Buffer allocation
+      void AllocateBuffers();
+      // Render to own buffers
+      virtual void RenderContent();
+      virtual void RenderOverlay();
       void AddWidget(std::unique_ptr<AWidget> widg);
       virtual void OnDraw(uint32_t *buffer, uint32_t bufferW, uint32_t bufferH,
           int32_t offsetX, int32_t offsetY, int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB) const = 0;
@@ -147,7 +161,6 @@ namespace aui {
           fn(child);
         }
       }
-
     public:
       virtual ~AWidget() = default;
       void DrawChildren(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
@@ -182,8 +195,8 @@ namespace aui {
       void Y(int32_t y) {mY = y;}
       void SizeX(uint32_t szx) {mSizeX = szx;}
       void SizeY(uint32_t szy) {mSizeY = szy;}
-      void Border(uint32_t border) {mBorderThick = border;}
-      void BorderColor(uint32_t border) {mBorderColor = border;}
+      void Border(uint32_t border);
+      void BorderColor(uint32_t border);
       virtual void Draw(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
           int32_t clipLeft, int32_t clipTop, int32_t clipRight, int32_t clipBottom) const;
       uint32_t BGColor() const {return mBGColor;}
@@ -200,7 +213,7 @@ namespace aui {
       void Wnd(AWindow* win);
       void Move(int32_t x, int32_t y);
       void Resize(uint32_t szx, uint32_t szy);
-      void ClipChildren(bool clip) {mClipChildren = clip;}
+      void ClipChildren(bool clip);
       bool ClipChildren() const {return mClipChildren;}
       void ClipChildrenHitbox(bool clip) {mClipChildrenHitbox = clip;}
       bool ClipChildrenHitbox() const {return mClipChildrenHitbox;}
@@ -289,7 +302,7 @@ namespace aui {
       AUIDirection Direction() const {return mDirect;}
       void Direction(AUIDirection v) {mDirect = v;}
       virtual void LayoutUpdate();
-      void LayoutDirty() {mLayoutDirty = true;};
+      void LayoutDirty() {    MarkContentDirty(); mLayoutDirty = true;};
       bool LayoutIsDirty() {return mLayoutDirty;}
       void LayoutDirtyToggle(bool v) {mLayoutDirty = v;}
       bool Focused() const;
@@ -307,11 +320,18 @@ namespace aui {
       void Modal(bool modal);
       bool IsDescendantOf(const AWidget* ancestor) const;
       bool DefaultDrawBorder() {return mDefaultDrawBorder;}
-      void DefaultDrawBorder(bool v) {mDefaultDrawBorder = v;}
+      void DefaultDrawBorder(bool v);
       int32_t ComputeTextWidth(const std::string& text) const;
       void RemoveWidget(AWidget* v);
-
-
+      void EnsureContentUpToDate();
+      void EnsureOverlayUpToDate();
+      // Composite (blit) this widget’s buffers to a target buffer with rotation
+      void Composite(uint32_t* dst, uint32_t dstW, uint32_t dstH,
+                     int32_t dstX, int32_t dstY, double angle,
+                     int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB);
+      void MarkContentDirty();
+      void MarkOverlayDirty();
+      void MarkDirty();
   };
 
   template<typename Derived>

@@ -108,6 +108,7 @@ namespace aui {
     }
     if(newHover != mHoveredIndex) {
       mHoveredIndex = newHover;
+      MarkDirty();
       if(Wnd())
         Wnd()->RequestRedraw();
     }
@@ -121,6 +122,7 @@ namespace aui {
       if(sender == mHScrollBar) {
         mHOffset = value;
       }
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -143,6 +145,7 @@ namespace aui {
       int32_t maxV = std::max(0,
           static_cast<int32_t>(mData.size() * mLineHeight - (mSizeY - (IsHScrollbarEnabled() ? 20 : 0))));
       mVOffset = std::clamp(newOffset, 0, maxV);
+      MarkDirty();
       if(Wnd())
         Wnd()->RequestRedraw();
     }
@@ -256,6 +259,7 @@ namespace aui {
     }
     UpdateScrollbarRanges();// updates min/max/page
     UpdateScrollbarVisibility();// updates show/hide, recomputes offsets, syncs values
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -269,6 +273,7 @@ namespace aui {
     RecalcMaxWidth();
     UpdateScrollbarRanges();
     UpdateScrollbarVisibility();
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -282,6 +287,7 @@ namespace aui {
     RecalcMaxWidth();
     UpdateScrollbarRanges();
     UpdateScrollbarVisibility();
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -294,6 +300,7 @@ namespace aui {
     mHOffset = 0;
     UpdateScrollbarRanges();
     UpdateScrollbarVisibility();
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -311,6 +318,7 @@ namespace aui {
     mData[index] = text;
     RecalcMaxWidth();
     UpdateScrollbarRanges();
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -334,6 +342,7 @@ namespace aui {
 // Perform a single layout and redraw pass after ALL items are added
     UpdateScrollbarRanges();
     UpdateScrollbarVisibility();
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -349,6 +358,7 @@ namespace aui {
     RecalcMaxWidth();
     UpdateScrollbarRanges();
     UpdateScrollbarVisibility();
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -368,6 +378,7 @@ namespace aui {
     RecalcMaxWidth();
     UpdateScrollbarRanges();
     UpdateScrollbarVisibility();
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -378,6 +389,7 @@ namespace aui {
     RecalcMaxWidth();
     UpdateScrollbarRanges();
     UpdateScrollbarVisibility();
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -393,6 +405,7 @@ namespace aui {
     std::fill(mTaggedItems.begin(), mTaggedItems.end(), selected);
     if(mOnSelectionChanged)
       mOnSelectionChanged(this, mSelectionUserData);
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -406,6 +419,7 @@ namespace aui {
     mTaggedItems[index] = selected;
     if(mOnSelectionChanged)
       mOnSelectionChanged(this, mSelectionUserData);
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -420,6 +434,7 @@ namespace aui {
     std::fill(mTaggedItems.begin(), mTaggedItems.end(), false);
     if(mOnSelectionChanged)
       mOnSelectionChanged(this, mSelectionUserData);
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -466,6 +481,7 @@ namespace aui {
     mTaggedItems[index] = true;
     if(mOnSelectionChanged)
       mOnSelectionChanged(this, mSelectionUserData);
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -475,18 +491,21 @@ namespace aui {
 //// ----------------------------------------------------------------------
   void AList::SelectionColor(uint32_t argb) {
     mSelectionColor = argb;
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
 
   void AList::SelectionTextColor(uint32_t argb) {
     mSelectionTextColor = argb;
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
 
   void AList::HoverColor(uint32_t argb) {
     mHoverColor = argb;
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -506,6 +525,7 @@ namespace aui {
     }
     UpdateScrollbarRanges();
     UpdateScrollbarVisibility();
+    MarkDirty();
     if(Wnd()) {
       Wnd()->RequestRedraw();
     }
@@ -523,6 +543,7 @@ namespace aui {
       }
     UpdateScrollbarRanges();
     UpdateScrollbarVisibility();
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -530,6 +551,7 @@ namespace aui {
   void AList::AutoHideVScrollbar(bool enable) {
     mAutoHideVScrollbar = enable;
     UpdateScrollbarVisibility();
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -537,6 +559,7 @@ namespace aui {
   void AList::AutoHideHScrollbar(bool enable) {
     mAutoHideHScrollbar = enable;
     UpdateScrollbarVisibility();
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -558,6 +581,7 @@ namespace aui {
       mHScrollBar->Value(xOffset);
     else
       mHOffset = xOffset;
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -579,6 +603,8 @@ namespace aui {
     mLineSpacing = spacing;
     RecalcLineHeight();
     UpdateScrollbarVisibility();// updates ranges, recomputes offsets, syncs values, and redraws
+    MarkDirty();
+    mVScrollBar->MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -590,6 +616,9 @@ namespace aui {
     RecalcLineHeight();
     RecalcMaxWidth();
     UpdateScrollbarVisibility();
+    MarkDirty();
+    if(mVScrollBar)mVScrollBar->MarkDirty();
+    if(mHScrollBar)mHScrollBar->MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -653,6 +682,7 @@ namespace aui {
       mVScrollBar->Move(w - border - vw, border);
       mVScrollBar->Resize(static_cast<uint32_t>(vw), static_cast<uint32_t>(vh));
       UpdateScrollbarVisibility();
+      MarkDirty();
       if(Wnd())
         Wnd()->RequestRedraw();
     }
@@ -676,6 +706,7 @@ namespace aui {
       mHScrollBar->Move(border, h - border - hh);
       mHScrollBar->Resize(static_cast<uint32_t>(hw), static_cast<uint32_t>(hh));
       UpdateScrollbarVisibility();
+      MarkDirty();
       if(Wnd())
         Wnd()->RequestRedraw();
     }
@@ -737,6 +768,7 @@ namespace aui {
 // Recompute alignment offsets and push to scrollbars
     ComputeAlignmentOffsets();
     SyncScrollbarValues();
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -809,6 +841,7 @@ namespace aui {
     if(mHAlign == align)
       return;
     AWidget::HAlign(align);// stores alignment
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -819,6 +852,7 @@ namespace aui {
     AWidget::VAlign(align);
     ComputeAlignmentOffsets();
     SyncScrollbarValues();
+    MarkDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }

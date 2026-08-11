@@ -241,7 +241,9 @@ namespace aui {
     if(text.empty() || !face || parentWidth == 0 || parentHeight == 0)
       return;
     AUI* au = static_cast<AUI*>(face->generic.data);
-    if(!au) { E("engine is null");}
+    if(!au) {
+      E("engine is null");
+    }
     FT_Face fallbackFace = au->FallbackFace();
     FT_Select_Charmap(face, FT_ENCODING_UNICODE);
     if(fallbackFace) {
@@ -470,6 +472,106 @@ namespace aui {
     FT_Set_Transform(face, nullptr, nullptr);
     if(fallbackFace) {
       FT_Set_Transform(fallbackFace, nullptr, nullptr);
+    }
+  }
+
+  void BlitRotated(const uint32_t* src, uint32_t srcW, uint32_t srcH, uint32_t* dst, uint32_t dstW, uint32_t dstH,
+      int32_t dstX, int32_t dstY, double angleDeg, int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB,
+      bool skipZero = false) {
+    if(!src || !dst || srcW == 0 || srcH == 0)
+      return;
+// Clamp clip bounds
+    clipL = std::max(0, clipL);
+    clipT = std::max(0, clipT);
+    clipR = std::min(static_cast<int32_t>(dstW), clipR);
+    clipB = std::min(static_cast<int32_t>(dstH), clipB);
+    if(clipL >= clipR || clipT >= clipB)
+      return;
+// --- Fast path: no rotation ---
+    if(std::abs(angleDeg) < 1e-6) {
+      int32_t srcL = dstX;
+      int32_t srcT = dstY;
+      int32_t srcR = dstX + static_cast<int32_t>(srcW);
+      int32_t srcB = dstY + static_cast<int32_t>(srcH);
+      int32_t copyL = std::max(srcL, clipL);
+      int32_t copyT = std::max(srcT, clipT);
+      int32_t copyR = std::min(srcR, clipR);
+      int32_t copyB = std::min(srcB, clipB);
+      if(copyL >= copyR || copyT >= copyB)
+        return;
+      int32_t copyW = copyR - copyL;
+      for(int32_t y = copyT; y < copyB; ++y) {
+        uint32_t* dstRow = dst + static_cast<size_t>(y) * dstW + static_cast<size_t>(copyL);
+        const uint32_t* srcRow = src + static_cast<size_t>(y - dstY) * srcW + static_cast<size_t>(copyL - dstX);
+        if(skipZero) {
+          for(int32_t x = 0; x < copyW; ++x) {
+            uint32_t val = srcRow[x];
+            if(val != 0)
+              dstRow[x] = val;
+          }
+        }
+        else {
+          std::memcpy(dstRow, srcRow, static_cast<size_t>(copyW) * sizeof(uint32_t));
+        }
+      }
+      return;
+    }
+// --- Rotated path ---
+    double rad = angleDeg * (M_PI / 180.0);
+    double cosA = std::cos(rad);
+    double sinA = std::sin(rad);
+    double hw = static_cast<double>(srcW) * 0.5;
+    double hh = static_cast<double>(srcH) * 0.5;
+    double cx = static_cast<double>(dstX) + hw;
+    double cy = static_cast<double>(dstY) + hh;
+// 1. Calculate AABB of rotated sprite corners relative to center
+    double cornersX[4] = { -hw, hw, hw, -hw };
+    double cornersY[4] = { -hh, -hh, hh, hh };
+    double minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+    for(int32_t i = 0; i < 4; ++i) {
+      double rx = cornersX[i] * cosA - cornersY[i] * sinA + cx;
+      double ry = cornersX[i] * sinA + cornersY[i] * cosA + cy;
+      minX = std::min(minX, rx);
+      maxX = std::max(maxX, rx);
+      minY = std::min(minY, ry);
+      maxY = std::max(maxY, ry);
+    }
+// Intersect AABB with clip rect
+    int32_t startY = std::max(clipT, static_cast<int32_t>(std::floor(minY)));
+    int32_t endY = std::min(clipB, static_cast<int32_t>(std::ceil(maxY)));
+    int32_t startX = std::max(clipL, static_cast<int32_t>(std::floor(minX)));
+    int32_t endX = std::min(clipR, static_cast<int32_t>(std::ceil(maxX)));
+    if(startX >= endX || startY >= endY)
+      return;
+// 2. Fixed-point setup (16.16)
+    constexpr int32_t FP_SHIFT = 16;
+    constexpr int32_t FP_HALF = 1 << (FP_SHIFT - 1);
+    constexpr int32_t FP_ONE = 1 << FP_SHIFT;
+    int32_t stepXx = static_cast<int32_t>(cosA * FP_ONE);
+    int32_t stepXy = static_cast<int32_t>(-sinA * FP_ONE);
+    int32_t maxSi = static_cast<int32_t>(srcW);
+    int32_t maxSj = static_cast<int32_t>(srcH);
+// 3. Render loop using 16.16 fixed-point stepping
+    for(int32_t y = startY; y < endY; ++y) {
+      double dy = static_cast<double>(y) - cy;
+      double dx0 = static_cast<double>(startX) - cx;
+// Base source coordinates at start of line + 0.5 rounding offset
+      int32_t fpSx = static_cast<int32_t>((dx0 * cosA + dy * sinA + hw) * FP_ONE) + FP_HALF;
+      int32_t fpSy = static_cast<int32_t>((-dx0 * sinA + dy * cosA + hh) * FP_ONE) + FP_HALF;
+      uint32_t* dstRow = dst + static_cast<size_t>(y) * dstW;
+      for(int32_t x = startX; x < endX; ++x) {
+        int32_t si = fpSx >> FP_SHIFT;
+        int32_t sj = fpSy >> FP_SHIFT;
+        if(static_cast<uint32_t>(si) < static_cast<uint32_t>(maxSi)
+            && static_cast<uint32_t>(sj) < static_cast<uint32_t>(maxSj)) {
+          uint32_t val = src[static_cast<size_t>(sj) * srcW + static_cast<size_t>(si)];
+          if(!skipZero || val != 0) {
+            dstRow[x] = val;
+          }
+        }
+        fpSx += stepXx;
+        fpSy += stepXy;
+      }
     }
   }
 }

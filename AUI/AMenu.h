@@ -28,7 +28,7 @@ class AMenu : public AWidgetFactory<AMenu> {
     friend class AWidgetFactory<AMenu>;
 private:
     AMenu();
-    void LayoutDirty() { mLayoutDirty = true; }
+    void LayoutDirty() { MarkContentDirty(); mLayoutDirty = true; }
     void RecalcLayout() const;
     int32_t HitTest(int32_t x, int32_t y) const;
     void OpenSubMenu(size_t index);

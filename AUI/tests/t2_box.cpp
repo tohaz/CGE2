@@ -806,15 +806,70 @@ int32_t test_clipchildren_rotated(AUI* au) {
   return 0;
 }
 
+int32_t test_inner_box_content_rotated(AUI* au) {
+  D1("test_'test_inner_box_content_rotated'_starts");
+  AWindow* w = au->MainWnd();
+  w->EnableResize();
+  w->Resize(12, 12);
+  w->DisableResize();
+  // Tests if boxes draw with correct fills
+  // Widgets are rotated
+  ABox* bx1 = ABox::AttachTo(w);
+  bx1->BGColor(0xFF00FF00);
+  bx1->Move(2, 2);
+  bx1->Resize(10, 10);
+  bx1->Angle(1);
+  ABox* bx2 = ABox::AttachTo(bx1);
+  bx2->BGColor(0xFFFF0000);
+  bx2->Move(2, 2);
+  bx2->Resize(4, 4);
+  bx2->Angle(1);
+
+  int32_t px = 0, py = 0;
+  uint32_t t = 0;
+  AWidgetReader<ABox> r(bx1, 12, 12);
+  bool c = true; // arm the test. makes it "exit(1);" on error
+  px = 0; py = 0, t = 0;
+  D1("pixel at {} {} is {:x} should be {:x}", px, py, r.Pixel(px, py), t)
+  if(c)TEST_ASSERT_EQ(r.Pixel(px, py), t, 3);
+  px = 1; py = 1, t = 0;
+  D1("pixel at {} {} is {:x} should be {:x}", px, py, r.Pixel(px, py), t)
+  if(c)TEST_ASSERT_EQ(r.Pixel(px, py), t, 3);
+  px = 2; py = 2, t = 0xFF000000;
+  D1("pixel at {} {} is {:x} should be {:x}", px, py, r.Pixel(px, py), t)
+  if(c)TEST_ASSERT_EQ(r.Pixel(px, py), t, 3);
+  px = 3; py = 3, t = 0xFF00FF00;
+  D1("pixel at {} {} is {:x} should be {:x}", px, py, r.Pixel(px, py), t)
+  if(c)TEST_ASSERT_EQ(r.Pixel(px, py), t, 3);
+  px = 4; py = 4, t = 0xFF000000;
+  D1("pixel at {} {} is {:x} should be {:x}", px, py, r.Pixel(px, py), t)
+  if(c)TEST_ASSERT_EQ(r.Pixel(px, py), t, 3);
+  px = 5; py = 5, t = 0xFFFF0000;
+  D1("pixel at {} {} is {:x} should be {:x}", px, py, r.Pixel(px, py), t)
+  if(c)TEST_ASSERT_EQ(r.Pixel(px, py), t, 3);
+  px = 6; py = 6, t = 0xFFFF0000;
+  D1("pixel at {} {} is {:x} should be {:x}", px, py, r.Pixel(px, py), t)
+  if(c)TEST_ASSERT_EQ(r.Pixel(px, py), t, 3);
+  px = 7; py = 7, t = 0xFF000000;
+  D1("pixel at {} {} is {:x} should be {:x}", px, py, r.Pixel(px, py), t)
+  if(c)TEST_ASSERT_EQ(r.Pixel(px, py), t, 3);
+  px = 8; py = 8, t = 0xFF00FF00;
+  D1("pixel at {} {} is {:x} should be {:x}", px, py, r.Pixel(px, py), t)
+  if(c)TEST_ASSERT_EQ(r.Pixel(px, py), t, 3);
+
+  D1("test_'test_inner_box_content_rotated'_passed");
+  return 0;
+}
+
 int main() {
   //UNUSED char *qqq = new char[1]; // generate error
   UNUSED int32_t testsfailed = 0;
 
-//  UNUSED AUI* au = AUI::Create("box testing");
+//  AUI* au = AUI::Create("box testing");
 //  AWindow* w = au->MainWnd();
 //  w->BGColor(0xFF222222);
 //  w->EnableResize();
-//  w->Resize(40, 40);
+//  w->Resize(12, 12);
 //  w->DisableResize();
 
   testsfailed += runTimedTest(test_widget_attachment, 1);
@@ -835,6 +890,7 @@ int main() {
   testsfailed += runTimedTest(test_multi_ancestor_clipping, 1);
   testsfailed += runTimedTest(test_non_standard_angles, 1);
   testsfailed += runTimedTest(test_clipchildren_rotated, 1);
+  testsfailed += runTimedTest(test_inner_box_content_rotated, 1);
 
   testsfailed += runTimedTest(test_widget_attachment, 200);
   testsfailed += runTimedTest(test_click_callback, 200);
@@ -854,6 +910,7 @@ int main() {
   testsfailed += runTimedTest(test_multi_ancestor_clipping, 200);
   testsfailed += runTimedTest(test_non_standard_angles, 200);
   testsfailed += runTimedTest(test_clipchildren_rotated, 200);
+  testsfailed += runTimedTest(test_inner_box_content_rotated, 200);
 
 //  au->ProcessMessages();
 //  delete au;

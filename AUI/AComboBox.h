@@ -52,9 +52,6 @@ public:
   void OpenDropDown();
   void CloseDropDown();
   void ToggleDropDown();
-//  virtual void Draw(uint32_t* buffer, uint32_t parentWidth, uint32_t parentHeight,
-//                    int32_t offsetX, int32_t offsetY) const override;
-//  virtual bool OnMouseClick(int32_t localX, int32_t localY, bool pressed) override;
   virtual bool OnMouseMove(int32_t localX, int32_t localY) override;
   virtual void OnKeyEvent(const AUIKeyEvent& event) override;
   virtual void OnFocusGained() override;

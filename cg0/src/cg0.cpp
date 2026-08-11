@@ -123,24 +123,29 @@
 //  D("test suite complete");
 //  return testsfailed;
 //}
+//
+//#include "AUILib.h"
+//
+//using namespace aui;
+//
+//int32_t main() {
+//  AUI* au = AUI::Create("test");
+//  AWindow* w = au->MainWnd();
+//  w->BGColor(0xFF222222);   // dark background
+//
+//  UNUSED ABox *bx = ABox::AttachTo(w);
+//  bx->Resize(50, 50);
+//  bx->Border(10);
+//
+//  au->ProcessMessages();
+//
+//  delete au;
+//  return 0;
+//}
 
 #include "AUILib.h"
 
 using namespace aui;
-
-static AWidget* OnClick(AWidget* wi, void* data, int32_t, int32_t) {
-  D1("callback fired")
-  AWindow* w2 = (AWindow*)data;
-  if(w2->Visible()) {
-    wi->Text("Show");
-    w2->Hide();
-  }
-  else {
-    wi->Text("Hide");
-    w2->Show();
-  }
-  return wi;
-}
 
 int32_t main() {
 //  AUI* au = AUI::Create("test", AUIWindowType::X11);
@@ -148,22 +153,26 @@ int32_t main() {
   AUI* au = AUI::Create("test");
   AWindow* w = au->MainWnd();
   w->BGColor(0xFF222222);   // dark background
+  w->EnableResize();
+  w->Resize(500,500);
+  w->DisableResize();
 
-  UNUSED AWindow* w2 = AWindow::AttachTo(au, "w2");
-
-  AButton *bn = AButton::AttachTo(w);
-  bn->Text("Hide");
-  bn->SetMouseClickCallback(OnClick, w2);
-  w2->Decorations(false);
-
-  AButton *bn2 = AButton::AttachTo(w2);
-  bn2->Text("Hide");
-  bn2->SetMouseClickCallback(OnClick, w);
+  ALabel* la2 = ALabel::AttachTo(w, "(clickable)");
+  la2->BGColor(0xFFFFFFFF);
+  la2->Move(100, 100);
+  la2->Resize(300, 200);
+  la2->TextColor(0xFF000000);
+  la2->Border(1);
+  la2->FontSize(10);
+  la2->HAlign(AUIHAlign::left);
+  la2->VAlign(AUIVAlign::top);
+  la2->Angle(10);
 
   au->ProcessMessages();
-
   delete au;
   return 0;
 }
+
+
 
 

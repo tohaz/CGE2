@@ -73,7 +73,8 @@ namespace aui {
     mDragging = false;
     mDragStartPos = 0;
     mDragStartValue = 0;
-    mDefaultFillBG = false;
+    DefaultFillBG(true);
+    BGColor(0x00000000);
     Orient(AUIOrientation::vertical);
     MouseLeftReleaseRequired(true);
     Text("some scrollbar");
@@ -301,8 +302,10 @@ namespace aui {
       val = effectiveMax;
     if(val != mValue) {
       mValue = val;
-      if(mScrollCallback)
+      if(mScrollCallback) {
         mScrollCallback(this, mScrollUserData, mValue);
+      }
+      MarkContentDirty();
       if(Wnd())
         Wnd()->RequestRedraw();
     }
@@ -345,15 +348,21 @@ namespace aui {
   }
 
   void AScrollBar::ThumbColor(uint32_t ARGBcolor) {
-    mBGColor3 = ARGBcolor;
-    if(Wnd())
-      Wnd()->RequestRedraw();
+    if(mBGColor3 != ARGBcolor) {
+      mBGColor3 = ARGBcolor;
+      MarkContentDirty();
+      if(Wnd())
+        Wnd()->RequestRedraw();
+    }
   }
 
   void AScrollBar::TrackColor(uint32_t ARGBcolor) {
-    mBGColor4 = ARGBcolor;
-    if(Wnd())
-      Wnd()->RequestRedraw();
+    if(mBGColor4 != ARGBcolor) {
+      mBGColor4 = ARGBcolor;
+      MarkContentDirty();
+      if(Wnd())
+        Wnd()->RequestRedraw();
+    }
   }
 
   void AScrollBar::SetScrollCallback(ScrollCallback callback, void* userData) {

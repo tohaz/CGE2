@@ -154,63 +154,177 @@ namespace aui {
   }
 
   void AWidget::Draw(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
-      int32_t clipLeft, int32_t clipTop, int32_t clipRight, int32_t clipBottom) const {
-    D2("[Widget::Draw] Enter | Local Pos: (%d, %d) | Offsets: (%d, %d)", X(), Y(), offsetX, offsetY);
-    D2("[Widget::Draw] Incoming Clip: L=%d, T=%d, R=%d, B=%d", clipLeft, clipTop, clipRight, clipBottom);
+      int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB) const {
+    AWidget* self = const_cast<AWidget*>(this);
+    self->EnsureContentUpToDate();
+    self->EnsureOverlayUpToDate();
+    self->Composite(buffer, bufferW, bufferH, offsetX + X(), offsetY + Y(), mAngle, clipL, clipT, clipR, clipB);
+  }
+
+  void AWidget::RenderContent() {
+    D4("drawing widget {}", Text())
+    if(mSizeX == 0 || mSizeY == 0)
+      return;
+// Ensure content buffer is allocated
+    size_t sz = static_cast<size_t>(mSizeX) * mSizeY;
+    if(mContentBuffer.size() != sz) {
+      mContentBuffer.assign(sz, 0);
+    }
+// Offsets to draw at (0,0) in the local buffer
+    int32_t offX = -static_cast<int32_t>(mX);
+    int32_t offY = -static_cast<int32_t>(mY);
 // 1. Background
-    if(mDefaultFillBG)
-      OnDrawBG(buffer, bufferW, bufferH, offsetX, offsetY, clipLeft, clipTop, clipRight, clipBottom);
-// 2. Custom widget content
-    OnDraw(buffer, bufferW, bufferH, offsetX, offsetY, clipLeft, clipTop, clipRight, clipBottom);
-// 3. Compute children clip
-    int32_t childrenClipL = clipLeft;
-    int32_t childrenClipT = clipTop;
-    int32_t childrenClipR = clipRight;
-    int32_t childrenClipB = clipBottom;
+    if(mDefaultFillBG) {
+      uint32_t bgcolor = mHL ? HLColor(mBGColor) : mBGColor;
+      FillRect(mContentBuffer.data(), mSizeX, 0, 0, SafeINT32(mSizeX), SafeINT32(mSizeY), bgcolor);
+    }
+// 2. Custom drawing
+    OnDraw(mContentBuffer.data(), mSizeX, mSizeY, offX, offY, 0, 0, static_cast<int32_t>(mSizeX),
+        static_cast<int32_t>(mSizeY));
+// 3. Border before children (if !mClipChildren)
+    if(!mClipChildren && mDefaultDrawBorder && Border() > 0) {
+      DrawBorder(mContentBuffer.data(), mSizeX, mSizeY, offX, offY, 0, 0, static_cast<int32_t>(mSizeX),
+          static_cast<int32_t>(mSizeY));
+    }
+// 4. Compute children clip (parent's local coordinates)
+    int32_t childClipL = 0;
+    int32_t childClipT = 0;
+    int32_t childClipR = static_cast<int32_t>(mSizeX);
+    int32_t childClipB = static_cast<int32_t>(mSizeY);
+    bool parentRotated = (std::abs(AngleAbs()) > 1e-6);
+    if(mClipChildren && !parentRotated) {
+      int32_t thick = static_cast<int32_t>(mBorderThick);
+      childClipL = thick;
+      childClipT = thick;
+      childClipR = static_cast<int32_t>(mSizeX) - thick;
+      childClipB = static_cast<int32_t>(mSizeY) - thick;
+      if(childClipL > childClipR)
+        childClipL = childClipR = 0;
+      if(childClipT > childClipB)
+        childClipT = childClipB = 0;
+    }
     if(mClipChildren) {
-      double absAngle = AngleAbs();
-      double parentAngle = mParent ? mParent->AngleAbs() : 0.0;
-      bool isRotated = std::abs(absAngle) > 1e-6 || std::abs(parentAngle) > 1e-6;
-      if(!isRotated) {
-        int32_t innerL = offsetX + X() + static_cast<int32_t>(mBorderThick);
-        int32_t innerT = offsetY + Y() + static_cast<int32_t>(mBorderThick);
-        int32_t innerR = offsetX + X() + static_cast<int32_t>(mSizeX) - static_cast<int32_t>(mBorderThick);
-        int32_t innerB = offsetY + Y() + static_cast<int32_t>(mSizeY) - static_cast<int32_t>(mBorderThick);
-        childrenClipL = std::max(childrenClipL, innerL);
-        childrenClipT = std::max(childrenClipT, innerT);
-        childrenClipR = std::min(childrenClipR, innerR);
-        childrenClipB = std::min(childrenClipB, innerB);
-        D2("[Widget::Draw] Shrank Children Clip: L=%d, T=%d, R=%d, B=%d", childrenClipL, childrenClipT, childrenClipR,
-            childrenClipB);
+      for(auto it = mWidg.begin(); it != mWidg.end(); ++it) {
+        AWidget* child = it->get();
+        if(!child->Visible() || child->Modal())
+          continue;
+// Compute child's rotated AABB in parent local space
+        double cx = static_cast<double>(child->X()) + child->SizeX() / 2.0;
+        double cy = static_cast<double>(child->Y()) + child->SizeY() / 2.0;
+        double angle = child->AngleAbs();
+        double rad = angle * M_PI / 180.0;
+        double cosA = std::cos(rad);
+        double sinA = std::sin(rad);
+        double hw = child->SizeX() / 2.0;
+        double hh = child->SizeY() / 2.0;
+        double cornersX[4] = { -hw, hw, hw, -hw };
+        double cornersY[4] = { -hh, -hh, hh, hh };
+        double minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+        for(int32_t i = 0; i < 4; ++i) {
+          double rx = cornersX[i] * cosA - cornersY[i] * sinA + cx;
+          double ry = cornersX[i] * sinA + cornersY[i] * cosA + cy;
+          minX = std::min(minX, rx);
+          maxX = std::max(maxX, rx);
+          minY = std::min(minY, ry);
+          maxY = std::max(maxY, ry);
+        }
+        int32_t childL = static_cast<int32_t>(std::floor(minX));
+        int32_t childR = static_cast<int32_t>(std::ceil(maxX));
+        int32_t childT = static_cast<int32_t>(std::floor(minY));
+        int32_t childB = static_cast<int32_t>(std::ceil(maxY));
+// Intersect with parent's child clip
+        int32_t finalL = std::max(childL, childClipL);
+        int32_t finalR = std::min(childR, childClipR);
+        int32_t finalT = std::max(childT, childClipT);
+        int32_t finalB = std::min(childB, childClipB);
+        if(finalL < finalR && finalT < finalB) {
+// *** FIX: Ensure child's overlay is up‑to‑date before compositing ***
+          child->EnsureContentUpToDate();
+          child->EnsureOverlayUpToDate();
+
+          child->Composite(mContentBuffer.data(), mSizeX, mSizeY, child->X(), child->Y(), child->Angle(), finalL,
+              finalT, finalR, finalB);
+        }
       }
     }
-    auto drawBorder = [&]() {
-      if(Border() == 0)
-        return;
-      int32_t absX = AbsX();
-      int32_t absY = AbsY();
-      double absAngle = AngleAbs();
-      int32_t parentAbsX = mParent ? mParent->AbsX() : 0;
-      int32_t parentAbsY = mParent ? mParent->AbsY() : 0;
-      uint32_t parentW = mParent ? mParent->mSizeX : bufferW;
-      uint32_t parentH = mParent ? mParent->mSizeY : bufferH;
-      double parentAngle = mParent ? mParent->AngleAbs() : 0.0;
-      if(std::abs(absAngle) < 1e-6 && std::abs(parentAngle) < 1e-6) {
-        int32_t effOffsetX = absX - X();
-        int32_t effOffsetY = absY - Y();
-        DrawBorder(buffer, bufferW, bufferH, effOffsetX, effOffsetY, clipLeft, clipTop, clipRight, clipBottom);
+    mContentDirty = false;
+  }
+
+  void AWidget::RenderOverlay() {
+    if(mSizeX == 0 || mSizeY == 0)
+      return;
+    size_t sz = static_cast<size_t>(mSizeX) * mSizeY;
+    if(mOverlayBuffer.size() != sz) {
+      mOverlayBuffer.assign(sz, 0);
+    }
+    else {
+      std::fill(mOverlayBuffer.begin(), mOverlayBuffer.end(), 0);
+    }
+// Border after children (if mClipChildren)
+    if(mClipChildren && mDefaultDrawBorder && Border() > 0) {
+      int32_t offX = -static_cast<int32_t>(mX);
+      int32_t offY = -static_cast<int32_t>(mY);
+      DrawBorder(mOverlayBuffer.data(), mSizeX, mSizeY, offX, offY, 0, 0, static_cast<int32_t>(mSizeX),
+          static_cast<int32_t>(mSizeY));
+    }
+    mOverlayDirty = false;
+  }
+
+  void AWidget::Composite(uint32_t* dst, uint32_t dstW, uint32_t dstH, int32_t dstX, int32_t dstY, double angle,
+      int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB) {
+    if(mSizeX == 0 || mSizeY == 0 || mContentBuffer.empty())
+      return;
+// Content – overwrite (skipZero = false)
+    BlitRotated(mContentBuffer.data(), mSizeX, mSizeY, dst, dstW, dstH, dstX, dstY, angle, clipL, clipT, clipR, clipB,
+        true);
+// Overlay – skip transparent pixels (skipZero = true)
+    BlitRotated(mOverlayBuffer.data(), mSizeX, mSizeY, dst, dstW, dstH, dstX, dstY, angle, clipL, clipT, clipR, clipB,
+        true);
+// If children are NOT clipped, render them directly into dst
+    if(!mClipChildren) {
+      for(auto it = mWidg.begin(); it != mWidg.end(); ++it) {
+        AWidget* child = it->get();
+        if(!child->Visible() || child->Modal())
+          continue;
+        child->EnsureContentUpToDate();
+        child->EnsureOverlayUpToDate();
+        child->Composite(dst, dstW, dstH, dstX + child->X(), dstY + child->Y(), child->Angle(), clipL, clipT, clipR,
+            clipB);
       }
-      else {
-        DrawRotatedBorder(buffer, bufferW, bufferH, clipLeft, clipTop, clipRight, clipBottom, X(), Y(), mSizeX, mSizeY,
-            mBorderThick, mBorderColor, absAngle, parentAbsX, parentAbsY, parentW, parentH, parentAngle);
-      }
-    };
-    if(!mClipChildren && mDefaultDrawBorder)
-      drawBorder();
-    DrawChildren(buffer, bufferW, bufferH, offsetX, offsetY, childrenClipL, childrenClipT, childrenClipR,
-        childrenClipB);
-    if(mClipChildren && mDefaultDrawBorder)
-      drawBorder();
+    }
+  }
+
+  void AWidget::MarkContentDirty() {
+    mContentDirty = true;
+    if(mParent)
+      mParent->MarkContentDirty();// propagate up
+  }
+
+  void AWidget::MarkOverlayDirty() {
+    mOverlayDirty = true;
+    if(mParent)
+      mParent->MarkContentDirty();// overlay is part of child’s visual
+  }
+
+  void AWidget::AllocateBuffers() {
+    size_t sz = static_cast<size_t>(mSizeX) * mSizeY;
+    if(mContentBuffer.size() != sz) {
+      mContentBuffer.assign(sz, 0);
+      mOverlayBuffer.assign(sz, 0);
+      MarkDirty();
+    }
+  }
+
+  void AWidget::EnsureContentUpToDate() {
+    if(mContentDirty) {
+      RenderContent();
+    }
+  }
+
+  void AWidget::EnsureOverlayUpToDate() {
+    if(mOverlayDirty) {
+      RenderOverlay();
+    }
   }
 
   void AWidget::DrawChildren(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
@@ -397,6 +511,7 @@ namespace aui {
     if(oldW != mSizeX || oldH != mSizeY) {
       mTextMetricsValid = false;
     }
+    AllocateBuffers();
     OnResize(szx, szy);
     if(Wnd())
       Wnd()->RequestRedraw();
@@ -426,6 +541,9 @@ namespace aui {
 
   void AWidget::FontSize(uint32_t size) {
     mFontSize = size;
+    MarkContentDirty();
+    if(Wnd())
+      Wnd()->RequestRedraw();
   }
 
   void AWidget::DrawBorder(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
@@ -593,25 +711,33 @@ namespace aui {
   void AWidget::BGColor(uint32_t bg) {
     mBGColor = bg;
     if(mWnd) {
-      mWnd->Draw();
+      MarkContentDirty();
+      if(mWnd)
+        mWnd->RequestRedraw();
     }
   }
   void AWidget::BGColor2(uint32_t bg) {
     mBGColor2 = bg;
     if(mWnd) {
-      mWnd->Draw();
+      MarkContentDirty();
+      if(mWnd)
+        mWnd->RequestRedraw();
     }
   }
   void AWidget::BGColor3(uint32_t bg) {
     mBGColor3 = bg;
     if(mWnd) {
-      mWnd->Draw();
+      MarkContentDirty();
+      if(mWnd)
+        mWnd->RequestRedraw();
     }
   }
   void AWidget::BGColor4(uint32_t bg) {
     mBGColor4 = bg;
     if(mWnd) {
-      mWnd->Draw();
+      MarkContentDirty();
+      if(mWnd)
+        mWnd->RequestRedraw();
     }
   }
 
@@ -788,23 +914,28 @@ namespace aui {
       int32_t drawW = right - left;
       int32_t drawH = bottom - top;
       D2("[OnDrawBG] draw rect: (%d,%d) %dx%d", left, top, drawW, drawH);
+      D2("OnDrawBG: wLeft=%d, wTop=%d, wRight=%d, wBottom=%d, drawW=%d, drawH=%d", wLeft, wTop, wRight, wBottom, drawW,
+          drawH);
+      D2("bgcolor = 0x%08X", bgcolor);
       if(drawW > 0 && drawH > 0) {
         FillRect(buffer, bufferW, left, top, drawW, drawH, bgcolor);
       }
+      D2("After FillRect, buffer[0] = 0x%08X, buffer[25*50+25] = 0x%08X", buffer[0], buffer[25*50+25]);
       return;
     }
 // Rotated path – use the existing DrawRotatedRect.
 // The clip is currently not used in the rotated path (it uses full screen),
 // but we keep the current behavior for now.
     D2("[OnDrawBG] ROTATED PATH: using full screen clip");
-    DrawRotatedRect(buffer, bufferW, 0, 0, SafeINT32(bufferW), SafeINT32(bufferH), X(), Y(), mSizeX, mSizeY, absAngle,
-        mParent ? mParent->AbsX() : 0, mParent ? mParent->AbsY() : 0, mParent ? mParent->mSizeX : bufferW,
+    DrawRotatedRect(buffer, bufferW, 0, 0, SafeINT32(bufferW), SafeINT32(bufferH), X(), offsetY + Y(), mSizeX, mSizeY,
+        absAngle, mParent ? mParent->AbsX() : 0, mParent ? mParent->AbsY() : 0, mParent ? mParent->mSizeX : bufferW,
         mParent ? mParent->mSizeY : bufferH, parentAngle, bgcolor);
   }
 
   void AWidget::HL(bool v) {
     if(v != mHL) {
       mHL = v;
+      MarkContentDirty();
       if(mWnd != nullptr) {
         mWnd->RequestRedraw();
       }
@@ -814,6 +945,7 @@ namespace aui {
   void AWidget::Text(std::string tx) {
     D4()
     mText = tx;
+    MarkContentDirty();
     if(mWnd != nullptr) {
       mWnd->RequestRedraw();
     }
@@ -822,6 +954,7 @@ namespace aui {
   void AWidget::DefaultFillBG(bool v) {
     if(v != mDefaultFillBG) {
       mDefaultFillBG = v;
+      MarkContentDirty();
       if(mWnd != nullptr) {
         mWnd->RequestRedraw();
       }
@@ -1190,8 +1323,8 @@ namespace aui {
 
   void AWidget::Init() {
     if(!mInitDone) {
+      AllocateBuffers();
       mInitDone = true;
-      D4("default init done")
     }
   }
 
@@ -1217,6 +1350,7 @@ namespace aui {
   void AWidget::Pressed(bool v) {
     D2("v {}", v)
     mPressed = v;
+    MarkContentDirty();
     if(mWnd) {
       mWnd->RequestRedraw();
     }
@@ -1241,20 +1375,63 @@ namespace aui {
 
   void AWidget::RemoveWidget(AWidget* v) {
     AWindow* wndp = Wnd();
-    if (!wndp) E("attempt to remove widget with no window");
+    if(!wndp)
+      E("attempt to remove widget with no window");
     std::unique_ptr<AWidget> deadWidget;
     const auto erasedCount = std::erase_if(mWidg, [v, &deadWidget](auto& up) noexcept {
-      if (up.get() == v) {
+      if(up.get() == v) {
         deadWidget = std::move(up);
         return true;
       }
       return false;
     });
-    if (erasedCount > 0) {
+    if(erasedCount > 0) {
       D2("widget deleted");
       wndp->RequestRedraw();
-    } else {
+    }
+    else {
       D2("widget not deleted");
+    }
+  }
+
+  void AWidget::MarkDirty() {
+    MarkContentDirty();
+    MarkOverlayDirty();
+  }
+
+  void AWidget::Border(uint32_t border) {
+    if(mBorderThick != border) {
+      mBorderThick = border;
+      MarkOverlayDirty();
+      if(mWnd)
+        mWnd->RequestRedraw();
+    }
+  }
+
+  void AWidget::BorderColor(uint32_t border) {
+    if(mBorderColor != border) {
+      mBorderColor = border;
+      MarkOverlayDirty();
+      if(mWnd)
+        mWnd->RequestRedraw();
+    }
+  }
+
+  void AWidget::DefaultDrawBorder(bool v) {
+    if(mDefaultDrawBorder != v) {
+      mDefaultDrawBorder = v;
+      MarkOverlayDirty();
+      if(mWnd)
+        mWnd->RequestRedraw();
+    }
+  }
+
+  void AWidget::ClipChildren(bool clip) {
+    if(mClipChildren != clip) {
+      mClipChildren = clip;
+      MarkOverlayDirty();
+      if(mWnd)
+        mWnd->RequestRedraw();
     }
   }
 

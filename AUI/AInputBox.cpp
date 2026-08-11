@@ -2,12 +2,53 @@
 
 namespace aui {
 
+  static size_t GetPrevCharByteCount(const std::string& str, size_t cursorPos) {
+    if(cursorPos == 0 || cursorPos > str.length())
+      return 0;
+    size_t count = 1;
+    while(cursorPos - count > 0 && (static_cast<uint8_t>(str[cursorPos - count]) & 0xC0) == 0x80) {
+      ++count;
+    }
+    return count;
+  }
+
+  static size_t GetNextCharByteCount(const std::string& str, size_t cursorPos) {
+    if(cursorPos >= str.length())
+      return 0;
+    size_t count = 1;
+    while(cursorPos + count < str.length() && (static_cast<uint8_t>(str[cursorPos + count]) & 0xC0) == 0x80) {
+      ++count;
+    }
+    return count;
+  }
 // ------------------------------------------------------------------
 // UTF-8 code point counter (fallback to byte length for simplicity)
 // ------------------------------------------------------------------
   UNUSED static size_t utf8_length(const std::string& str) {
 // Replace with proper UTF-8 length function if needed
     return str.length();
+  }
+
+  static uint32_t DecodeUTF8(const std::string& str, size_t pos, size_t& outByteLen) {
+    uint8_t c = static_cast<uint8_t>(str[pos]);
+    if((c & 0x80) == 0) {
+      outByteLen = 1;
+      return c;
+    }
+    if((c & 0xE0) == 0xC0 && pos + 1 < str.length()) {
+      outByteLen = 2;
+      return ((c & 0x1F) << 6) | (str[pos + 1] & 0x3F);
+    }
+    if((c & 0xF0) == 0xE0 && pos + 2 < str.length()) {
+      outByteLen = 3;
+      return ((c & 0x0F) << 12) | ((str[pos + 1] & 0x3F) << 6) | (str[pos + 2] & 0x3F);
+    }
+    if((c & 0xF8) == 0xF0 && pos + 3 < str.length()) {
+      outByteLen = 4;
+      return ((c & 0x07) << 18) | ((str[pos + 1] & 0x3F) << 12) | ((str[pos + 2] & 0x3F) << 6) | (str[pos + 3] & 0x3F);
+    }
+    outByteLen = 1;
+    return c;
   }
 //
   AInputBox::AInputBox() :
@@ -30,6 +71,7 @@ namespace aui {
 
   void AInputBox::Editable(bool v) {
     mEditable = v;
+    MarkDirty();
     if(Wnd()) {
       Wnd()->RequestRedraw();
     }
@@ -37,37 +79,45 @@ namespace aui {
 
   void AInputBox::InsertMode(bool insert) {
     mInsertMode = insert;
+    MarkContentDirty();
     if(Wnd()) {
       Wnd()->RequestRedraw();
     }
   }
 
   void AInputBox::DeleteChar() {
-    if(!mEditable)
+    if(!mEditable || mCursorPos == 0)
       return;
-    if(mCursorPos == 0)
-      return;
+
+// Determine how many bytes to step back (1 for ASCII, >1 for UTF-8)
+    size_t charByteCount = GetPrevCharByteCount(mText, mCursorPos);
+
     std::string candidate = mText;
-    candidate.erase(mCursorPos - 1, 1);
+    candidate.erase(mCursorPos - charByteCount, charByteCount);
+
     if(!InputAllowed(candidate))
       return;
-    mText = candidate;
-    --mCursorPos;
+
+    mText = std::move(candidate);
+    mCursorPos -= charByteCount;
     mCursorVisible = true;
     SetValueAndNotify(mText);
   }
 
   void AInputBox::DeleteForwardChar() {
-    if(!mEditable)
+    if(!mEditable || mCursorPos >= mText.length())
       return;
-    if(mCursorPos >= mText.length())
-      return;
+    size_t charByteCount = GetNextCharByteCount(mText, mCursorPos);
     std::string candidate = mText;
-    candidate.erase(mCursorPos, 1);
+    candidate.erase(mCursorPos, charByteCount);
     if(!InputAllowed(candidate))
       return;
-    mText = candidate;
+    mText = std::move(candidate);
     mCursorVisible = true;
+    MarkContentDirty();
+    if(Wnd()) {
+      Wnd()->RequestRedraw();
+    }
     SetValueAndNotify(mText);
   }
 
@@ -86,6 +136,7 @@ namespace aui {
     mLastNotifiedValue = newValue;
     if(mOnChange)
       mOnChange(this, newValue);
+    MarkContentDirty();
     if(Wnd()) {
       Wnd()->RequestRedraw();
     }
@@ -94,48 +145,58 @@ namespace aui {
   void AInputBox::OnKeyEvent(const AUIKeyEvent& event) {
     if(!mEnabled || !event.pressed)
       return;
-    D1("AInputBox::OnKeyEvent: code={}, unicode=0x{:X}", (int32_t)event.code, event.unicode);
+    D3("AInputBox::OnKeyEvent: code={}, unicode=0x{:X}", (int32_t)event.code, event.unicode);
+    bool needsRedraw = false;
     switch(event.code) {
       case AUIKeyCode::Backspace:
         DeleteChar();
-        break;
+        return;
       case AUIKeyCode::Delete:
         DeleteForwardChar();
-        break;
+        return;
       case AUIKeyCode::Left:
-        if(mCursorPos > 0)
-          --mCursorPos;
+        if(mCursorPos > 0) {
+          mCursorPos -= GetPrevCharByteCount(mText, mCursorPos);
+          needsRedraw = true;
+        }
         break;
       case AUIKeyCode::Right:
-        if(mCursorPos < mText.length())
-          ++mCursorPos;
+        if(mCursorPos < mText.length()) {
+          mCursorPos += GetNextCharByteCount(mText, mCursorPos);
+          needsRedraw = true;
+        }
         break;
       case AUIKeyCode::Home:
-        mCursorPos = 0;
+        if(mCursorPos > 0) {
+          mCursorPos = 0;
+          needsRedraw = true;
+        }
         break;
       case AUIKeyCode::End:
-        mCursorPos = mText.length();
+        if(mCursorPos < mText.length()) {
+          mCursorPos = mText.length();
+          needsRedraw = true;
+        }
         break;
       case AUIKeyCode::Enter:
         if(mOnSubmit)
           mOnSubmit(this, mText);
-        break;
+        return;
       case AUIKeyCode::Insert:
         InsertMode(!mInsertMode);
-        break;
+        return;// InsertMode handles its own redraw
       default:
-        D("Insert char chosen")
         if(event.unicode >= 32 && event.unicode <= 126) {
           InsertChar(static_cast<char>(event.unicode));
         }
-        else {
-          D("Insert char filtered")
-        }
-        break;
+        return;
     }
-    mCursorVisible = true;
-    if(Wnd())
-      Wnd()->RequestRedraw();
+    if(needsRedraw) {
+      mCursorVisible = true;
+      MarkContentDirty();
+      if(Wnd())
+        Wnd()->RequestRedraw();
+    }
   }
 
   void AInputBox::BlinkThreadFunc() {
@@ -149,12 +210,14 @@ namespace aui {
       if(mBlinkingEnabled) {
         if(Focused() && mEnabled) {
           mCursorVisible = !mCursorVisible;
+          MarkContentDirty();
           if(Wnd())
             Wnd()->RequestRedraw();
         }
         else {
           if(mCursorVisible) {
             mCursorVisible = false;
+            MarkContentDirty();
             if(Wnd())
               Wnd()->RequestRedraw();
           }
@@ -168,38 +231,25 @@ namespace aui {
   }
 
   void AInputBox::InsertChar(int8_t ch) {
-    D("11111")
     if(!mEditable)
       return;
-    std::string candidate;
-    if(mInsertMode) {
-      candidate = mText;
+    std::string candidate = mText;
+    if(mInsertMode || mCursorPos >= candidate.length()) {
+// Insert mode OR appending at the very end
       candidate.insert(mCursorPos, 1, ch);
     }
     else {
-      if(mCursorPos < mText.length()) {
-        candidate = mText;
-        candidate[mCursorPos] = ch;
-      }
-      else {
-        candidate = mText + std::to_string(ch);
-      }
+// Overwrite mode inside the string bounds
+      candidate[mCursorPos] = ch;
     }
     if(!InputAllowed(candidate))
       return;
-    mText = candidate;
-    if(mInsertMode) {
-      ++mCursorPos;
-    }
-    else {
-      if(mCursorPos < mText.length())
-        ++mCursorPos;
-      else
-        ++mCursorPos;// at end, same as insert
-    }
+    mText = std::move(candidate);
+    ++mCursorPos;// Simply advance cursor by 1 byte inserted/overwritten
     mCursorPos = std::min(mCursorPos, mText.length());
     mCursorVisible = true;
     SetValueAndNotify(mText);
+    D3("text is {}", mText)
   }
 
   void AInputBox::Text(const std::string& text) {
@@ -230,17 +280,20 @@ namespace aui {
 
   void AInputBox::OnFocusGained() {
     mCursorVisible = true;
+    MarkContentDirty();
     Wnd()->RequestRedraw();
   }
 
   void AInputBox::OnFocusLost() {
     mCursorVisible = false;
+    MarkContentDirty();
     Wnd()->RequestRedraw();
   }
 
   void AInputBox::Enable() {
     AWidget::Enable();
     Editable(true);
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -250,6 +303,7 @@ namespace aui {
     AWidget::Disable();
     Editable(false);
     mCursorVisible = false;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -281,6 +335,7 @@ namespace aui {
     if(!enable) {
       mCursorVisible = true;
     }
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -292,6 +347,7 @@ namespace aui {
     }
     mCursorPos = std::min(pos, mText.length());
     mCursorVisible = true;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -317,56 +373,66 @@ namespace aui {
     int32_t clientW = static_cast<int32_t>(mSizeX) - 2 * static_cast<int32_t>(mBorderThick);
     if(clientW <= 0)
       return clientX;
-// Use displayed text (masked in password mode)
     std::string displayText = DisplayText();
     if(displayText.empty()) {
-// Empty text: position cursor according to alignment
       switch(mHAlign) {
         case AUIHAlign::left:
           return clientX;
         case AUIHAlign::right:
-          return clientX + clientW;
+          return clientX + clientW - 1;
         case AUIHAlign::center:
           return clientX + clientW / 2;
         default:
-          break;
+          return clientX;
       }
-      return clientX;
     }
-    int32_t totalWidth = MeasureTextWidth(displayText);
-    std::string prefix = displayText.substr(0, mCursorPos);
+// Ensure mCursorPos is clamped safely to displayText length
+    size_t safePos = std::min(mCursorPos, displayText.length());
+    std::string prefix = displayText.substr(0, safePos);
+    std::string suffix = displayText.substr(safePos);
     int32_t prefixWidth = MeasureTextWidth(prefix);
+    int32_t suffixWidth = MeasureTextWidth(suffix);
     int32_t cursorX = clientX;
     switch(mHAlign) {
       case AUIHAlign::left:
-        cursorX += prefixWidth;
+// Left alignment: clientX + prefix width
+        cursorX = clientX + prefixWidth;
         break;
       case AUIHAlign::right:
-        cursorX += clientW - (totalWidth - prefixWidth);
+// Right alignment: right bound minus suffix width
+// This prevents totalWidth rounding mismatches!
+        cursorX = (clientX + clientW) - suffixWidth;
         break;
-      case AUIHAlign::center:
-        cursorX += (clientW - totalWidth) / 2 + prefixWidth;
+      case AUIHAlign::center: {
+        int32_t totalWidth = prefixWidth + suffixWidth;
+        cursorX = clientX + (clientW - totalWidth) / 2 + prefixWidth;
         break;
+      }
       default:
         break;
     }
-    return std::clamp(cursorX, clientX, clientX + clientW);
+    return std::clamp(cursorX, clientX, clientX + clientW - 1);
   }
 
   int32_t AInputBox::MeasureTextWidth(const std::string& text) const {
-    if(!Wnd()) return 0;
-    if(!Wnd()->EnginePtr()) return 0;
+    if(!Wnd() || !Wnd()->EnginePtr())
+      return 0;
     FT_Face face = Wnd()->EnginePtr()->DefaultFontFace();
     if(!face)
       return 0;
     FT_Set_Pixel_Sizes(face, 0, mFontSize);
-    int32_t width = 0;
-    for(char c : text) {
-      if(FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_DEFAULT) == 0) {
-        width += SafeINT32(face->glyph->advance.x >> 6);
+    FT_Pos accum26_6 = 0;// Accumulate in 26.6 fixed-point
+    size_t i = 0;
+    while(i < text.length()) {
+      size_t byteLen = 1;
+      uint32_t codePoint = DecodeUTF8(text, i, byteLen);
+      if(FT_Load_Char(face, codePoint, FT_LOAD_DEFAULT) == 0) {
+        accum26_6 += face->glyph->advance.x;
       }
+      i += byteLen;
     }
-    return width;
+// Shift to integer pixels ONCE at the end
+    return SafeINT32(accum26_6 >> 6);
   }
 
   std::string AInputBox::DisplayText() const {
@@ -393,16 +459,16 @@ namespace aui {
   size_t AInputBox::IndexFromX(int32_t localX) const {
     int32_t clientLeft = static_cast<int32_t>(mBorderThick);
     int32_t clientWidth = static_cast<int32_t>(mSizeX) - 2 * clientLeft;
-    if(clientWidth <= 0)
+    if(clientWidth <= 0 || mText.empty())
       return 0;
     int32_t clickX = localX - clientLeft;
     if(clickX <= 0)
       return 0;
-    if(clickX >= clientWidth)
-      return mText.length();
-    int32_t totalWidth = MeasureTextWidth(mText);
+    std::string displayText = DisplayText();
+    int32_t totalWidth = MeasureTextWidth(displayText);
     if(totalWidth <= 0)
       return 0;
+// Compute horizontal alignment start offset
     int32_t textStartX = 0;
     switch(mHAlign) {
       case AUIHAlign::left:
@@ -415,39 +481,53 @@ namespace aui {
         textStartX = (clientWidth - totalWidth) / 2;
         break;
       default:
-        E("garbage")
+        break;
     }
-// If click is before the text start, return 0
+// Bounds check relative to formatted text
     if(clickX <= textStartX)
       return 0;
-// If click is after the text end, return length
     if(clickX >= textStartX + totalWidth)
       return mText.length();
-// Now find the character index using half‑width threshold
-    int32_t accumulated = 0;
-    for(size_t i = 0; i < mText.length(); ++i) {
-      int32_t charWidth = MeasureCharWidth(mText[i]);
-      int32_t charStart = textStartX + accumulated;
-      int32_t charMid = charStart + charWidth / 2;
+    FT_Face face = (Wnd() && Wnd()->EnginePtr()) ? Wnd()->EnginePtr()->DefaultFontFace() : nullptr;
+    if(!face)
+      return 0;
+    FT_Set_Pixel_Sizes(face, 0, mFontSize);
+    int32_t accumulatedWidth = 0;
+    size_t byteIndex = 0;
+// Iterate over full UTF-8 code points instead of raw single bytes
+    while(byteIndex < displayText.length()) {
+      size_t byteLen = 1;
+      uint32_t codePoint = DecodeUTF8(displayText, byteIndex, byteLen);
+      int32_t charWidth = 0;
+      if(FT_Load_Char(face, codePoint, FT_LOAD_DEFAULT) == 0) {
+        charWidth = SafeINT32(face->glyph->advance.x >> 6);
+      }
+      int32_t charStart = textStartX + accumulatedWidth;
+      int32_t charMid = charStart + (charWidth / 2);
+// If the click is on the left half of this character, place cursor before it
       if(clickX < charMid) {
-        return i;// cursor before this character
+        return byteIndex;
       }
-      accumulated += charWidth;
-      if(clickX < textStartX + accumulated) {
-        return i + 1;// cursor after this character
+      accumulatedWidth += charWidth;
+// If click falls inside the right half of this character, place cursor after it
+      if(clickX < textStartX + accumulatedWidth) {
+        return byteIndex + byteLen;
       }
+      byteIndex += byteLen;
     }
     return mText.length();
   }
 
   void AInputBox::Placeholder(const std::string& placeholder) {
     mPlaceholder = placeholder;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
 
   void AInputBox::PlaceholderColor(uint32_t color) {
     mPlaceholderColor = color;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -455,6 +535,7 @@ namespace aui {
   void AInputBox::PasswordMode(bool enable, int8_t maskChar) {
     mPasswordMode = enable;
     mMaskChar = maskChar;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -467,6 +548,7 @@ namespace aui {
     if(newPos != mCursorPos) {
       mCursorPos = newPos;
       mCursorVisible = true;
+      MarkContentDirty();
       if(Wnd())
         Wnd()->RequestRedraw();
     }
@@ -475,6 +557,7 @@ namespace aui {
 
   void AInputBox::OnDraw(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
       int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB) const {
+    D4("OnDraw START: mText='{}', mCursorPos={}, CursorX={}", mText, mCursorPos, CursorX());
     int32_t absX = offsetX + mX;
     int32_t absY = offsetY + mY;
 // 1. Background (with disabled dimming) intersected with clip region
@@ -532,7 +615,7 @@ namespace aui {
     }
 // 4. Draw cursor (only when enabled and focused)
     if(mEnabled && Focused() && mCursorVisible) {
-      int32_t cursorX = CursorX();
+      int32_t cursorX = offsetX + CursorX();
 // Clamp cursorX so it stays within the last drawable column of the client area
       int32_t maxCursorX = clientX + clientW - 1;
       if(cursorX > maxCursorX) {

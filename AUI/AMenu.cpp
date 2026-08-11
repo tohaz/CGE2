@@ -68,6 +68,7 @@ namespace aui {
     mHoverBg = hoverBg;
     mTextColor = text;
     mDisabledColor = disabled;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -260,6 +261,7 @@ namespace aui {
       }
       mHoveredIndex = newHover;
       mLastHoverTime = std::chrono::steady_clock::now();
+      MarkContentDirty();
       if(Wnd())
         Wnd()->RequestRedraw();
     }
@@ -289,6 +291,7 @@ namespace aui {
     }
     mVisible = true;
     mHoveredIndex = -1;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -316,6 +319,7 @@ namespace aui {
     if(!mIsPermanent && !mParentMenu && Wnd()) {
       Wnd()->PushModal(this);
     }
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -338,6 +342,7 @@ namespace aui {
       Wnd()->RemoveModal(this);
     }
     mVisible = false;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -382,6 +387,7 @@ namespace aui {
     sub->mVisible = true;
     mActiveSubMenu = sub;
     mActiveSubMenuOwnerIndex = static_cast<int32_t>(index);
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -394,6 +400,7 @@ namespace aui {
       mHoveredIndex = -1;
       if(Wnd()) {
         RemoveWidget(subToDestroy);
+        MarkContentDirty();
         Wnd()->RequestRedraw();
       }
     }
@@ -408,6 +415,7 @@ namespace aui {
       mActiveSubMenu = nullptr;
       mActiveSubMenuOwnerIndex = -1;
       mHoveredIndex = -1;// clear the highlight on the root item
+      MarkContentDirty();
       if(Wnd())
         Wnd()->RequestRedraw();
     }
