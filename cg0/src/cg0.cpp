@@ -150,23 +150,26 @@ using namespace aui;
 int32_t main() {
 //  AUI* au = AUI::Create("test", AUIWindowType::X11);
 //  AUI* au = AUI::Create("test", AUIWindowType::Wayland);
-  AUI* au = AUI::Create("test");
+  AUI* au = AUI::Create("table rotation test");
   AWindow* w = au->MainWnd();
   w->BGColor(0xFF222222);   // dark background
   w->EnableResize();
   w->Resize(500,500);
   w->DisableResize();
 
-  ALabel* la2 = ALabel::AttachTo(w, "(clickable)");
-  la2->BGColor(0xFFFFFFFF);
-  la2->Move(100, 100);
-  la2->Resize(300, 200);
-  la2->TextColor(0xFF000000);
-  la2->Border(1);
-  la2->FontSize(10);
-  la2->HAlign(AUIHAlign::left);
-  la2->VAlign(AUIVAlign::top);
-  la2->Angle(10);
+  ATable* ta = ATable::AttachTo(w);
+  ta->Move(0, 0);
+  ta->AddColumns(15);
+  ta->AddRows(150);
+  ta->ScrollbarsToggle(true);
+  ta->CellData(0, 0, "AAA");
+  ta->CellData(1, 1, "BBB");
+  ta->CellData(2, 2, "CCC");
+  ta->CellData(3, 3, "CCC");
+
+  //  ta->Angle(15);
+
+
 
   au->ProcessMessages();
   delete au;

@@ -450,26 +450,116 @@ namespace aui {
     }
   }
 
+//  void AWindow::OnMouseMove(int32_t x, int32_t y) {
+//    D3("mouse move global coords {} {}", x, y);
+//    if(!mModalStack.empty()) {
+//// If capture exists, route to that widget (must be within modal)
+//      if(mCapturedWidgetLeft) {
+//// Ensure captured widget is still valid and inside modal
+//        if(mCapturedWidgetLeft->IsDescendantOf(mModalStack.back())) {
+//          int32_t localX = x - mCapturedWidgetLeft->AbsX();
+//          int32_t localY = y - mCapturedWidgetLeft->AbsY();
+//          mCapturedWidgetLeft->OnMouseMove(localX, localY);
+//        }
+//        else {
+//// capture widget no longer in modal, clear it
+//          mCapturedWidgetLeft = nullptr;
+//        }
+//        return;
+//      }
+//      AWidget* top = mModalStack.back();
+//      auto [localX, localY] = top->ToLocalCoords(x, y);
+//      AWidget* hit = top->HitTestLocal(localX, localY);
+//      if(hit) {
+//        auto [hitLocalX, hitLocalY] = hit->ToLocalCoords(x, y);
+//        hit->OnMouseMove(hitLocalX, hitLocalY);
+//        if(!mHLWidget && hit->mHLEnabled) {
+//          mHLWidget = hit;
+//          mHLWidget->HL(true);
+//        }
+//      }
+//      else {
+//        if(mHLWidget) {
+//          mHLWidget->HL(false);
+//          mHLWidget = nullptr;
+//        }
+//      }
+//      return;
+//    }
+//// If a left‑button capture exists, route all moves to that widget
+//    if(mCapturedWidgetLeft) {
+//// Convert window coords to local coords relative to the captured widget
+//      int32_t absX = mCapturedWidgetLeft->AbsX();
+//      int32_t absY = mCapturedWidgetLeft->AbsY();
+//      int32_t localX = x - absX;
+//      int32_t localY = y - absY;
+//      mCapturedWidgetLeft->OnMouseMove(localX, localY);
+//      return;// don't also send to hovered widget
+//    }
+//// Normal hit‑test path (no capture)
+//    AWidget* hit = FindWidgetAt(x, y);
+//    if(hit) {
+//      hit->OnMouseMove(x - hit->AbsX(), y - hit->AbsY());
+//      if(!mHLWidget && hit->mHLEnabled) {
+//        mHLWidget = hit;
+//        mHLWidget->HL(true);
+//      }
+//    }
+//    else {
+//      if(mHLWidget) {
+//        mHLWidget->HL(false);
+//        mHLWidget = nullptr;
+//      }
+//    }
+//  }
+
   void AWindow::OnMouseMove(int32_t x, int32_t y) {
-    D3("mouse move global coords {} {}", x, y);
-    if(!mModalStack.empty()) {
-// If capture exists, route to that widget (must be within modal)
-      if(mCapturedWidgetLeft) {
-// Ensure captured widget is still valid and inside modal
-        if(mCapturedWidgetLeft->IsDescendantOf(mModalStack.back())) {
-          int32_t localX = x - mCapturedWidgetLeft->AbsX();
-          int32_t localY = y - mCapturedWidgetLeft->AbsY();
-          mCapturedWidgetLeft->OnMouseMove(localX, localY);
+      D3("mouse move global coords {} {}", x, y);
+
+  // ---- 1. Modal Stack Capture / Routing ----
+      if(!mModalStack.empty()) {
+        if(mCapturedWidgetLeft) {
+          if(mCapturedWidgetLeft->IsDescendantOf(mModalStack.back())) {
+            // FIX: Use ToLocalCoords to transform global (x, y) through the parent hierarchy
+            auto [localX, localY] = mCapturedWidgetLeft->ToLocalCoords(x, y);
+            mCapturedWidgetLeft->OnMouseMove(localX, localY);
+          }
+          else {
+            mCapturedWidgetLeft = nullptr;
+          }
+          return;
+        }
+        AWidget* top = mModalStack.back();
+        auto [localX, localY] = top->ToLocalCoords(x, y);
+        AWidget* hit = top->HitTestLocal(localX, localY);
+        if(hit) {
+          auto [hitLocalX, hitLocalY] = hit->ToLocalCoords(x, y);
+          hit->OnMouseMove(hitLocalX, hitLocalY);
+          if(!mHLWidget && hit->mHLEnabled) {
+            mHLWidget = hit;
+            mHLWidget->HL(true);
+          }
         }
         else {
-// capture widget no longer in modal, clear it
-          mCapturedWidgetLeft = nullptr;
+          if(mHLWidget) {
+            mHLWidget->HL(false);
+            mHLWidget = nullptr;
+          }
         }
         return;
       }
-      AWidget* top = mModalStack.back();
-      auto [localX, localY] = top->ToLocalCoords(x, y);
-      AWidget* hit = top->HitTestLocal(localX, localY);
+
+  // ---- 2. Normal Window Left-Button Capture ----
+      if(mCapturedWidgetLeft) {
+        // FIX: Replace "x - mCapturedWidgetLeft->AbsX()" with "ToLocalCoords(x, y)"
+        // This maps global (x, y) through every parent container's rotation, scaling, and offset
+        auto [localX, localY] = mCapturedWidgetLeft->ToLocalCoords(x, y);
+        mCapturedWidgetLeft->OnMouseMove(localX, localY);
+        return; // don't also send to hovered widget
+      }
+
+  // ---- 3. Normal Hit-Test Path (No Capture) ----
+      AWidget* hit = FindWidgetAt(x, y);
       if(hit) {
         auto [hitLocalX, hitLocalY] = hit->ToLocalCoords(x, y);
         hit->OnMouseMove(hitLocalX, hitLocalY);
@@ -484,34 +574,7 @@ namespace aui {
           mHLWidget = nullptr;
         }
       }
-      return;
     }
-// If a left‑button capture exists, route all moves to that widget
-    if(mCapturedWidgetLeft) {
-// Convert window coords to local coords relative to the captured widget
-      int32_t absX = mCapturedWidgetLeft->AbsX();
-      int32_t absY = mCapturedWidgetLeft->AbsY();
-      int32_t localX = x - absX;
-      int32_t localY = y - absY;
-      mCapturedWidgetLeft->OnMouseMove(localX, localY);
-      return;// don't also send to hovered widget
-    }
-// Normal hit‑test path (no capture)
-    AWidget* hit = FindWidgetAt(x, y);
-    if(hit) {
-      hit->OnMouseMove(x - hit->AbsX(), y - hit->AbsY());
-      if(!mHLWidget && hit->mHLEnabled) {
-        mHLWidget = hit;
-        mHLWidget->HL(true);
-      }
-    }
-    else {
-      if(mHLWidget) {
-        mHLWidget->HL(false);
-        mHLWidget = nullptr;
-      }
-    }
-  }
 
   void AWindow::OnMouseEnter(UNUSED int32_t x, UNUSED int32_t y) {
     D2("mouse enter {} {}", x, y)

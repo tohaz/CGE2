@@ -831,67 +831,62 @@ namespace aui {
     LayoutUpdate();// refresh scrollbars and offsets
   }
 
-  AWidget* ATable::OnMouseDownLeft(UNUSED int32_t localX, UNUSED int32_t localY) {
+  AWidget* ATable::OnMouseDownLeft(int32_t localX, int32_t localY) {
     LayoutUpdate();
     D2("localX {} localY {}", localX, localY);
-// ---- 1. Resize handling ----
-    bool isCol;
-    int64_t id;
-    if(HitTestSeparator(localX, localY, isCol, id)) {
+    // ---- 1. Column / Row Separator Resizing ----
+    bool isCol = false;
+    int64_t id = -1;
+    if (HitTestSeparator(localX, localY, isCol, id)) {
       mResizing = true;
       mResizeColumn = isCol;
       mResizeTargetId = id;
-      if(isCol) {
+      if (isCol) {
         mResizeStartMouse = localX;
         mResizeStartSize = static_cast<int32_t>(mColumnW[id].first);
-      }
-      else {
+      } else {
         mResizeStartMouse = localY;
         mResizeStartSize = static_cast<int32_t>(mRowH[id].first);
       }
       return this;
     }
-// ---- 2. Scrollbar forwarding (local coordinates) ----
-    auto forwardToScrollbarDown = [&](AScrollBar* sb) -> AWidget* {
-      if(!sb || !sb->Visible())
-        return nullptr;
+    // ---- 2. Scrollbar Forwarding ----
+    auto tryForwardToScrollbar = [&](AScrollBar* sb) -> bool {
+      if (!sb || !sb->Visible()) {
+        return false;
+      }
       int32_t sbX = sb->X();
       int32_t sbY = sb->Y();
       int32_t sbW = static_cast<int32_t>(sb->SizeX());
       int32_t sbH = static_cast<int32_t>(sb->SizeY());
-// Hit‑test with table‑local mouse coordinates
-      if(localX >= sbX && localX < sbX + sbW && localY >= sbY && localY < sbY + sbH) {
-        int32_t lx = localX - sbX;
-        int32_t ly = localY - sbY;
-        AWidget* handled = sb->OnMouseDownLeft(lx, ly);
-        if(handled) {
+      // Hit-test in ATable-local coordinates
+      if (localX >= sbX && localX < sbX + sbW && localY >= sbY && localY < sbY + sbH) {
+        if (sb->OnMouseDownLeft(localX - sbX, localY - sbY)) {
           mDragScrollbar = sb;
-          return handled;
+          return true; // Click handled by scrollbar
         }
       }
-      return nullptr;
+      return false;
     };
-    if(AWidget* target = forwardToScrollbarDown(mVScrollBar.get()))
-      return target;
-    if(AWidget* target = forwardToScrollbarDown(mHScrollBar.get()))
-      return target;
-// ---- 3. Cell selection ----
-    std::pair<int64_t, int64_t> cell = ScreenToCell(localX, localY, 0, 0);
-    if(cell.first != -1 && cell.second != -1) {
-      if(mRowSelectMode) {
-        mSelectedRow = cell.first;
+    if (tryForwardToScrollbar(mVScrollBar.get()) || tryForwardToScrollbar(mHScrollBar.get())) {
+      return this; // Return 'this' to retain capture on ATable
+    }
+    // ---- 3. Cell Selection ----
+    auto [row, col] = ScreenToCell(localX, localY, 0, 0);
+    if (row != -1 && col != -1) {
+      if (mRowSelectMode) {
+        mSelectedRow = row;
+      } else {
+        mCursorRow = row;
+        mCursorCol = col;
       }
-      else {
-        mCursorRow = cell.first;
-        mCursorCol = cell.second;
-      }
-      D2("Cell selected: row=%lld col=%lld", static_cast<int64_t>(cell.first), static_cast<int64_t>(cell.second));
+      D2("Cell selected: row=%lld col=%lld", static_cast<int64_t>(row), static_cast<int64_t>(col));
       AWidget* ret = AWidget::OnMouseDownLeft(localX, localY);
       MarkContentDirty();
       Wnd()->RequestRedraw();
       return ret ? ret : this;
     }
-// ---- 4. Click inside table but not on a cell – forward to base callback ----
+    // ---- 4. Table Background / Non-Cell Click ----
     D2("Click on table but not on a cell – forwarding to base callback");
     return AWidget::OnMouseDownLeft(localX, localY);
   }
@@ -917,48 +912,47 @@ namespace aui {
   }
 
   bool ATable::OnMouseMove(int32_t localX, int32_t localY) {
-// ---- 1. Resize dragging ----
-    if(mResizing) {
-      if(mResizeColumn) {
-        int32_t delta = localX - mResizeStartMouse;
-        int32_t newSize = std::max(mResizeStartSize + delta, mResizeMinSize);
+    D1("MouseMove ATable raw local: %d, %d", localX, localY);
+    // ---- 1. Column / Row Resize Dragging ----
+    if (mResizing) {
+      int32_t currentPos = mResizeColumn ? localX : localY;
+      int32_t delta = currentPos - mResizeStartMouse;
+      int32_t newSize = std::max(mResizeStartSize + delta, mResizeMinSize);
+      if (mResizeColumn) {
         ColumnWidth(mResizeTargetId, newSize);
-        mResizeStartMouse = localX;
-        mResizeStartSize = newSize;
-      }
-      else {
-        int32_t delta = localY - mResizeStartMouse;
-        int32_t newSize = std::max(mResizeStartSize + delta, mResizeMinSize);
+      } else {
         RowHeight(mResizeTargetId, newSize);
-        mResizeStartMouse = localY;
-        mResizeStartSize = newSize;
       }
+      mResizeStartMouse = currentPos;
+      mResizeStartSize = newSize;
       MarkContentDirty();
       Wnd()->RequestRedraw();
       return true;
     }
-// ---- 2. Scrollbar drag forwarding (local) ----
-    if(mDragScrollbar) {
+    // ---- 2. Scrollbar Drag Forwarding ----
+    if (mDragScrollbar) {
+      // Translate ATable-local coordinates into scrollbar-local coordinates
       int32_t lx = localX - mDragScrollbar->X();
       int32_t ly = localY - mDragScrollbar->Y();
-      D3("ATable::OnMouseMove: forwarding to scrollbar lx=%d ly=%d", lx, ly);
       mDragScrollbar->OnMouseMove(lx, ly);
       Wnd()->RequestRedraw();
       return true;
     }
-// ---- 3. Hover feedback (cursor state) ----
+    // ---- 3. Hover Feedback (Cursor State) ----
     bool isCol = false;
     int64_t id = -1;
     bool hit = HitTestSeparator(localX, localY, isCol, id);
-    if(hit != mResizeHover || id != mResizeHoverId || isCol != mResizeHoverColumn) {
+    if (hit != mResizeHover || id != mResizeHoverId || isCol != mResizeHoverColumn) {
       mResizeHover = hit;
       mResizeHoverId = id;
       mResizeHoverColumn = isCol;
-      if(Wnd()) {
-        Wnd()->BackendCursor(hit ? (isCol ? AUICursorType::HResize : AUICursorType::VResize) : AUICursorType::Default);
+      if (Wnd()) {
+        AUICursorType cursor = hit ? (isCol ? AUICursorType::HResize : AUICursorType::VResize)
+                                   : AUICursorType::Default;
+        Wnd()->BackendCursor(cursor);
       }
     }
-// ---- 4. Forward to base class for any other handling ----
+    // ---- 4. Forward to Base Class ----
     return AWidget::OnMouseMove(localX, localY);
   }
 

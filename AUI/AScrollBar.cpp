@@ -288,6 +288,7 @@ namespace aui {
       mValue = 0;
     if(mValue > effectiveMax)
       mValue = effectiveMax;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -296,10 +297,14 @@ namespace aui {
     int32_t effectiveMax = mMaxValue - mMinValue - mPageStep;
     if(effectiveMax < 0)
       effectiveMax = 0;
+
+    // Correctly bound within [mMinValue, mMinValue + effectiveMax]
+    int32_t clampedMax = mMinValue + effectiveMax;
     if(val < mMinValue)
       val = mMinValue;
-    if(val > effectiveMax)
-      val = effectiveMax;
+    if(val > clampedMax)
+      val = clampedMax;
+
     if(val != mValue) {
       mValue = val;
       if(mScrollCallback) {
@@ -323,6 +328,7 @@ namespace aui {
       mValue = 0;
     if(mValue > effectiveMax)
       mValue = effectiveMax;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -331,18 +337,21 @@ namespace aui {
     if(step < 1)
       step = 1;
     mSingleStep = step;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
 
   void AScrollBar::TrackThick(uint32_t thick) {
     mTrackThick = thick;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
 
   void AScrollBar::ThumbThick(uint32_t thick) {
     mThumbThick = thick;
+    MarkContentDirty();
     if(Wnd())
       Wnd()->RequestRedraw();
   }
@@ -438,6 +447,8 @@ namespace aui {
   }
 
   bool AScrollBar::OnMouseMove(int32_t x, int32_t y) {
+    D("mValue=%d, mDragStartValue=%d", mValue, mDragStartValue)
+    D1("incoming local: (%d,%d)  widget pos: (%d,%d)  size: (%d,%d)", x, y, mX, mY, mSizeX, mSizeY);
     if(!mDragging)
       return false;
     bool horiz = (Orient() == AUIOrientation::horizontal);
