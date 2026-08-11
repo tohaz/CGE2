@@ -65,6 +65,7 @@ struct ProhibitedType {
 #define long     typename ProhibitedType<1>::type
 #define unsigned typename ProhibitedType<1>::type
 #define signed   typename ProhibitedType<1>::type
+//#define char     typename ProhibitedType<1>::type
 #endif // BUILDING_MY_STATIC_LIB
 
 #pragma pack(push, 1)
@@ -114,7 +115,7 @@ union ARGBColor {
 #define AUI_DEFAULT_BUTTON_Y 10
 #define AUI_DEFAULT_BUTTON_SZX 80
 #define AUI_DEFAULT_BUTTON_SZY 30
-#define AUI_DEFAULT_BUTTON_BORDERW 2
+#define AUI_DEFAULT_BUTTON_BORDERW 4
 #define AUI_DEFAULT_BUTTON_BG 0xFFCCCCCC
 //// AInputBox
 #define AUI_DEFAULT_INPUT_X 15

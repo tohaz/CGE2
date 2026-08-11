@@ -546,71 +546,151 @@ namespace aui {
       Wnd()->RequestRedraw();
   }
 
-  void AWidget::DrawBorder(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
-      int32_t clipLeft, int32_t clipTop, int32_t clipRight, int32_t clipBottom) const {
-    D2(">>> DrawBorder ENTER");
-    D2("    bufferW=%u, bufferH=%u, offsetX=%d, offsetY=%d, clip_abs=(%d,%d)-(%d,%d)", bufferW, bufferH, offsetX,
-        offsetY, clipLeft, clipTop, clipRight, clipBottom);
-    D2("    widget: X()=%d, Y()=%d, mSizeX=%u, mSizeY=%u, mBorderThick=%u", X(), Y(), mSizeX, mSizeY, mBorderThick);
+//  void AWidget::DrawBorder(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
+//      int32_t clipLeft, int32_t clipTop, int32_t clipRight, int32_t clipBottom) const {
+//    D2(">>> DrawBorder ENTER");
+//    D2("    bufferW=%u, bufferH=%u, offsetX=%d, offsetY=%d, clip_abs=(%d,%d)-(%d,%d)", bufferW, bufferH, offsetX,
+//        offsetY, clipLeft, clipTop, clipRight, clipBottom);
+//    D2("    widget: X()=%d, Y()=%d, mSizeX=%u, mSizeY=%u, mBorderThick=%u", X(), Y(), mSizeX, mSizeY, mBorderThick);
+//
+//    if(mBorderThick == 0) {
+//      D2("    mBorderThick == 0, returning");
+//      return;
+//    }
+//// Convert to signed for safe arithmetic
+//    int32_t sizeX = static_cast<int32_t>(mSizeX);
+//    int32_t sizeY = static_cast<int32_t>(mSizeY);
+//    int32_t thick = static_cast<int32_t>(mBorderThick);
+//    int32_t bufW = static_cast<int32_t>(bufferW);
+//    int32_t bufH = static_cast<int32_t>(bufferH);
+//    D2("    sizeX=%d, sizeY=%d, thick=%d, bufW=%d, bufH=%d", sizeX, sizeY, thick, bufW, bufH);
+//// Widget bounds in buffer coordinates
+//    int32_t wLeft = offsetX + X();
+//    int32_t wTop = offsetY + Y();
+//    int32_t wRight = wLeft + sizeX;
+//    int32_t wBottom = wTop + sizeY;
+//    D2("    Widget bounds: left=%d, top=%d, right=%d, bottom=%d", wLeft, wTop, wRight, wBottom);
+//// Use the absolute clip directly (no offset adjustment)
+//    int32_t cLeft = clipLeft;
+//    int32_t cTop = clipTop;
+//    int32_t cRight = clipRight;
+//    int32_t cBottom = clipBottom;
+//    D2("    Passed clip (absolute): left=%d, top=%d, right=%d, bottom=%d", cLeft, cTop, cRight, cBottom);
+//// Visible region = intersection of widget bounds, clip, and buffer
+//    int32_t visLeft = std::max( { wLeft, cLeft, 0 });
+//    int32_t visTop = std::max( { wTop, cTop, 0 });
+//    int32_t visRight = std::min( { wRight, cRight, bufW });
+//    int32_t visBottom = std::min( { wBottom, cBottom, bufH });
+//    D2("    Visible region (after intersection): left=%d, top=%d, right=%d, bottom=%d", visLeft, visTop, visRight,
+//        visBottom);
+//    if(visLeft >= visRight || visTop >= visBottom) {
+//      D2("    Visible region empty, returning");
+//      return;
+//    }
+//// Helper lambda to draw a rectangle after clipping to the visible region
+//    auto drawClippedRect = [&](int32_t x, int32_t y, int32_t w, int32_t h, const char*) {
+//      D2("    Segment input rect (%d,%d) %dx%d", x, y, w, h);
+//      int32_t drawX = std::max(x, visLeft);
+//      int32_t drawY = std::max(y, visTop);
+//      int32_t drawR = std::min(x + w, visRight);
+//      int32_t drawB = std::min(y + h, visBottom);
+//      int32_t drawW = drawR - drawX;
+//      int32_t drawH = drawB - drawY;
+//      D2("        after clipping to visible: (%d,%d) %dx%d", drawX, drawY, drawW, drawH);
+//      if(drawW > 0 && drawH > 0) {
+//        D2("        Filling rect with color 0x%08X", mBorderColor);
+//        FillRect(buffer, bufferW, drawX, drawY, drawW, drawH, mBorderColor);
+//      }
+//      else {
+//        D2("        Skipped (empty rect)");
+//      }
+//    };
+//// Draw the four border segments
+//    drawClippedRect(wLeft, wTop, sizeX, thick, "top");
+//    drawClippedRect(wLeft, wBottom - thick, sizeX, thick, "bottom");
+//    drawClippedRect(wLeft, wTop, thick, sizeY, "left");
+//    drawClippedRect(wRight - thick, wTop, thick, sizeY, "right");
+//    D2("<<< DrawBorder EXIT");
+//  }
 
-    if(mBorderThick == 0) {
-      D2("    mBorderThick == 0, returning");
-      return;
-    }
-// Convert to signed for safe arithmetic
-    int32_t sizeX = static_cast<int32_t>(mSizeX);
-    int32_t sizeY = static_cast<int32_t>(mSizeY);
-    int32_t thick = static_cast<int32_t>(mBorderThick);
-    int32_t bufW = static_cast<int32_t>(bufferW);
-    int32_t bufH = static_cast<int32_t>(bufferH);
-    D2("    sizeX=%d, sizeY=%d, thick=%d, bufW=%d, bufH=%d", sizeX, sizeY, thick, bufW, bufH);
-// Widget bounds in buffer coordinates
-    int32_t wLeft = offsetX + X();
-    int32_t wTop = offsetY + Y();
-    int32_t wRight = wLeft + sizeX;
-    int32_t wBottom = wTop + sizeY;
-    D2("    Widget bounds: left=%d, top=%d, right=%d, bottom=%d", wLeft, wTop, wRight, wBottom);
-// Use the absolute clip directly (no offset adjustment)
-    int32_t cLeft = clipLeft;
-    int32_t cTop = clipTop;
-    int32_t cRight = clipRight;
-    int32_t cBottom = clipBottom;
-    D2("    Passed clip (absolute): left=%d, top=%d, right=%d, bottom=%d", cLeft, cTop, cRight, cBottom);
-// Visible region = intersection of widget bounds, clip, and buffer
-    int32_t visLeft = std::max( { wLeft, cLeft, 0 });
-    int32_t visTop = std::max( { wTop, cTop, 0 });
-    int32_t visRight = std::min( { wRight, cRight, bufW });
-    int32_t visBottom = std::min( { wBottom, cBottom, bufH });
-    D2("    Visible region (after intersection): left=%d, top=%d, right=%d, bottom=%d", visLeft, visTop, visRight,
-        visBottom);
-    if(visLeft >= visRight || visTop >= visBottom) {
-      D2("    Visible region empty, returning");
-      return;
-    }
-// Helper lambda to draw a rectangle after clipping to the visible region
-    auto drawClippedRect = [&](int32_t x, int32_t y, int32_t w, int32_t h, const char*) {
-      D2("    Segment input rect (%d,%d) %dx%d", x, y, w, h);
-      int32_t drawX = std::max(x, visLeft);
-      int32_t drawY = std::max(y, visTop);
-      int32_t drawR = std::min(x + w, visRight);
-      int32_t drawB = std::min(y + h, visBottom);
-      int32_t drawW = drawR - drawX;
-      int32_t drawH = drawB - drawY;
-      D2("        after clipping to visible: (%d,%d) %dx%d", drawX, drawY, drawW, drawH);
-      if(drawW > 0 && drawH > 0) {
-        D2("        Filling rect with color 0x%08X", mBorderColor);
-        FillRect(buffer, bufferW, drawX, drawY, drawW, drawH, mBorderColor);
+  void AWidget::DrawBorder(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH,
+                           int32_t offsetX, int32_t offsetY,
+                           int32_t clipLeft, int32_t clipTop,
+                           int32_t clipRight, int32_t clipBottom) const
+  {
+      if (mBorderThick == 0) return;
+
+      int32_t rectW = static_cast<int32_t>(mSizeX);
+      int32_t rectH = static_cast<int32_t>(mSizeY);
+      int32_t thick = static_cast<int32_t>(mBorderThick);
+
+      // Absolute widget rectangle
+      int32_t left   = offsetX + X();
+      int32_t top    = offsetY + Y();
+      int32_t right  = left + rectW;
+      int32_t bottom = top + rectH;
+
+      // Intersect with clip and buffer
+      int32_t visL = std::max({left, clipLeft, 0});
+      int32_t visT = std::max({top, clipTop, 0});
+      int32_t visR = std::min({right, clipRight, static_cast<int32_t>(bufferW)});
+      int32_t visB = std::min({bottom, clipBottom, static_cast<int32_t>(bufferH)});
+      if (visL >= visR || visT >= visB) return;
+
+      // Helper to fill a solid rectangle with clipping already applied.
+      // Use parameter names different from outer rectW/rectH.
+      auto fillRect = [&](int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color) {
+          int32_t fx = std::max(x, visL);
+          int32_t fy = std::max(y, visT);
+          int32_t fr = std::min(x + w, visR);
+          int32_t fb = std::min(y + h, visB);
+          int32_t fw = fr - fx;
+          int32_t fh = fb - fy;
+          if (fw > 0 && fh > 0)
+              FillRect(buffer, bufferW, fx, fy, fw, fh, color);
+      };
+
+      D2("DrawBorder: style=%d, thick=%d, rect=(%d,%d %dx%d)",
+         static_cast<int>(mBorderStyle), thick, left, top, rectW, rectH);
+
+      if (mBorderStyle == AUIBorderStyle::Flat) {
+          // Flat: just a single rectangle with mBorderColor
+          fillRect(left, top, rectW, thick, mBorderColor);          // top
+          fillRect(left, bottom - thick, rectW, thick, mBorderColor); // bottom
+          fillRect(left, top, thick, rectH, mBorderColor);           // left
+          fillRect(right - thick, top, thick, rectH, mBorderColor);  // right
+          return;
       }
-      else {
-        D2("        Skipped (empty rect)");
+
+      // ---- Simple3D style ----
+      // 1. Outer 1‑pixel black contour (if thick >= 1)
+      if (thick >= 1) {
+          uint32_t black = 0xFF000000; // or mBorderColor
+          fillRect(left, top, rectW, 1, black);                 // top
+          fillRect(left, bottom - 1, rectW, 1, black);          // bottom
+          fillRect(left, top, 1, rectH, black);                 // left
+          fillRect(right - 1, top, 1, rectH, black);            // right
       }
-    };
-// Draw the four border segments
-    drawClippedRect(wLeft, wTop, sizeX, thick, "top");
-    drawClippedRect(wLeft, wBottom - thick, sizeX, thick, "bottom");
-    drawClippedRect(wLeft, wTop, thick, sizeY, "left");
-    drawClippedRect(wRight - thick, wTop, thick, sizeY, "right");
-    D2("<<< DrawBorder EXIT");
+
+      // 2. Shading for the remaining inner border (thickness thick-1)
+      //    Highlight on top & left, shadow on bottom & right.
+      uint32_t bg = mHL ? HLColor(mBGColor) : mBGColor;
+      uint32_t highlight = ShiftColor(bg, false);  // lighter
+      uint32_t shadow    = ShiftColor(bg, true);   // darker
+
+      if (thick > 1) {
+          // Top highlight (full width, excluding the black contour)
+          fillRect(left + 1, top + 1, rectW - 2, thick - 1, highlight);
+          // Left highlight (full height, avoid overlapping corners already drawn)
+          fillRect(left + 1, top + 1, thick - 1, rectH - 2, highlight);
+
+          // Bottom shadow (full width)
+          fillRect(left + 1, bottom - thick, rectW - 2, thick - 1, shadow);
+          // Right shadow (full height)
+          fillRect(right - thick, top + 1, thick - 1, rectH - 2, shadow);
+      }
+
+      D2("DrawBorder: finished Simple3D");
   }
 
   void AWidget::DrawRotatedBorder(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t clipMinX,
@@ -1434,6 +1514,14 @@ namespace aui {
         mWnd->RequestRedraw();
     }
   }
+
+  void AWidget::BorderStyle(AUIBorderStyle v) {
+    mBorderStyle = v;
+    MarkOverlayDirty();
+    if(mWnd) {mWnd->RequestRedraw();}
+  }
+
+
 
 }// namespace aui
 

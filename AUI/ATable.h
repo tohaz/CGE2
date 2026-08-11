@@ -163,8 +163,8 @@ namespace aui {
       void AddRows(uint32_t number);
       void ScrollbarsToggle(bool v);
       bool AreScrollbarsEnabled() const {return mVScrollBar && mHScrollBar;}
-      void SetAutoHideScrollbars(bool enable) {
-        mAutoHideScrollbars = enable;
+      void AutoHideScrollbarsToggle(bool v) {
+        mAutoHideScrollbars = v;
         UpdateScrollbarRanges();
       }
       AScrollBar* VScrollBar() {return mVScrollBar.get();}

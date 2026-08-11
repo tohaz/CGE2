@@ -371,7 +371,7 @@ namespace aui {
   }
 
   AWidget* AScrollBar::OnMouseDownLeft(UNUSED int32_t x, UNUSED int32_t y) {
-    D1("incoming local: (%d,%d)  widget pos: (%d,%d)  size: (%d,%d)", x, y, mX, mY, mSizeX, mSizeY);
+    D2("incoming local: (%d,%d)  widget pos: (%d,%d)  size: (%d,%d)", x, y, mX, mY, mSizeX, mSizeY);
     if(x < 0 || x >= static_cast<int32_t>(mSizeX) || y < 0 || y >= static_cast<int32_t>(mSizeY)) {
       return nullptr;
     }

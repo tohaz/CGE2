@@ -1,4 +1,3 @@
-
 #ifndef AUI_UNIT_TEST
 #define AUI_UNIT_TEST
 #endif
@@ -201,6 +200,12 @@ int32_t test_window_operations(AUI* au) {
     wx->Resize(300, 300);
     wx->Move(200, 10);
   }
+  // close one window hidden and one opened. test no crash
+  if(ww)ww->Hide();
+  if(ww)ww->Show();
+  if(ww)ww->Hide();
+  if(wx)wx->Hide();
+  if(wx)wx->Show();
   if(ww) {
     ww->Close();
   }
@@ -270,24 +275,24 @@ int32_t test_mouse_wheel_propagation(UNUSED AUI *au) {
   box->Move(10, 10);
   box->Resize(380, 280);
   D("ATable disabled in this test")
-//  ATable* table = ATable::AttachTo(box);
-//  table->Move(0, 0);
-//  table->Resize(380, 280);
-//  table->AddRows(50);
-//  table->AddColumns(10);
-//  table->SetScrollbarsEnabled(true);
-//  table->UpdateLayout();// ensure scrollbars appear
-//  int64_t initialV = table->VOffset();
-//// Simulate mouse wheel over the table (coordinates relative to window)
-//// The table is at (10,10) inside box at (10,10) -> absolute (20,20)
-//  win->OnMouseMove(20, 20);// set cursor position (so wheel knows where)
-//  win->OnMouseWheel(-3);// scroll down 3 steps
-//  int64_t newV = table->VOffset();
-//  TEST_ASSERT(newV > initialV, 2);
-//// Scroll up
-//  win->OnMouseWheel(1);
-//  TEST_ASSERT(table->VOffset() < newV, 3);
-//  D1("test_mouse_wheel_propagation passed");
+  ATable* table = ATable::AttachTo(box);
+  table->Move(0, 0);
+  table->Resize(380, 280);
+  table->AddRows(50);
+  table->AddColumns(10);
+  table->ScrollbarsToggle(true);
+  table->LayoutUpdate();// ensure scrollbars appear
+  int64_t initialV = table->VOffset();
+// Simulate mouse wheel over the table (coordinates relative to window)
+// The table is at (10,10) inside box at (10,10) -> absolute (20,20)
+  win->OnMouseMove(20, 20);// set cursor position (so wheel knows where)
+  win->OnMouseWheel(20, 20, -3);// scroll down 3 steps
+  int64_t newV = table->VOffset();
+  TEST_ASSERT(newV > initialV, 2);
+// Scroll up
+  win->OnMouseWheel(20, 20, 1);
+  TEST_ASSERT(table->VOffset() < newV, 3);
+  D1("test_mouse_wheel_propagation passed");
   return 0;
 }
 

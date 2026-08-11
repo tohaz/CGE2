@@ -40,6 +40,7 @@ namespace aui {
     mBatchDepth = 0;
     mResizeMinSize = 10;
     Text("some table");
+    AutoHideScrollbarsToggle(true);
   }
 
   int32_t ATable::MeasureTextWidth(const std::string& text) const {
@@ -863,6 +864,7 @@ namespace aui {
       if (localX >= sbX && localX < sbX + sbW && localY >= sbY && localY < sbY + sbH) {
         if (sb->OnMouseDownLeft(localX - sbX, localY - sbY)) {
           mDragScrollbar = sb;
+          MouseLeftReleaseRequired(true);
           return true; // Click handled by scrollbar
         }
       }
@@ -891,28 +893,37 @@ namespace aui {
     return AWidget::OnMouseDownLeft(localX, localY);
   }
 
-  AWidget* ATable::OnMouseUpLeft(UNUSED int32_t localX, UNUSED int32_t localY) {
+  AWidget* ATable::OnMouseUpLeft(int32_t localX, int32_t localY) {
     LayoutUpdate();
     D2("localX {} localY {}", localX, localY);
-    if(mResizing) {
+    // ---- 1. Finish Separator Resizing ----
+    if (mResizing) {
       mResizing = false;
       mResizeTargetId = -1;
       MarkContentDirty();
       Wnd()->RequestRedraw();
       return this;
     }
-    if(mDragScrollbar) {
+    // ---- 2. Scrollbar Drag Release Forwarding ----
+    if (mDragScrollbar) {
       AScrollBar* sb = mDragScrollbar;
-      mDragScrollbar = nullptr;
+      mDragScrollbar = nullptr; // Clear active drag pointer first
+      // Forward release in scrollbar-local coordinates
       int32_t lx = localX - sb->X();
       int32_t ly = localY - sb->Y();
-      return sb->OnMouseUpLeft(lx, ly);
+      MouseLeftReleaseRequired(false);
+      sb->OnMouseUpLeft(lx, ly);
+      sb->MarkContentDirty();
+      MarkContentDirty();
+      Wnd()->RequestRedraw();
+      return this; // Return 'this' to complete ATable's captured event lifecycle
     }
+    // ---- 3. Base Class Fallback ----
     return AWidget::OnMouseUpLeft(localX, localY);
   }
 
   bool ATable::OnMouseMove(int32_t localX, int32_t localY) {
-    D1("MouseMove ATable raw local: %d, %d", localX, localY);
+    D2("MouseMove ATable raw local: %d, %d", localX, localY);
     // ---- 1. Column / Row Resize Dragging ----
     if (mResizing) {
       int32_t currentPos = mResizeColumn ? localX : localY;
@@ -969,22 +980,22 @@ namespace aui {
     mVScrollBar = std::unique_ptr<AScrollBar>(new AScrollBar());
     mVScrollBar->Orient(AUIOrientation::vertical);
     mVScrollBar->Wnd(Wnd());
-    mVScrollBar->Resize(16, mSizeY - mColumnHeaderHeight);// width 24 (was 16)
+    mVScrollBar->Resize(12, mSizeY - mColumnHeaderHeight);// width 24 (was 16)
     mVScrollBar->Arrows(true);
-    mVScrollBar->ArrowSize(16);// 50% wider than default 12
-    mVScrollBar->TrackThick(10);// 50% wider than default 12
-    mVScrollBar->ThumbThick(16);// 50% wider than default 24
+    mVScrollBar->ArrowSize(12);// 50% wider than default 12
+    mVScrollBar->TrackThick(8);// 50% wider than default 12
+    mVScrollBar->ThumbThick(12);// 50% wider than default 24
     mVScrollBar->SetScrollCallback([this](AWidget*, void*, int32_t val) {
       ScrollTo(static_cast<int32_t>(mHOffset), val);
     }, nullptr);
     mHScrollBar = std::unique_ptr<AScrollBar>(new AScrollBar());
     mHScrollBar->Orient(AUIOrientation::horizontal);
     mHScrollBar->Wnd(Wnd());
-    mHScrollBar->Resize(mSizeX - mRowHeaderWidth, 16);// height 24 (was 16)
+    mHScrollBar->Resize(mSizeX - mRowHeaderWidth, 12);// height 24 (was 16)
     mHScrollBar->Arrows(true);
-    mHScrollBar->ArrowSize(16);
-    mHScrollBar->TrackThick(10);
-    mHScrollBar->ThumbThick(16);
+    mHScrollBar->ArrowSize(12);
+    mHScrollBar->TrackThick(8);
+    mHScrollBar->ThumbThick(12);
     mHScrollBar->SetScrollCallback([this](AWidget*, void*, int32_t val) {
       ScrollTo(val, static_cast<int32_t>(mVOffset));
     }, nullptr);

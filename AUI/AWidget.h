@@ -77,6 +77,7 @@ namespace aui {
       bool mFocusable = false;
       AUIDirection mDirect = AUIDirection::unset;
       bool mHLEnabled = false;
+      AUIBorderStyle mBorderStyle = AUIBorderStyle::Simple3D;
       bool mConsumeMouseEvents = false;
       bool mMousePressedLeft = false;
       bool mMouseLeftRequireRelese = false;
@@ -332,6 +333,8 @@ namespace aui {
       void MarkContentDirty();
       void MarkOverlayDirty();
       void MarkDirty();
+      void BorderStyle(AUIBorderStyle v);
+      AUIBorderStyle BorderStyle() const { return mBorderStyle; }
   };
 
   template<typename Derived>
