@@ -4,14 +4,14 @@
 namespace aui {
 
 // Draw a horizontal line (1‑pixel high) using memset for each row (just one row here).
-  inline void DrawHLine(uint32_t *buffer, uint32_t bufferWidth, int32_t x, int32_t y, int32_t w, uint32_t color) {
+  inline void DrawHLine(uint32_t* buffer, uint32_t bufferWidth, int32_t x, int32_t y, int32_t w, uint32_t color) {
     if(w <= 0)
       return;
     uint32_t* line = buffer + static_cast<size_t>(y) * bufferWidth + static_cast<size_t>(x);
     std::fill(line, line + w, color);
   }
 // Draw a vertical line (1‑pixel wide) – we fill each row’s pixel individually.
-  inline void DrawVLine(uint32_t *buffer, uint32_t bufferWidth, int32_t x, int32_t y, int32_t h, uint32_t color) {
+  inline void DrawVLine(uint32_t* buffer, uint32_t bufferWidth, int32_t x, int32_t y, int32_t h, uint32_t color) {
     if(h <= 0)
       return;
     for(int32_t row = 0; row < h; ++row) {
@@ -28,7 +28,10 @@ namespace aui {
   using MouseButtonCallback = std::function<AWidget*(AWidget*, void* anyData, int32_t x, int32_t y)>;
   using MouseButtonCallback3 = std::function<void(AWidget*, void* anyData, int32_t x, int32_t y, uint32_t button)>;
 
-  struct ARect { int32_t x, y; uint32_t w, h; };
+  struct ARect {
+      int32_t x, y;
+      uint32_t w, h;
+  };
   struct ATextStyle {
       uint32_t color;
       uint32_t fontSize;
@@ -49,27 +52,24 @@ namespace aui {
   };
 
   void DrawTextEx(uint32_t* buffer, uint32_t parentWidth, uint32_t parentHeight, const ARect& bounds,
-                  const std::string& text, FT_Face face, const ATextStyle& style,
-                  const ARect* customClip);
+      const std::string& text, FT_Face face, const ATextStyle& style, const ARect* customClip);
   void DrawRotatedRect(uint32_t* buffer, uint32_t stride, int32_t clipMinX, int32_t clipMinY, int32_t clipMaxX,
       int32_t clipMaxY, int32_t rectX, int32_t rectY, uint32_t rectW, uint32_t rectH, double angleDeg, int32_t parentX,
       int32_t parentY, uint32_t parentW, uint32_t parentH, double parentAngleDeg, uint32_t color);
 
-  void BlitRotated(const uint32_t* src, uint32_t srcW, uint32_t srcH,
-                   uint32_t* dst, uint32_t dstW, uint32_t dstH,
-                   int32_t dstX, int32_t dstY, double angleDeg,
-                   int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB,
-                   bool skipZero);
+  void BlitRotated(const uint32_t* src, uint32_t srcW, uint32_t srcH, uint32_t* dst, uint32_t dstW, uint32_t dstH,
+      int32_t dstX, int32_t dstY, double angleDeg, int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB,
+      bool skipZero);
 
   class AWidget {
       template<typename T> friend class AWidgetFactory;
       friend class AWindow;
     private:
       std::vector<std::unique_ptr<AWidget>> mWidg;
-      AWindow *mWnd = nullptr;
+      AWindow* mWnd = nullptr;
       bool mClipChildren = true;
       bool mClipChildrenHitbox = true;
-      AWidget *mParent = nullptr;
+      AWidget* mParent = nullptr;
       bool mTextMetricsValid = false;
       double mAngle = 0.0;
       double mAbsoluteAngle = 0.0;
@@ -139,23 +139,30 @@ namespace aui {
       bool mDefaultFillBG = true;
       bool mDefaultDrawBorder = true;
       bool mCapSizeToParent = false;
-      std::vector<uint32_t> mContentBuffer;   // unrotated content (background + children)
-      std::vector<uint32_t> mOverlayBuffer;   // unrotated overlay (border, etc.)
+      std::vector<uint32_t> mContentBuffer;// unrotated content (background + children)
+      std::vector<uint32_t> mOverlayBuffer;// unrotated overlay (border, etc.)
       bool mContentDirty = true;
       bool mOverlayDirty = true;
-      // Buffer allocation
+// Buffer allocation
       void AllocateBuffers();
-      // Render to own buffers
+// Render to own buffers
       virtual void RenderContent();
       virtual void RenderOverlay();
       void AddWidget(std::unique_ptr<AWidget> widg);
-      virtual void OnDraw(uint32_t *buffer, uint32_t bufferW, uint32_t bufferH,
-          int32_t offsetX, int32_t offsetY, int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB) const = 0;
+      virtual void OnDraw(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
+          int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB) const = 0;
       void CapSizeToParent();
-      void CapSizeToParent(bool v) {mCapSizeToParent = v;if(v){CapSizeToParent();}}
+      void CapSizeToParent(bool v) {
+        mCapSizeToParent = v;
+        if(v) {
+          CapSizeToParent();
+        }
+      }
       MouseMoveCallback mMouseMoveCallback = nullptr;
       void* mMouseMoveUserData = nullptr;
-      virtual void OnKeyEvent(const AUIKeyEvent&) {E("void filler")}
+      virtual void OnKeyEvent(const AUIKeyEvent&) {
+        E("void filler")
+      }
       template<typename Func>
       void ForEachChild(Func&& fn) {
         for(auto& child : mWidg) {
@@ -167,74 +174,139 @@ namespace aui {
       void DrawChildren(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
           int32_t clipLeft, int32_t clipTop, int32_t clipRight, int32_t clipBottom) const;
       void Parent(AWidget* parent);
-      bool Visible() const {return mVisible;}
-      bool Focusable() const {return mFocusable;}
-      void Focusable(bool v) {mFocusable = v;}
-      uint32_t SizeX() const {return mSizeX;}
-      uint32_t SizeY() const {return mSizeY;}
-      int32_t X() const {return mX;}
-      int32_t Y() const {return mY;}
+      bool Visible() const {
+        return mVisible;
+      }
+      bool Focusable() const {
+        return mFocusable;
+      }
+      void Focusable(bool v) {
+        mFocusable = v;
+      }
+      uint32_t SizeX() const {
+        return mSizeX;
+      }
+      uint32_t SizeY() const {
+        return mSizeY;
+      }
+      int32_t X() const {
+        return mX;
+      }
+      int32_t Y() const {
+        return mY;
+      }
       int32_t AbsX() const;
       int32_t AbsY() const;
       void DrawBorder(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
           int32_t clipLeft, int32_t clipTop, int32_t clipRight, int32_t clipBottom) const;
-      void DrawRotatedBorder(uint32_t *buffer, uint32_t bufferW, UNUSED uint32_t bufferH,
-          int32_t clipMinX, int32_t clipMinY,
-          int32_t clipMaxX, int32_t clipMaxY,
-          int32_t absX, int32_t absY,
-          uint32_t sizeX, uint32_t sizeY,
-          uint32_t borderThick, uint32_t borderColor,
-          double angleDeg,
-          int32_t parentX, int32_t parentY,
-          uint32_t parentW, uint32_t parentH,
-          double parentAngleDeg) const;
-      void OnDrawBG(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
-          int32_t clipLeft, int32_t clipTop, int32_t clipRight, int32_t clipBottom) const;
-      uint32_t Border() const {return mBorderThick;}
-      uint32_t BorderColor() const {return mBorderColor;}
-      void X(int32_t x) {mX = x;}
-      void Y(int32_t y) {mY = y;}
-      void SizeX(uint32_t szx) {mSizeX = szx;}
-      void SizeY(uint32_t szy) {mSizeY = szy;}
+      uint32_t Border() const {
+        return mBorderThick;
+      }
+      uint32_t BorderColor() const {
+        return mBorderColor;
+      }
+      void X(int32_t x) {
+        mX = x;
+      }
+      void Y(int32_t y) {
+        mY = y;
+      }
+      void SizeX(uint32_t szx) {
+        mSizeX = szx;
+      }
+      void SizeY(uint32_t szy) {
+        mSizeY = szy;
+      }
       void Border(uint32_t border);
       void BorderColor(uint32_t border);
       virtual void Draw(uint32_t* buffer, uint32_t bufferW, uint32_t bufferH, int32_t offsetX, int32_t offsetY,
           int32_t clipLeft, int32_t clipTop, int32_t clipRight, int32_t clipBottom) const;
-      uint32_t BGColor() const {return mBGColor;}
-      uint32_t BGColor2() const {return mBGColor2;}
-      uint32_t BGColor3() const {return mBGColor3;}
-      uint32_t BGColor4() const {return mBGColor4;}
+      uint32_t BGColor() const {
+        return mBGColor;
+      }
+      uint32_t BGColor2() const {
+        return mBGColor2;
+      }
+      uint32_t BGColor3() const {
+        return mBGColor3;
+      }
+      uint32_t BGColor4() const {
+        return mBGColor4;
+      }
       void BGColor(uint32_t bg);
       void BGColor2(uint32_t bg);
       void BGColor3(uint32_t bg);
       void BGColor4(uint32_t bg);
-      uint32_t TextColor() const {return mTextColor;}
-      void TextColor(uint32_t tx) {mTextColor = tx;}
-      AWindow* Wnd() const {return mWnd;}
+      uint32_t TextColor() const {
+        return mTextColor;
+      }
+      void TextColor(uint32_t tx) {
+        mTextColor = tx;
+      }
+      AWindow* Wnd() const {
+        return mWnd;
+      }
       void Wnd(AWindow* win);
       void Move(int32_t x, int32_t y);
       void Resize(uint32_t szx, uint32_t szy);
       void ClipChildren(bool clip);
-      bool ClipChildren() const {return mClipChildren;}
-      void ClipChildrenHitbox(bool clip) {mClipChildrenHitbox = clip;}
-      bool ClipChildrenHitbox() const {return mClipChildrenHitbox;}
-      AUIWidgetType Type() {D3(); return mType;}
-      void Type(AUIWidgetType tp) {D3(); mType = tp;}
-      uint32_t FontSize() const {return mFontSize;}
+      bool ClipChildren() const {
+        return mClipChildren;
+      }
+      void ClipChildrenHitbox(bool clip) {
+        mClipChildrenHitbox = clip;
+      }
+      bool ClipChildrenHitbox() const {
+        return mClipChildrenHitbox;
+      }
+      AUIWidgetType Type() {
+        D3();
+        return mType;
+      }
+      void Type(AUIWidgetType tp) {
+        D3();
+        mType = tp;
+      }
+      uint32_t FontSize() const {
+        return mFontSize;
+      }
       virtual void FontSize(uint32_t size);
-      double Angle() const {D4() return mAngle;};
+      double Angle() const {
+        D4()
+        return mAngle;
+      }
+      ;
       double AngleAbs() const;
       void Angle(double an);
-      std::string Text() const {D4() return mText;}
+      std::string Text() const {
+        D4()
+        return mText;
+      }
       void Text(std::string tx);
-      AUIHAlign HAlign() const {return mHAlign;}
-      AUIVAlign VAlign() const {return mVAlign;}
-      virtual void HAlign(AUIHAlign a) {mHAlign = a;}
-      virtual void VAlign(AUIVAlign a) {mVAlign = a;}
-      bool Enabled() const {return mEnabled;}
-      void Enabled(bool e) {mEnabled = e;}
-      virtual void Enable() {mEnabled = true;}
-      virtual void Disable() {mEnabled = false;}
+      AUIHAlign HAlign() const {
+        return mHAlign;
+      }
+      AUIVAlign VAlign() const {
+        return mVAlign;
+      }
+      virtual void HAlign(AUIHAlign a) {
+        mHAlign = a;
+      }
+      virtual void VAlign(AUIVAlign a) {
+        mVAlign = a;
+      }
+      bool Enabled() const {
+        return mEnabled;
+      }
+      void Enabled(bool e) {
+        mEnabled = e;
+      }
+      virtual void Enable() {
+        mEnabled = true;
+      }
+      virtual void Disable() {
+        mEnabled = false;
+      }
       virtual bool OnMouseMove(int32_t localX, int32_t localY);
       virtual AWidget* OnMouseDownLeft(int32_t localX, int32_t localY);
       virtual AWidget* OnMouseDownRight(int32_t localX, int32_t localY);
@@ -255,86 +327,162 @@ namespace aui {
       bool ForwardMouseWheelToChildren(int32_t delta);
       bool ForwardMouseMoveToChildren(int32_t x, int32_t y);
       AWidget* HitTestLocal(int32_t parentX, int32_t parentY);
-      void HLToggle(bool v) {mHLEnabled = v;}
+      void HLToggle(bool v);
       void HL(bool v);
-      bool HL() const {return mHL;}
+      bool HL() const {
+        return mHL;
+      }
       void DefaultFillBG(bool v);
-      bool DefaultFillBG() {return mDefaultFillBG;}
+      bool DefaultFillBG() {
+        return mDefaultFillBG;
+      }
       void SetMousePressLeftCallback(MouseButtonCallback callback, void* anyData);
-      MouseButtonCallback GetMousePressCallback() {return mMousePressLeftCallback;}
+      MouseButtonCallback GetMousePressCallback() {
+        return mMousePressLeftCallback;
+      }
       void SetMousePressRightCallback(MouseButtonCallback callback, void* anyData);
-      MouseButtonCallback GetMousePressRightCallback() {return mMousePressRightCallback;}
+      MouseButtonCallback GetMousePressRightCallback() {
+        return mMousePressRightCallback;
+      }
       void SetMousePressMiddleCallback(MouseButtonCallback callback, void* anyData);
-      MouseButtonCallback GetMousePressMiddleCallback() {return mMousePressMiddleCallback;}
+      MouseButtonCallback GetMousePressMiddleCallback() {
+        return mMousePressMiddleCallback;
+      }
       void SetMousePressOtherCallback(MouseButtonCallback3 callback, void* anyData);
-      MouseButtonCallback3 GetMousePressOtherCallback() {return mMousePressOtherCallback;}
+      MouseButtonCallback3 GetMousePressOtherCallback() {
+        return mMousePressOtherCallback;
+      }
       void SetMouseReleaseLeftCallback(MouseButtonCallback callback, void* anyData);
-      MouseButtonCallback GetMouseReleaseCallback() {return mMouseReleaseLeftCallback;}
+      MouseButtonCallback GetMouseReleaseCallback() {
+        return mMouseReleaseLeftCallback;
+      }
       void SetMouseReleaseRightCallback(MouseButtonCallback callback, void* anyData);
-      MouseButtonCallback GetMouseReleaseRightCallback() {return mMouseReleaseRightCallback;}
+      MouseButtonCallback GetMouseReleaseRightCallback() {
+        return mMouseReleaseRightCallback;
+      }
       void SetMouseReleaseMiddleCallback(MouseButtonCallback callback, void* anyData);
-      MouseButtonCallback GetMouseReleaseMiddleCallback() {return mMouseReleaseMiddleCallback;}
+      MouseButtonCallback GetMouseReleaseMiddleCallback() {
+        return mMouseReleaseMiddleCallback;
+      }
       void SetMouseReleaseOtherCallback(MouseButtonCallback3 callback, void* anyData);
-      MouseButtonCallback3 GetMouseReleaseOtherCallback() {return mMouseReleaseOtherCallback;}
+      MouseButtonCallback3 GetMouseReleaseOtherCallback() {
+        return mMouseReleaseOtherCallback;
+      }
       void SetMouseMoveCallback(MouseMoveCallback callback, void* anyData);
-      MouseMoveCallback GetMouseMoveCallback() {return mMouseMoveCallback;}
+      MouseMoveCallback GetMouseMoveCallback() {
+        return mMouseMoveCallback;
+      }
       std::pair<int32_t, int32_t> CalculateCoordsRotated(int32_t x, int32_t y) const;
       void SetMouseClickCallback(MouseButtonCallback callback, void* anyData);
-      MouseButtonCallback GetMouseClickCallback() {return mMouseClickCallback;}
-      void ConsumeMouseEvents(bool v) {mConsumeMouseEvents = v;}
-      bool ConsumesMouseEvents() {return mConsumeMouseEvents;}
-      bool MouseLeftReleaseRequired() {return mMouseLeftRequireRelese;}
-      void MouseLeftReleaseRequired(bool v) {mMouseLeftRequireRelese = v;}
-      bool IsPressedLeft() {return mMousePressedLeft;}
+      MouseButtonCallback GetMouseClickCallback() {
+        return mMouseClickCallback;
+      }
+      void ConsumeMouseEvents(bool v) {
+        mConsumeMouseEvents = v;
+      }
+      bool ConsumesMouseEvents() {
+        return mConsumeMouseEvents;
+      }
+      bool MouseLeftReleaseRequired() {
+        return mMouseLeftRequireRelese;
+      }
+      void MouseLeftReleaseRequired(bool v) {
+        mMouseLeftRequireRelese = v;
+      }
+      bool IsPressedLeft() {
+        return mMousePressedLeft;
+      }
       void TrimToText();
-      void MousePressedLeftToggle(bool v) {mMousePressedLeft = v;}
-      bool MousePressedLeft() {return mMousePressedLeft;}
+      void MousePressedLeftToggle(bool v) {
+        mMousePressedLeft = v;
+      }
+      bool MousePressedLeft() {
+        return mMousePressedLeft;
+      }
       void Show();
       void Hide();
       void Visible(bool v);
       AUI* EnginePtr();
-      AWidget* Parent() const {return mParent;}
-      AUIOrientation Orient() const {return mOrient;}
-      void Orient(AUIOrientation v) {mOrient = v;}
+      AWidget* Parent() const {
+        return mParent;
+      }
+      AUIOrientation Orient() const {
+        return mOrient;
+      }
+      void Orient(AUIOrientation v) {
+        mOrient = v;
+      }
       std::pair<int32_t, int32_t> ToLocalCoords(int32_t winX, int32_t winY) const;
-      void GetRotatedAABB(int32_t offsetX, int32_t offsetY,
-                                  double& outMinX, double& outMaxX,
-                                  double& outMinY, double& outMaxY) const;
-      AUIDirection Direction() const {return mDirect;}
-      void Direction(AUIDirection v) {mDirect = v;}
+      void GetRotatedAABB(int32_t offsetX, int32_t offsetY, double& outMinX, double& outMaxX, double& outMinY,
+          double& outMaxY) const;
+      AUIDirection Direction() const {
+        return mDirect;
+      }
+      void Direction(AUIDirection v) {
+        mDirect = v;
+      }
       virtual void LayoutUpdate();
-      void LayoutDirty() {    MarkContentDirty(); mLayoutDirty = true;};
-      bool LayoutIsDirty() {return mLayoutDirty;}
-      void LayoutDirtyToggle(bool v) {mLayoutDirty = v;}
+      void LayoutDirty() {
+        MarkContentDirty();
+        mLayoutDirty = true;
+      }
+      ;
+      bool LayoutIsDirty() {
+        return mLayoutDirty;
+      }
+      void LayoutDirtyToggle(bool v) {
+        mLayoutDirty = v;
+      }
       bool Focused() const;
       uint32_t ShiftColor(uint32_t color, bool doubleShift) const;
-      virtual void OnFocusGained() {D2("unimplemented void filler")  }
-      virtual void OnFocusLost() {D2("unimplemented void filler")}
+      virtual void OnFocusGained() {
+        D2("unimplemented void filler")
+      }
+      virtual void OnFocusLost() {
+        D2("unimplemented void filler")
+      }
       void Init();
-      void Init(bool v) {if(v){mInitDone = true;} else {E("can't set init false")} };
-      bool InitDone() const {return mInitDone;}
-      bool Pressed() const {return mPressed;}
+      void Init(bool v) {
+        if(v) {
+          mInitDone = true;
+        }
+        else {
+          E("can't set init false")
+        }
+      }
+      ;
+      bool InitDone() const {
+        return mInitDone;
+      }
+      bool Pressed() const {
+        return mPressed;
+      }
       void Pressed(bool v);
-      void BringToFront(AWidget *child);
-      bool Modal() const { return mIsModal; }
+      void BringToFront(AWidget* child);
+      bool Modal() const {
+        return mIsModal;
+      }
       AWidget* FindFirstFocusable();
       void Modal(bool modal);
       bool IsDescendantOf(const AWidget* ancestor) const;
-      bool DefaultDrawBorder() {return mDefaultDrawBorder;}
+      bool DefaultDrawBorder() {
+        return mDefaultDrawBorder;
+      }
       void DefaultDrawBorder(bool v);
       int32_t ComputeTextWidth(const std::string& text) const;
       void RemoveWidget(AWidget* v);
       void EnsureContentUpToDate();
       void EnsureOverlayUpToDate();
-      // Composite (blit) this widget’s buffers to a target buffer with rotation
-      void Composite(uint32_t* dst, uint32_t dstW, uint32_t dstH,
-                     int32_t dstX, int32_t dstY, double angle,
-                     int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB);
+// Composite (blit) this widget’s buffers to a target buffer with rotation
+      void Composite(uint32_t* dst, uint32_t dstW, uint32_t dstH, int32_t dstX, int32_t dstY, double angle,
+          int32_t clipL, int32_t clipT, int32_t clipR, int32_t clipB);
       void MarkContentDirty();
       void MarkOverlayDirty();
       void MarkDirty();
       void BorderStyle(AUIBorderStyle v);
-      AUIBorderStyle BorderStyle() const { return mBorderStyle; }
+      AUIBorderStyle BorderStyle() const {
+        return mBorderStyle;
+      }
   };
 
   template<typename Derived>

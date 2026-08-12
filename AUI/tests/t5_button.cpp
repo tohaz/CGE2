@@ -14,7 +14,7 @@ int32_t test_button_attachment(AUI* au) {
   TEST_ASSERT_NE(btn, nullptr, 3);
   TEST_ASSERT_EQ(btn->Text(), "some button", 4);
   TEST_ASSERT_EQ(btn->BGColor(), 0xFFCCCCCC, 5);
-  TEST_ASSERT_EQ(btn->Border(), 2U, 6);
+  TEST_ASSERT_EQ(btn->Border(), AUI_DEFAULT_BUTTON_BORDERW, 6);
   D1("test_button_attachment passed");
   return 0;
 }

@@ -49,6 +49,7 @@ int32_t test_label_border(AUI* au) {
   AWindow* w = au->MainWnd();
   ALabel* label = ALabel::AttachTo(w);
   label->Border(3);
+  label->BorderStyle(AUIBorderStyle::Flat);
   TEST_ASSERT_EQ(label->Border(), 3U, 2);
   label->BorderColor(0xFF00FF00U);
   label->BGColor(0xFFF1F1F1U);
@@ -190,3 +191,4 @@ int main() {
   D("test suite complete");
   return testsfailed;
 }
+

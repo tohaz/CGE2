@@ -97,6 +97,8 @@ namespace aui {
       void MouseDown(int32_t x, int32_t y);
       void MouseUp(int32_t x, int32_t y);
       void OnMouseRelease(int32_t x, int32_t y, uint32_t button);
+      void OnMousePressModal(int32_t x, int32_t y, uint32_t button);
+      void OnMouseReleaseModal(int32_t x, int32_t y, uint32_t button);
       void OnMouseMove(int32_t x, int32_t y);
       void OnMouseEnter(int32_t x, int32_t y);
       void OnMouseLeave(int32_t x, int32_t y);
@@ -137,6 +139,8 @@ namespace aui {
       void Hide();
       bool Hiddem() {return mHidden;}
       bool Visible() {return !mHidden;}
+
+
   };
 
 }

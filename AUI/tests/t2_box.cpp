@@ -113,6 +113,7 @@ int32_t test_border_1(AUI *au) {
   bx1->Resize(25, 25);
   bx1->Move(1, 1);
   bx1->Border(1);
+  bx1->BorderStyle(AUIBorderStyle::Flat);
   bx1->BGColor(0xFFF0F0F0);
   bx1->BorderColor(0xFF010101);
   AWidgetReader<ABox> r (bx1, 30, 30);
@@ -148,12 +149,14 @@ int32_t test_border_drawn_after_children(AUI* au) {
   b->BorderColor(0xFF010101);
   b->BGColor(0xFF01FF01);
   b->ClipChildren(true);
+  b->BorderStyle(AUIBorderStyle::Flat);
 
   ABox* b2 = ABox::AttachTo(b);
   b2->Resize(4, 4);
   b2->Move(3, 3);
   b2->Border(0);
   b2->BGColor(0xFFFF0202);
+  b2->BorderStyle(AUIBorderStyle::Flat);
 
   AWidgetReader<ABox> r(b, 10, 10);
   // (4,4) is inside parent bounds -> child color intact
@@ -339,6 +342,7 @@ int32_t test_border_2(AUI *au) {
   bx1->Border(2);
   bx1->BGColor(0xFFF0F0F0);
   bx1->BorderColor(0xFF010101);
+  bx1->BorderStyle(AUIBorderStyle::Flat);
   AWidgetReader<ABox> r (bx1, 30, 30);
   TEST_ASSERT_EQ(r.Pixel(0, 0), 0, 3); //buffer clear pixel
   TEST_ASSERT_EQ(r.Pixel(1, 0), 0, 3);
@@ -422,12 +426,15 @@ int32_t test_nested_border(AUI *au) {
   bx1->Move(1, 1);
   bx1->Border(3);
   bx1->BorderColor(0xFF0000FF);
+  bx1->BorderStyle(AUIBorderStyle::Flat);
   ABox* b1_1 = ABox::AttachTo(bx1);
   b1_1->Resize(40, 20);
   b1_1->Move(10, -10);
   b1_1->Border(5);
   b1_1->BGColor(0xFFFF0000);
   b1_1->BorderColor(0xFFFAFAFA);
+  b1_1->BorderStyle(AUIBorderStyle::Flat);
+
   UNUSED int32_t px = 0, py = 0;
   UNUSED uint32_t t = 0;
   AWidgetReader<ABox> r (bx1, 52, 52);
@@ -518,6 +525,7 @@ int32_t test_child_visible(AUI* au) {
   parent->BGColor(0xFF010101);
   parent->Border(1);
   parent->BorderColor(0xFF0000FF);
+  parent->BorderStyle(AUIBorderStyle::Flat);
   parent->ClipChildren(true);
   ABox* child = ABox::AttachTo(parent);
   child->Move(10, 10);
@@ -588,6 +596,7 @@ int32_t test_basic_rotation(AUI* au) {
   b->Move(3, 3);
   b->Resize(5, 5);
   b->Angle(45);
+  b->BorderStyle(AUIBorderStyle::Flat);
 
   int32_t px = 0, py = 0;
   uint32_t t = 0;
@@ -633,11 +642,13 @@ int32_t test_clipchildren_false(AUI* au) {
   b->BorderColor(0xFF010101);
   b->BGColor(0xFF01FF01);
   b->ClipChildren(false);
+  b->BorderStyle(AUIBorderStyle::Flat);
   ABox* b2 = ABox::AttachTo(b);
   b2->Resize(4, 4);
   b2->Move(3, 3);
   b2->Border(0);
   b2->BGColor(0xFFFF0202);
+  b2->BorderStyle(AUIBorderStyle::Flat);
 
 //  . . . . . . . .
 //  . 0 0 0 0 0 . .
@@ -696,11 +707,14 @@ int32_t test_clipchildren_true(AUI* au) {
   b->BorderColor(0xFF010101);
   b->BGColor(0xFF01FF01);
   b->ClipChildren(true);
+  b->BorderStyle(AUIBorderStyle::Flat);
+
   ABox* b2 = ABox::AttachTo(b);
   b2->Resize(4, 4);
   b2->Move(3, 3);
   b2->Border(0);
   b2->BGColor(0xFFFF0202);
+  b2->BorderStyle(AUIBorderStyle::Flat);
 
 //  . . . . . . .
 //  . 0 0 0 0 0 .
@@ -756,6 +770,8 @@ int32_t test_clipchildren_rotated(AUI* au) {
   b->BorderColor(0xFF010101);
   b->BGColor(0xFF01FF01);
   b->ClipChildren(true);
+  b->BorderStyle(AUIBorderStyle::Flat);
+
   ABox* b2 = ABox::AttachTo(b);
   b2->Resize(9, 9);
   b2->Move(3, 3);
@@ -763,6 +779,7 @@ int32_t test_clipchildren_rotated(AUI* au) {
   b2->BGColor(0xFFFF0202);
   b2->BorderColor(0xFF0101FF);
   b2->Angle(45);
+  b2->BorderStyle(AUIBorderStyle::Flat);
 
   int32_t px = 0, py = 0;
   uint32_t t = 0;

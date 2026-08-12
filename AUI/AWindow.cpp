@@ -256,199 +256,211 @@ namespace aui {
     BackendMove(x, y);
   }
 
-  void AWindow::OnMousePress(int32_t x, int32_t y, UNUSED uint32_t button) {
-    D2("===incoming x {} y {} button {}", x, y, button);
-    if(mMousePressCallback) {
-      mMousePressCallback(this, mMousePressCallbackData, x, y, button);
-    }
-    if(mActiveDropDown && ProcessDropdown(x, y)) {
-      return;// event consumed by closing dropdown
-    }
-    if(!mModalStack.empty()) {
-      AWidget* top = mModalStack.back();
-      if(top->Visible() && top->Enabled()) {
+  void AWindow::OnMousePressModal(UNUSED int32_t x, UNUSED int32_t y, UNUSED uint32_t button) {
+    AWidget* top = mModalStack.back();
+    if(top->Visible() && top->Enabled()) {
 // Convert to top‑modal local coords
-        auto [localX, localY] = top->ToLocalCoords(x, y);
-        AWidget* consumed = nullptr;
-        switch(button) {
-          case BTN_LEFT:
-            consumed = top->OnMouseDownLeft(localX, localY);
-            break;
-          case BTN_RIGHT:
-            consumed = top->OnMouseDownRight(localX, localY);
-            break;
-          case BTN_MIDDLE:
-            consumed = top->OnMouseDownMiddle(localX, localY);
-            break;
-          default:
-            consumed = top->OnMouseDownOther(localX, localY, button);
-            break;
-        }
-        if(consumed) {
-          if(consumed->Focusable())
-            FocusedWidget(consumed);
-          else
-            if(top->Focusable())
-              FocusedWidget(top);
-          if(consumed->MouseLeftReleaseRequired() || consumed->IsPressedLeft())
-            mCapturedWidgetLeft = consumed;
-        }
+      auto [localX, localY] = top->ToLocalCoords(x, y);
+      AWidget* consumed = nullptr;
+      switch(button) {
+        case BTN_LEFT:
+          consumed = top->OnMouseDownLeft(localX, localY);
+          break;
+        case BTN_RIGHT:
+          consumed = top->OnMouseDownRight(localX, localY);
+          break;
+        case BTN_MIDDLE:
+          consumed = top->OnMouseDownMiddle(localX, localY);
+          break;
+        default:
+          consumed = top->OnMouseDownOther(localX, localY, button);
+          break;
       }
-      return;// block normal widgets
-    }
-    switch(button) {
-      case BTN_LEFT:
-        D2("BTN_LEFT press")
-        for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
-          AWidget* wid = it->get();
-          if(!wid->Visible() || !wid->Enabled())
-            continue;
-          D2("trying widget {}", wid->Text());
-          int32_t relX = x - wid->X();
-          int32_t relY = y - wid->Y();
-          auto [localX, localY] = CalculateCoordsRotatedFull(relX, relY, wid->SizeX(), wid->SizeY(), wid->Angle());
-          bool inBounds = (localX >= 0 && localX < SafeINT32(wid->SizeX()) && localY >= 0
-              && localY < SafeINT32(wid->SizeY()));
-          if(inBounds || !wid->ClipChildrenHitbox()) {
-// Dispatch down into tree
-            AWidget* cons = wid->OnMouseDownLeft(localX, localY);
-            if(cons != nullptr) {
-              D2("widget consumed event: {}", cons->Text());
-// 1. Set Focus to the actual consumer (or fallback to top-level widget)
-              if(cons->Focusable()) {
-                FocusedWidget(cons);
-              }
-              else
-                if(wid->Focusable()) {
-                  FocusedWidget(wid);
-                }
-// 2. Set Mouse Capture on Window if the consumed widget requires it
-              if(cons->MouseLeftReleaseRequired() || cons->IsPressedLeft()) {
-                D2("capturing w {}", cons->Text());
-                mCapturedWidgetLeft = cons;
-              }
-              break;// Stop Z-order iteration
-            }
-// Fallback if top-level widget consumes mouse events
-            if(inBounds && wid->ConsumesMouseEvents()) {
-              D1("widget consumes mouse events over its geometry, stop");
-              if(wid->Focusable()) {
-                FocusedWidget(wid);
-              }
-              if(wid->MouseLeftReleaseRequired() || wid->IsPressedLeft()) {
-                mCapturedWidgetLeft = wid;
-              }
-              break;
-            }
-          }
-        }
-        D2("loop through widgets ends")
-        break;
-      default:
-        D("unhandled button press")
-        break;
+      if(consumed) {
+        if(consumed->Focusable())
+          FocusedWidget(consumed);
+        else
+          if(top->Focusable())
+            FocusedWidget(top);
+        if(consumed->MouseLeftReleaseRequired() || consumed->IsPressedLeft())
+          mCapturedWidgetLeft = consumed;
+      }
     }
   }
 
-  void AWindow::OnMouseRelease(UNUSED int32_t x, UNUSED int32_t y, UNUSED uint32_t button) {
-    D2("x {} y {} button {}", x, y, button);
-    if(mMouseReleaseCallback) {
-      mMouseReleaseCallback(this, mMouseReleaseCallbackData, x, y, button);
-    }
-    if(!mModalStack.empty()) {
-      AWidget* target = nullptr;
-      if(mCapturedWidgetLeft) {
-// Ensure the captured widget is still valid and part of the modal hierarchy
-        if(mCapturedWidgetLeft->IsDescendantOf(mModalStack.back())) {
-          target = mCapturedWidgetLeft;
-        }
-        mCapturedWidgetLeft = nullptr;// clear capture before dispatch
+  void AWindow::OnMousePress(int32_t x, int32_t y, UNUSED uint32_t button) {
+      D2("===incoming x {} y {} button {}", x, y, button);
+      if(mMousePressCallback) {
+        mMousePressCallback(this, mMousePressCallbackData, x, y, button);
       }
-      if(!target) {
-        target = mModalStack.back();
+      if(mActiveDropDown && ProcessDropdown(x, y)) {
+        return; // event consumed by closing dropdown
       }
-      if(target && target->Visible() && target->Enabled()) {
-        auto [localX, localY] = target->ToLocalCoords(x, y);
-        switch(button) {
-          case BTN_LEFT:
-            target->OnMouseUpLeft(localX, localY);
-            break;
-          case BTN_RIGHT:
-            target->OnMouseUpRight(localX, localY);
-            break;
-          case BTN_MIDDLE:
-            target->OnMouseUpMiddle(localX, localY);
-            break;
-          default:
-            target->OnMouseUpOther(localX, localY, button);
-            break;
-        }
+      if(!mModalStack.empty()) {
+        OnMousePressModal(x, y, button);
+        return;
       }
-      return;// block normal widgets
-    }
-    AWidget* consumed = nullptr;
-    switch(button) {
-      case BTN_LEFT: {
-        D2("BTN_LEFT release");
-// 1. CAPTURED ROUTING
-        if(mCapturedWidgetLeft != nullptr) {
-          AWidget* target = mCapturedWidgetLeft;
-          mCapturedWidgetLeft = nullptr;// Clear capture before dispatch to prevent re-entrancy bugs
-// IMPORTANT: Calculate coordinates in TARGET'S PARENT space,
-// because target->OnMouseUpLeft expects parent-relative coordinates!
-          int32_t parentRelX = x;
-          int32_t parentRelY = y;
-          if(target->Parent() != nullptr) {
-            auto [pX, pY] = target->Parent()->ToLocalCoords(x, y);
-            parentRelX = pX - target->X();
-            parentRelY = pY - target->Y();
-          }
-          else {
-// Target is a root-level widget directly attached to AWindow
-            parentRelX = x - target->X();
-            parentRelY = y - target->Y();
-          }
-          D2("Dispatching captured release to '[{}]' with coords ({}, {})", target->Text(), parentRelX, parentRelY);
-          consumed = target->OnMouseUpLeft(parentRelX, parentRelY);
-          if(consumed != nullptr) {
-            D2("Release consumed by captured widget '[{}]'", consumed->Text());
-          }
-        }
-// 2. FALLBACK ROUTING (No Captured Widget)
-        else {
+      switch(button) {
+        case BTN_LEFT: {
+          D2("========= BTN_LEFT press")
+          // Clear stale capture before running hit tests
+          mCapturedWidgetLeft = nullptr;
           for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
-            AWidget* widget = it->get();
-            if(!widget->Visible() || !widget->Enabled())
+            AWidget* wid = it->get();
+            if(!wid->Visible() || !wid->Enabled())
               continue;
-// Pass window-relative offset to root widget
-            int32_t localX = x - widget->X();
-            int32_t localY = y - widget->Y();
-// Check clipping on root container before recursing
-            if(widget->ClipChildren()) {
-              bool inBounds = (localX >= 0 && localX < SafeINT32(widget->SizeX()) && localY >= 0
-                  && localY < SafeINT32(widget->SizeY()));
-              if(!inBounds) {
-                continue;// Skip root widget if mouse release is outside clipped container
+            D2("trying widget {}", wid->Text());
+            int32_t relX = x - wid->X();
+            int32_t relY = y - wid->Y();
+            auto [localX, localY] = CalculateCoordsRotatedFull(relX, relY, wid->SizeX(), wid->SizeY(), wid->Angle());
+            bool inBounds = (localX >= 0 && localX < SafeINT32(wid->SizeX()) &&
+                             localY >= 0 && localY < SafeINT32(wid->SizeY()));
+            if(inBounds || !wid->ClipChildrenHitbox()) {
+              D2("trying widget {} handler", wid->Text());
+              // Dispatch down tree
+              AWidget* cons = wid->OnMouseDownLeft(localX, localY);
+              // 1. A child widget explicitly consumed the event
+              if(cons != nullptr) {
+                D2("widget consumed event: {}", cons->Text());
+                if(cons->Focusable()) {
+                  FocusedWidget(cons);
+                } else if(wid->Focusable()) {
+                  FocusedWidget(wid);
+                }
+                // Direct capture on consumption avoids state timing bugs
+                mCapturedWidgetLeft = cons;
+                break; // Stop Z-order iteration
+              }
+              // 2. Top-level widget consumes mouse events over its bounds
+              if(inBounds && wid->ConsumesMouseEvents()) {
+                D2("widget consumes mouse events over its geometry, stop");
+                if(wid->Focusable()) {
+                  FocusedWidget(wid);
+                }
+                mCapturedWidgetLeft = wid;
+                break; // Stop Z-order iteration
               }
             }
-            consumed = widget->OnMouseUpLeft(localX, localY);
+            D2("widget did NOT consume event");
+          }
+          D2("xxxxxxx loop through widgets ends");
+          break;
+        }
+        default:
+          D("unhandled button press");
+          break;
+      }
+    }
+
+  void AWindow::OnMouseReleaseModal(UNUSED int32_t x, UNUSED int32_t y, UNUSED uint32_t button) {
+    AWidget* target = nullptr;
+    if(mCapturedWidgetLeft) {
+// Ensure the captured widget is still valid and part of the modal hierarchy
+      if(mCapturedWidgetLeft->IsDescendantOf(mModalStack.back())) {
+        target = mCapturedWidgetLeft;
+      }
+      mCapturedWidgetLeft->MarkDirty();
+      mCapturedWidgetLeft = nullptr;// clear capture before dispatch
+    }
+    if(!target) {
+      target = mModalStack.back();
+    }
+    if(target && target->Visible() && target->Enabled()) {
+      auto [localX, localY] = target->ToLocalCoords(x, y);
+      switch(button) {
+        case BTN_LEFT:
+          target->OnMouseUpLeft(localX, localY);
+          break;
+        case BTN_RIGHT:
+          target->OnMouseUpRight(localX, localY);
+          break;
+        case BTN_MIDDLE:
+          target->OnMouseUpMiddle(localX, localY);
+          break;
+        default:
+          target->OnMouseUpOther(localX, localY, button);
+          break;
+      }
+    }
+    RequestRedraw();
+  }
+
+  void AWindow::OnMouseRelease(UNUSED int32_t x, UNUSED int32_t y, UNUSED uint32_t button) {
+      D2("x {} y {} button {}", x, y, button);
+      if(mMouseReleaseCallback) {
+        mMouseReleaseCallback(this, mMouseReleaseCallbackData, x, y, button);
+      }
+      if(!mModalStack.empty()) {
+        OnMouseReleaseModal(x, y, button);
+        return;
+      }
+      AWidget* consumed = nullptr;
+      switch(button) {
+        case BTN_LEFT: {
+          D2("BTN_LEFT release");
+  // 1. CAPTURED ROUTING
+          if(mCapturedWidgetLeft != nullptr) {
+            AWidget* target = mCapturedWidgetLeft;
+            mCapturedWidgetLeft = nullptr; // Clear capture early to prevent re-entrancy
+            target->MarkDirty();
+            target->Pressed(false);
+            // Convert window coordinates directly to target's local coordinate space
+            // handling parent hierarchies and rotation identical to OnMousePress
+            int32_t relX = x - target->X();
+            int32_t relY = y - target->Y();
+            if(target->Parent() != nullptr) {
+              auto [pX, pY] = target->Parent()->ToLocalCoords(x, y);
+              relX = pX - target->X();
+              relY = pY - target->Y();
+            }
+            auto [localX, localY] = CalculateCoordsRotatedFull(
+                relX, relY, target->SizeX(), target->SizeY(), target->Angle()
+            );
+            D2("Dispatching captured release to '[{}]' with local coords ({}, {})", target->Text(), localX, localY);
+            consumed = target->OnMouseUpLeft(localX, localY);
             if(consumed != nullptr) {
-              D2("Release consumed by '[{}]'", consumed->Text());
-              break;
+              D2("Release consumed by captured widget '[{}]'", consumed->Text());
             }
           }
+  // 2. FALLBACK ROUTING (No Captured Widget)
+          else {
+            D1("widget was not captured")
+            for(auto it = mWidg.rbegin(); it != mWidg.rend(); ++it) {
+              AWidget* widget = it->get();
+              if(!widget->Visible() || !widget->Enabled())
+                continue;
+              int32_t relX = x - widget->X();
+              int32_t relY = y - widget->Y();
+              auto [localX, localY] = CalculateCoordsRotatedFull(
+                  relX, relY, widget->SizeX(), widget->SizeY(), widget->Angle()
+              );
+              // Check clipping on root container before recursing
+              if(widget->ClipChildren()) {
+                bool inBounds = (localX >= 0 && localX < SafeINT32(widget->SizeX()) &&
+                                 localY >= 0 && localY < SafeINT32(widget->SizeY()));
+                if(!inBounds) {
+                  continue; // Skip root widget if mouse release is outside clipped container
+                }
+              }
+              consumed = widget->OnMouseUpLeft(localX, localY);
+              if(consumed != nullptr) {
+                D2("Release consumed by '[{}]'", consumed->Text());
+                break;
+              }
+            }
+          }
+          if(consumed == nullptr) {
+            D2("Release not consumed");
+          }
+          break;
         }
-        if(consumed == nullptr) {
-          D2("Release not consumed");
-        }
-        break;
+        default:
+          D2("Unhandled button release")
+          break;
       }
-      default:
-        D2("Unhandled button release")
-        ;
-        break;
+      D2()
+      RequestRedraw();
     }
-  }
 
   void AWindow::OnMouseMove(int32_t x, int32_t y) {
     D3("mouse move global coords {} {}", x, y);
